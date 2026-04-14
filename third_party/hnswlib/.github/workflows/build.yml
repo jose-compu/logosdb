@@ -1,0 +1,92 @@
+name: HNSW CI
+
+on: [push, pull_request]
+
+jobs:
+  test_python:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          
+      - name: Build and install
+        run: python -m pip install .
+      
+      - name: Test examples
+        timeout-minutes: 15
+        run: |
+          # Run example files directly
+          for example in examples/python/example*.py; do
+            echo "Running example: $example"
+            python "$example"
+            echo "---------------------------------------"
+          done
+        shell: bash
+
+      - name: Test bindings
+        timeout-minutes: 15
+        run: |
+          # Run the unittest tests
+          python -m unittest discover -v --start-directory tests/python --pattern "bindings_test*.py"
+        shell: bash
+  
+  test_cpp:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            cmake --build ./ --config Release
+          else
+            make
+          fi
+        shell: bash
+
+      - name: Prepare test data
+        run: |
+          pip install numpy
+          cd tests/cpp/
+          python update_gen_data.py
+        shell: bash
+      
+      - name: Test
+        timeout-minutes: 15
+        run: |
+          cd build
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            cp ./Release/* ./
+          fi
+          ./example_search
+          ./example_filter
+          ./example_replace_deleted
+          ./example_mt_search
+          ./example_mt_filter
+          ./example_mt_replace_deleted
+          ./example_multivector_search
+          ./example_epsilon_search
+          ./searchKnnCloserFirst_test
+          ./searchKnnWithFilter_test
+          ./multiThreadLoad_test
+          ./multiThread_replace_test
+          ./test_updates
+          ./test_updates update
+          ./multivector_search_test
+          ./epsilon_search_test
+        shell: bash

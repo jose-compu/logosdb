@@ -1,0 +1,20 @@
+logosdb change log
+==================
+
+0.1.0  (2025-06-25)
+-------------------
+
+  Initial release.
+
+  * HNSW-based approximate nearest-neighbor search (hnswlib).
+  * Binary mmap-backed vector storage with fixed-stride rows.
+  * Append-only JSONL metadata store (text + ISO 8601 timestamp per row).
+  * RocksDB/LevelDB-style C API with opaque handles and errptr convention.
+  * C++ convenience wrapper (logosdb::DB) with RAII and exceptions.
+  * logosdb-cli command-line tool (put, search, info).
+  * logosdb-bench benchmark tool (HNSW vs brute-force).
+  * Crash recovery: HNSW index backfill from vector store on open.
+  * Thread-safe writes; lock-free concurrent reads.
+  * Integer overflow and bounds-checked storage arithmetic.
+  * 76 unit tests covering core operations, persistence, edge cases,
+    dimension mismatch rejection, and accessor bounds.

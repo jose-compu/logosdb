@@ -1,0 +1,187 @@
+#ifndef LOGOSDB_H
+#define LOGOSDB_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#define LOGOSDB_VERSION_MAJOR 0
+#define LOGOSDB_VERSION_MINOR 1
+#define LOGOSDB_VERSION_PATCH 0
+#define LOGOSDB_VERSION_STRING "0.1.0"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* ── Opaque handles ────────────────────────────────────────────────── */
+
+typedef struct logosdb_t              logosdb_t;
+typedef struct logosdb_options_t      logosdb_options_t;
+typedef struct logosdb_search_result_t logosdb_search_result_t;
+
+/* ── Options ───────────────────────────────────────────────────────── */
+
+logosdb_options_t * logosdb_options_create(void);
+void logosdb_options_destroy(logosdb_options_t * opts);
+
+void logosdb_options_set_dim(logosdb_options_t * opts, int dim);
+void logosdb_options_set_max_elements(logosdb_options_t * opts, size_t n);
+void logosdb_options_set_ef_construction(logosdb_options_t * opts, int ef);
+void logosdb_options_set_M(logosdb_options_t * opts, int M);
+void logosdb_options_set_ef_search(logosdb_options_t * opts, int ef);
+
+/* ── Lifecycle ─────────────────────────────────────────────────────── */
+
+logosdb_t * logosdb_open(const char * path, const logosdb_options_t * opts,
+                         char ** errptr);
+void        logosdb_close(logosdb_t * db);
+
+/* ── Write ─────────────────────────────────────────────────────────── */
+
+uint64_t logosdb_put(logosdb_t * db,
+                     const float * embedding, int dim,
+                     const char * text,
+                     const char * timestamp,
+                     char ** errptr);
+
+/* ── Search ────────────────────────────────────────────────────────── */
+
+logosdb_search_result_t * logosdb_search(logosdb_t * db,
+                                         const float * query, int dim,
+                                         int top_k,
+                                         char ** errptr);
+
+int         logosdb_result_count    (const logosdb_search_result_t * r);
+uint64_t    logosdb_result_id       (const logosdb_search_result_t * r, int i);
+float       logosdb_result_score    (const logosdb_search_result_t * r, int i);
+const char* logosdb_result_text     (const logosdb_search_result_t * r, int i);
+const char* logosdb_result_timestamp(const logosdb_search_result_t * r, int i);
+void        logosdb_result_free     (logosdb_search_result_t * r);
+
+/* ── Info ──────────────────────────────────────────────────────────── */
+
+size_t logosdb_count(logosdb_t * db);
+int    logosdb_dim  (logosdb_t * db);
+
+/* ── Bulk read (for tensor construction) ───────────────────────────── */
+
+const float * logosdb_raw_vectors(logosdb_t * db, size_t * n_rows, int * dim);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+/* ── C++ convenience wrapper ───────────────────────────────────────── */
+
+#ifdef __cplusplus
+#include <string>
+#include <vector>
+#include <stdexcept>
+#include <cstring>
+
+namespace logosdb {
+
+struct Options {
+    int    dim              = 0;
+    size_t max_elements     = 1000000;
+    int    ef_construction  = 200;
+    int    M               = 16;
+    int    ef_search        = 50;
+};
+
+struct SearchHit {
+    uint64_t    id;
+    float       score;
+    std::string text;
+    std::string timestamp;
+};
+
+class DB {
+public:
+    explicit DB(const std::string & path, const Options & opts = {}) {
+        logosdb_options_t * o = logosdb_options_create();
+        if (opts.dim > 0)              logosdb_options_set_dim(o, opts.dim);
+        if (opts.max_elements > 0)     logosdb_options_set_max_elements(o, opts.max_elements);
+        if (opts.ef_construction > 0)  logosdb_options_set_ef_construction(o, opts.ef_construction);
+        if (opts.M > 0)               logosdb_options_set_M(o, opts.M);
+        if (opts.ef_search > 0)        logosdb_options_set_ef_search(o, opts.ef_search);
+        char * err = nullptr;
+        db_ = logosdb_open(path.c_str(), o, &err);
+        logosdb_options_destroy(o);
+        if (err) {
+            std::string msg(err);
+            free(err);
+            throw std::runtime_error("logosdb_open: " + msg);
+        }
+    }
+
+    ~DB() { if (db_) logosdb_close(db_); }
+
+    DB(const DB &) = delete;
+    DB & operator=(const DB &) = delete;
+    DB(DB && o) noexcept : db_(o.db_) { o.db_ = nullptr; }
+    DB & operator=(DB && o) noexcept {
+        if (this != &o) { if (db_) logosdb_close(db_); db_ = o.db_; o.db_ = nullptr; }
+        return *this;
+    }
+
+    uint64_t put(const std::vector<float> & embedding,
+                 const std::string & text = {},
+                 const std::string & timestamp = {}) {
+        char * err = nullptr;
+        uint64_t id = logosdb_put(db_, embedding.data(), (int)embedding.size(),
+                                  text.empty() ? nullptr : text.c_str(),
+                                  timestamp.empty() ? nullptr : timestamp.c_str(),
+                                  &err);
+        if (err) {
+            std::string msg(err);
+            free(err);
+            throw std::runtime_error("logosdb_put: " + msg);
+        }
+        return id;
+    }
+
+    std::vector<SearchHit> search(const std::vector<float> & query, int top_k) {
+        char * err = nullptr;
+        logosdb_search_result_t * r = logosdb_search(db_, query.data(),
+                                                      (int)query.size(),
+                                                      top_k, &err);
+        if (err) {
+            std::string msg(err);
+            free(err);
+            throw std::runtime_error("logosdb_search: " + msg);
+        }
+        std::vector<SearchHit> hits;
+        int n = logosdb_result_count(r);
+        hits.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            SearchHit h;
+            h.id    = logosdb_result_id(r, i);
+            h.score = logosdb_result_score(r, i);
+            const char * t = logosdb_result_text(r, i);
+            if (t) h.text = t;
+            const char * ts = logosdb_result_timestamp(r, i);
+            if (ts) h.timestamp = ts;
+            hits.push_back(std::move(h));
+        }
+        logosdb_result_free(r);
+        return hits;
+    }
+
+    size_t count() const { return logosdb_count(db_); }
+    int    dim()   const { return logosdb_dim(db_); }
+
+    const float * raw_vectors(size_t & n_rows, int & d) const {
+        return logosdb_raw_vectors(db_, &n_rows, &d);
+    }
+
+    logosdb_t * handle() { return db_; }
+
+private:
+    logosdb_t * db_ = nullptr;
+};
+
+} // namespace logosdb
+#endif
+
+#endif // LOGOSDB_H

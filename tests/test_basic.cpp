@@ -1,0 +1,475 @@
+#include <logosdb/logosdb.h>
+
+#include <cassert>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <random>
+#include <string>
+#include <vector>
+
+static int tests_run = 0;
+static int tests_passed = 0;
+
+#define CHECK(cond, msg) do { \
+    ++tests_run; \
+    if (!(cond)) { \
+        fprintf(stderr, "FAIL: %s (line %d): %s\n", msg, __LINE__, #cond); \
+    } else { \
+        ++tests_passed; \
+    } \
+} while(0)
+
+static std::vector<float> unit_vec(int dim, int seed) {
+    std::mt19937 rng(seed);
+    std::normal_distribution<float> dist(0.0f, 1.0f);
+    std::vector<float> v(dim);
+    float norm = 0.0f;
+    for (int i = 0; i < dim; ++i) { v[i] = dist(rng); norm += v[i] * v[i]; }
+    norm = std::sqrt(norm);
+    for (int i = 0; i < dim; ++i) v[i] /= norm;
+    return v;
+}
+
+static void test_open_close() {
+    std::string path = "/tmp/logosdb_test_oc";
+    std::filesystem::remove_all(path);
+
+    char * err = nullptr;
+    logosdb_options_t * opts = logosdb_options_create();
+    logosdb_options_set_dim(opts, 64);
+    logosdb_t * db = logosdb_open(path.c_str(), opts, &err);
+    logosdb_options_destroy(opts);
+
+    CHECK(db != nullptr, "open");
+    CHECK(err == nullptr, "no error on open");
+    CHECK(logosdb_count(db) == 0, "empty count");
+    CHECK(logosdb_dim(db) == 64, "dim");
+
+    logosdb_close(db);
+    std::filesystem::remove_all(path);
+}
+
+static void test_put_and_search() {
+    std::string path = "/tmp/logosdb_test_ps";
+    std::filesystem::remove_all(path);
+
+    logosdb::DB db(path, {.dim = 64});
+
+    auto v0 = unit_vec(64, 100);
+    auto v1 = unit_vec(64, 200);
+    auto v2 = unit_vec(64, 300);
+
+    uint64_t id0 = db.put(v0, "fact zero", "2025-01-01T00:00:00Z");
+    uint64_t id1 = db.put(v1, "fact one",  "2025-02-01T00:00:00Z");
+    uint64_t id2 = db.put(v2, "fact two",  "2025-03-01T00:00:00Z");
+
+    CHECK(id0 == 0, "id0");
+    CHECK(id1 == 1, "id1");
+    CHECK(id2 == 2, "id2");
+    CHECK(db.count() == 3, "count after 3 puts");
+
+    // Search with v0 as query — should return v0 as top hit.
+    auto hits = db.search(v0, 3);
+    CHECK(!hits.empty(), "search not empty");
+    CHECK(hits[0].id == 0, "top hit is v0");
+    CHECK(hits[0].text == "fact zero", "text matches");
+    CHECK(hits[0].timestamp == "2025-01-01T00:00:00Z", "timestamp matches");
+    CHECK(hits[0].score > 0.9f, "high self-similarity");
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_persistence() {
+    std::string path = "/tmp/logosdb_test_persist";
+    std::filesystem::remove_all(path);
+
+    auto v0 = unit_vec(64, 400);
+    auto v1 = unit_vec(64, 500);
+
+    {
+        logosdb::DB db(path, {.dim = 64});
+        db.put(v0, "persisted fact A", "2025-04-01T00:00:00Z");
+        db.put(v1, "persisted fact B", "2025-05-01T00:00:00Z");
+        CHECK(db.count() == 2, "count before close");
+    }
+
+    // Reopen.
+    {
+        logosdb::DB db(path, {.dim = 64});
+        CHECK(db.count() == 2, "count after reopen");
+
+        auto hits = db.search(v0, 2);
+        CHECK(!hits.empty(), "search after reopen");
+        CHECK(hits[0].id == 0, "correct id after reopen");
+        CHECK(hits[0].text == "persisted fact A", "text after reopen");
+        CHECK(hits[0].timestamp == "2025-04-01T00:00:00Z", "ts after reopen");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_raw_vectors() {
+    std::string path = "/tmp/logosdb_test_raw";
+    std::filesystem::remove_all(path);
+
+    int dim = 32;
+    logosdb::DB db(path, {.dim = dim});
+
+    auto v0 = unit_vec(dim, 600);
+    auto v1 = unit_vec(dim, 700);
+    db.put(v0);
+    db.put(v1);
+
+    size_t n_rows = 0;
+    int d = 0;
+    const float * raw = db.raw_vectors(n_rows, d);
+    CHECK(raw != nullptr, "raw not null");
+    CHECK(n_rows == 2, "raw n_rows");
+    CHECK(d == dim, "raw dim");
+
+    float diff = 0.0f;
+    for (int i = 0; i < dim; ++i) diff += std::fabs(raw[i] - v0[i]);
+    CHECK(diff < 1e-5f, "raw row0 matches v0");
+
+    diff = 0.0f;
+    for (int i = 0; i < dim; ++i) diff += std::fabs(raw[dim + i] - v1[i]);
+    CHECK(diff < 1e-5f, "raw row1 matches v1");
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_many_vectors() {
+    std::string path = "/tmp/logosdb_test_many";
+    std::filesystem::remove_all(path);
+
+    int dim = 128;
+    int n = 500;
+    logosdb::DB db(path, {.dim = dim, .max_elements = 1000});
+
+    std::vector<std::vector<float>> vecs;
+    for (int i = 0; i < n; ++i) {
+        vecs.push_back(unit_vec(dim, i));
+        db.put(vecs.back(), "row_" + std::to_string(i));
+    }
+    CHECK(db.count() == (size_t)n, "count == 500");
+
+    // Each vector should find itself as top-1.
+    int self_found = 0;
+    for (int i = 0; i < n; i += 50) {
+        auto hits = db.search(vecs[i], 1);
+        if (!hits.empty() && hits[0].id == (uint64_t)i) ++self_found;
+    }
+    CHECK(self_found == 10, "self-retrieval 10/10");
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_c_api_errors() {
+    char * err = nullptr;
+
+    logosdb_options_t * opts = logosdb_options_create();
+    logosdb_options_set_dim(opts, 0);
+    logosdb_t * db = logosdb_open("/tmp/logosdb_test_err", opts, &err);
+    CHECK(db == nullptr, "reject dim=0");
+    CHECK(err != nullptr, "error message set");
+    free(err); err = nullptr;
+    logosdb_options_destroy(opts);
+
+    CHECK(logosdb_count(nullptr) == 0, "count(null) == 0");
+    CHECK(logosdb_dim(nullptr) == 0, "dim(null) == 0");
+
+    logosdb_search_result_t * r = logosdb_search(nullptr, nullptr, 0, 1, &err);
+    CHECK(r == nullptr, "search(null) == null");
+    free(err);
+}
+
+static void test_search_ordering() {
+    std::string path = "/tmp/logosdb_test_order";
+    std::filesystem::remove_all(path);
+
+    int dim = 64;
+    logosdb::DB db(path, {.dim = dim});
+
+    // Insert a base vector and a perturbed copy that is close to it.
+    auto base = unit_vec(dim, 1000);
+    auto close_vec = base;
+    close_vec[0] += 0.01f;  // tiny perturbation — still very similar
+    float norm = 0.0f;
+    for (int i = 0; i < dim; ++i) norm += close_vec[i] * close_vec[i];
+    norm = std::sqrt(norm);
+    for (int i = 0; i < dim; ++i) close_vec[i] /= norm;
+
+    auto far_vec = unit_vec(dim, 2000);
+
+    db.put(far_vec,   "far");
+    db.put(close_vec, "close");
+    db.put(base,      "base");
+
+    auto hits = db.search(base, 3);
+    CHECK(hits.size() == 3, "ordering: 3 results");
+    CHECK(hits[0].id == 2, "ordering: base is top-1");
+    CHECK(hits[1].id == 1, "ordering: close is top-2");
+    CHECK(hits[0].score >= hits[1].score, "ordering: score[0] >= score[1]");
+    CHECK(hits[1].score >= hits[2].score, "ordering: score[1] >= score[2]");
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_top_k_limit() {
+    std::string path = "/tmp/logosdb_test_topk";
+    std::filesystem::remove_all(path);
+
+    int dim = 32;
+    logosdb::DB db(path, {.dim = dim});
+
+    for (int i = 0; i < 20; ++i) db.put(unit_vec(dim, i + 3000));
+
+    auto hits1 = db.search(unit_vec(dim, 3000), 1);
+    CHECK(hits1.size() == 1, "top_k=1 returns 1");
+
+    auto hits5 = db.search(unit_vec(dim, 3000), 5);
+    CHECK(hits5.size() == 5, "top_k=5 returns 5");
+
+    auto hits99 = db.search(unit_vec(dim, 3000), 99);
+    CHECK(hits99.size() == 20, "top_k>n clamped to n");
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_empty_search() {
+    std::string path = "/tmp/logosdb_test_empty_search";
+    std::filesystem::remove_all(path);
+
+    logosdb::DB db(path, {.dim = 32});
+    auto hits = db.search(unit_vec(32, 5000), 5);
+    CHECK(hits.empty(), "search on empty db returns nothing");
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_put_no_metadata() {
+    std::string path = "/tmp/logosdb_test_nometa";
+    std::filesystem::remove_all(path);
+
+    logosdb::DB db(path, {.dim = 32});
+    auto v = unit_vec(32, 6000);
+    uint64_t id = db.put(v);
+    CHECK(id == 0, "put without meta returns id 0");
+
+    auto hits = db.search(v, 1);
+    CHECK(!hits.empty(), "search finds it");
+    CHECK(hits[0].text.empty(), "text is empty");
+    CHECK(hits[0].timestamp.empty(), "timestamp is empty");
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_metadata_special_chars() {
+    std::string path = "/tmp/logosdb_test_special";
+    std::filesystem::remove_all(path);
+
+    logosdb::DB db(path, {.dim = 32});
+    auto v = unit_vec(32, 7000);
+
+    std::string special = "He said \"hello\"\nand\ttabs\\backslash";
+    db.put(v, special, "2025-06-25T00:00:00Z");
+
+    // Close and reopen to test round-trip through JSONL.
+    { logosdb::DB db2(path, {.dim = 32});
+      auto hits = db2.search(v, 1);
+      CHECK(!hits.empty(), "special chars: found");
+      CHECK(hits[0].text == special, "special chars: round-trip preserved");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_dim_mismatch_put() {
+    std::string path = "/tmp/logosdb_test_dim_put";
+    std::filesystem::remove_all(path);
+
+    char * err = nullptr;
+    logosdb_options_t * opts = logosdb_options_create();
+    logosdb_options_set_dim(opts, 32);
+    logosdb_t * db = logosdb_open(path.c_str(), opts, &err);
+    logosdb_options_destroy(opts);
+    CHECK(db != nullptr, "dim mismatch: open ok");
+
+    auto wrong = unit_vec(64, 8000);
+    uint64_t id = logosdb_put(db, wrong.data(), 64, "bad", nullptr, &err);
+    CHECK(id == UINT64_MAX, "dim mismatch: put rejected");
+    CHECK(err != nullptr, "dim mismatch: error set");
+    free(err); err = nullptr;
+
+    CHECK(logosdb_count(db) == 0, "dim mismatch: nothing inserted");
+    logosdb_close(db);
+    std::filesystem::remove_all(path);
+}
+
+static void test_dim_mismatch_search() {
+    std::string path = "/tmp/logosdb_test_dim_search";
+    std::filesystem::remove_all(path);
+
+    char * err = nullptr;
+    logosdb_options_t * opts = logosdb_options_create();
+    logosdb_options_set_dim(opts, 32);
+    logosdb_t * db = logosdb_open(path.c_str(), opts, &err);
+    logosdb_options_destroy(opts);
+
+    auto v = unit_vec(32, 9000);
+    logosdb_put(db, v.data(), 32, "ok", nullptr, &err);
+
+    auto wrong_q = unit_vec(64, 9001);
+    logosdb_search_result_t * r = logosdb_search(db, wrong_q.data(), 64, 1, &err);
+    CHECK(r == nullptr, "dim mismatch search: rejected");
+    CHECK(err != nullptr, "dim mismatch search: error set");
+    free(err);
+
+    logosdb_close(db);
+    std::filesystem::remove_all(path);
+}
+
+static void test_result_accessor_bounds() {
+    std::string path = "/tmp/logosdb_test_bounds";
+    std::filesystem::remove_all(path);
+
+    char * err = nullptr;
+    logosdb_options_t * opts = logosdb_options_create();
+    logosdb_options_set_dim(opts, 32);
+    logosdb_t * db = logosdb_open(path.c_str(), opts, &err);
+    logosdb_options_destroy(opts);
+
+    auto v = unit_vec(32, 1100);
+    logosdb_put(db, v.data(), 32, "x", nullptr, &err);
+
+    logosdb_search_result_t * r = logosdb_search(db, v.data(), 32, 1, &err);
+    CHECK(r != nullptr, "bounds: search ok");
+    CHECK(logosdb_result_count(r) == 1, "bounds: count=1");
+
+    CHECK(logosdb_result_id(r, -1) == UINT64_MAX, "bounds: id(-1) invalid");
+    CHECK(logosdb_result_id(r, 5) == UINT64_MAX, "bounds: id(5) invalid");
+    CHECK(logosdb_result_text(r, -1) == nullptr, "bounds: text(-1) null");
+    CHECK(logosdb_result_text(r, 5) == nullptr, "bounds: text(5) null");
+    CHECK(logosdb_result_score(r, 99) == 0.0f, "bounds: score(99) zero");
+    CHECK(logosdb_result_timestamp(r, -1) == nullptr, "bounds: ts(-1) null");
+
+    CHECK(logosdb_result_count(nullptr) == 0, "bounds: count(null)=0");
+
+    logosdb_result_free(r);
+    logosdb_close(db);
+    std::filesystem::remove_all(path);
+}
+
+static void test_persistence_append_after_reopen() {
+    std::string path = "/tmp/logosdb_test_append_reopen";
+    std::filesystem::remove_all(path);
+
+    int dim = 32;
+    auto v0 = unit_vec(dim, 1200);
+    auto v1 = unit_vec(dim, 1300);
+    auto v2 = unit_vec(dim, 1400);
+
+    {
+        logosdb::DB db(path, {.dim = dim});
+        db.put(v0, "first");
+        CHECK(db.count() == 1, "append-reopen: 1 after first session");
+    }
+    {
+        logosdb::DB db(path, {.dim = dim});
+        CHECK(db.count() == 1, "append-reopen: 1 on reopen");
+        db.put(v1, "second");
+        db.put(v2, "third");
+        CHECK(db.count() == 3, "append-reopen: 3 after appending");
+    }
+    {
+        logosdb::DB db(path, {.dim = dim});
+        CHECK(db.count() == 3, "append-reopen: 3 after final reopen");
+
+        auto hits = db.search(v2, 1);
+        CHECK(!hits.empty(), "append-reopen: search v2");
+        CHECK(hits[0].id == 2, "append-reopen: v2 is id=2");
+        CHECK(hits[0].text == "third", "append-reopen: text=third");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_cpp_wrapper_exception() {
+    bool caught = false;
+    try {
+        logosdb::DB db("/tmp/logosdb_test_exc", {.dim = 0});
+    } catch (const std::runtime_error & e) {
+        caught = true;
+        CHECK(std::string(e.what()).find("logosdb_open") != std::string::npos,
+              "exception: mentions logosdb_open");
+    }
+    CHECK(caught, "exception: thrown on dim=0");
+}
+
+static void test_score_self_is_one() {
+    std::string path = "/tmp/logosdb_test_selfscore";
+    std::filesystem::remove_all(path);
+
+    int dim = 64;
+    logosdb::DB db(path, {.dim = dim});
+    auto v = unit_vec(dim, 1500);
+    db.put(v, "self");
+
+    auto hits = db.search(v, 1);
+    CHECK(!hits.empty(), "self-score: found");
+    CHECK(hits[0].score > 0.99f, "self-score: ~1.0 for unit vector");
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_large_dim() {
+    std::string path = "/tmp/logosdb_test_largedim";
+    std::filesystem::remove_all(path);
+
+    int dim = 2048;
+    logosdb::DB db(path, {.dim = dim});
+
+    auto v0 = unit_vec(dim, 1600);
+    auto v1 = unit_vec(dim, 1700);
+    db.put(v0, "large dim A");
+    db.put(v1, "large dim B");
+
+    CHECK(db.count() == 2, "large dim: count=2");
+
+    auto hits = db.search(v0, 1);
+    CHECK(!hits.empty(), "large dim: search ok");
+    CHECK(hits[0].id == 0, "large dim: correct id");
+    CHECK(hits[0].text == "large dim A", "large dim: correct text");
+
+    std::filesystem::remove_all(path);
+}
+
+int main() {
+    printf("logosdb basic tests\n");
+    printf("===================\n\n");
+
+    test_open_close();
+    test_put_and_search();
+    test_persistence();
+    test_raw_vectors();
+    test_many_vectors();
+    test_c_api_errors();
+    test_search_ordering();
+    test_top_k_limit();
+    test_empty_search();
+    test_put_no_metadata();
+    test_metadata_special_chars();
+    test_dim_mismatch_put();
+    test_dim_mismatch_search();
+    test_result_accessor_bounds();
+    test_persistence_append_after_reopen();
+    test_cpp_wrapper_exception();
+    test_score_self_is_one();
+    test_large_dim();
+
+    printf("\n%d/%d tests passed.\n", tests_passed, tests_run);
+    return (tests_passed == tests_run) ? 0 : 1;
+}
