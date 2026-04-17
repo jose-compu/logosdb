@@ -33,6 +33,18 @@ public:
     // Add a vector with the given internal label (row index).
     bool add(uint64_t label, const float * vec, std::string & err);
 
+    // Mark `label` as deleted. Excluded from subsequent search results.
+    // Returns false if the label is not in the index.
+    bool mark_deleted(uint64_t label, std::string & err);
+
+    // True if `label` exists in the index and is currently marked deleted.
+    // Returns false if the label is missing.
+    bool is_deleted(uint64_t label) const;
+
+    // True if `label` is currently present (known) in the index, regardless
+    // of its deletion state.
+    bool has_label(uint64_t label) const;
+
     // Search for top-k nearest. Returns (label, distance) pairs sorted by distance desc
     // (inner product — higher is more similar).
     std::vector<std::pair<uint64_t, float>>

@@ -1,6 +1,22 @@
 logosdb change log
 ==================
 
+unreleased
+----------
+
+  * Added logosdb_delete(id) and logosdb_update(id, ...) to the public C API,
+    with matching DB::del() and DB::update() on the C++ wrapper. Deletions
+    are persisted as tombstone records in the JSONL metadata log and replayed
+    onto the HNSW index on reopen (including when the index file is missing
+    and has to be rebuilt from vectors.bin).
+  * Added logosdb_count_live() / DB::count_live() returning total rows minus
+    deleted rows. logosdb_count() continues to report the total (including
+    tombstoned rows) for storage-level introspection.
+  * Metadata JSONL format now also carries tombstone records of the form
+    {"op":"del","id":N}. Older data files remain readable.
+  * New tests cover delete/update/re-put, persistence across reopen, and
+    tombstone replay after an index rebuild.
+
 0.1.0  (2025-06-25)
 -------------------
 

@@ -425,6 +425,222 @@ static void test_score_self_is_one() {
     std::filesystem::remove_all(path);
 }
 
+static void test_delete_basic() {
+    std::string path = "/tmp/logosdb_test_delete_basic";
+    std::filesystem::remove_all(path);
+
+    int dim = 64;
+    logosdb::DB db(path, {.dim = dim});
+
+    auto v0 = unit_vec(dim, 2100);
+    auto v1 = unit_vec(dim, 2200);
+    auto v2 = unit_vec(dim, 2300);
+
+    db.put(v0, "zero");
+    db.put(v1, "one");
+    db.put(v2, "two");
+    CHECK(db.count() == 3, "delete: count==3 before");
+    CHECK(db.count_live() == 3, "delete: live==3 before");
+
+    db.del(1);
+    CHECK(db.count() == 3, "delete: total count unchanged");
+    CHECK(db.count_live() == 2, "delete: live==2 after");
+
+    auto hits = db.search(v1, 3);
+    bool found = false;
+    for (auto & h : hits) if (h.id == 1) found = true;
+    CHECK(!found, "delete: deleted row excluded from search");
+
+    auto self_hits = db.search(v0, 1);
+    CHECK(!self_hits.empty() && self_hits[0].id == 0, "delete: other rows still searchable");
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_delete_errors() {
+    std::string path = "/tmp/logosdb_test_delete_err";
+    std::filesystem::remove_all(path);
+
+    logosdb::DB db(path, {.dim = 32});
+    auto v0 = unit_vec(32, 2400);
+    db.put(v0, "only");
+
+    char * err = nullptr;
+    int rc = logosdb_delete(db.handle(), 99, &err);
+    CHECK(rc == -1, "delete oob: rc==-1");
+    CHECK(err != nullptr, "delete oob: err set");
+    free(err); err = nullptr;
+
+    rc = logosdb_delete(db.handle(), 0, &err);
+    CHECK(rc == 0, "delete: first delete ok");
+    CHECK(err == nullptr, "delete: no err on success");
+
+    rc = logosdb_delete(db.handle(), 0, &err);
+    CHECK(rc == -1, "delete twice: rc==-1");
+    CHECK(err != nullptr, "delete twice: err set");
+    free(err);
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_delete_persistence() {
+    std::string path = "/tmp/logosdb_test_delete_persist";
+    std::filesystem::remove_all(path);
+
+    int dim = 32;
+    auto v0 = unit_vec(dim, 2500);
+    auto v1 = unit_vec(dim, 2600);
+    auto v2 = unit_vec(dim, 2700);
+
+    {
+        logosdb::DB db(path, {.dim = dim});
+        db.put(v0, "a");
+        db.put(v1, "b");
+        db.put(v2, "c");
+        db.del(1);
+        CHECK(db.count_live() == 2, "persist-del: live==2 before close");
+    }
+    {
+        logosdb::DB db(path, {.dim = dim});
+        CHECK(db.count() == 3, "persist-del: count==3 after reopen");
+        CHECK(db.count_live() == 2, "persist-del: live==2 after reopen");
+
+        auto hits = db.search(v1, 3);
+        bool found = false;
+        for (auto & h : hits) if (h.id == 1) found = true;
+        CHECK(!found, "persist-del: deleted row still excluded after reopen");
+
+        auto hits_a = db.search(v0, 1);
+        CHECK(!hits_a.empty() && hits_a[0].id == 0, "persist-del: v0 still there");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_delete_persistence_without_index_file() {
+    // Drop the HNSW index file between sessions to force a full rebuild from
+    // vectors.bin. Tombstone replay from the JSONL log must restore the
+    // deletion on reopen.
+    std::string path = "/tmp/logosdb_test_delete_rebuild";
+    std::filesystem::remove_all(path);
+
+    int dim = 32;
+    auto v0 = unit_vec(dim, 2800);
+    auto v1 = unit_vec(dim, 2900);
+
+    {
+        logosdb::DB db(path, {.dim = dim});
+        db.put(v0, "alpha");
+        db.put(v1, "beta");
+        db.del(0);
+    }
+
+    std::error_code ec;
+    std::filesystem::remove(path + "/hnsw.idx", ec);
+    CHECK(!ec, "rebuild: remove hnsw.idx");
+
+    {
+        logosdb::DB db(path, {.dim = dim});
+        CHECK(db.count_live() == 1, "rebuild: live==1 after index rebuild");
+
+        auto hits = db.search(v0, 2);
+        bool found = false;
+        for (auto & h : hits) if (h.id == 0) found = true;
+        CHECK(!found, "rebuild: tombstone replayed onto fresh index");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_update_basic() {
+    std::string path = "/tmp/logosdb_test_update";
+    std::filesystem::remove_all(path);
+
+    int dim = 64;
+    logosdb::DB db(path, {.dim = dim});
+
+    auto v0 = unit_vec(dim, 3100);
+    auto v1 = unit_vec(dim, 3200);
+    auto v_new = unit_vec(dim, 3300);
+
+    db.put(v0, "old zero");
+    db.put(v1, "keep one");
+    CHECK(db.count_live() == 2, "update: live==2 before");
+
+    uint64_t new_id = db.update(0, v_new, "new zero", "2025-07-01T00:00:00Z");
+    CHECK(new_id == 2, "update: returns new id (append)");
+    CHECK(db.count() == 3, "update: total grows by 1");
+    CHECK(db.count_live() == 2, "update: live count unchanged");
+
+    auto hits_new = db.search(v_new, 1);
+    CHECK(!hits_new.empty(), "update: new vector found");
+    CHECK(hits_new[0].id == new_id, "update: new id top-1");
+    CHECK(hits_new[0].text == "new zero", "update: new text");
+    CHECK(hits_new[0].timestamp == "2025-07-01T00:00:00Z", "update: new ts");
+
+    auto hits_old = db.search(v0, 3);
+    bool old_found = false;
+    for (auto & h : hits_old) if (h.id == 0) old_found = true;
+    CHECK(!old_found, "update: old id excluded");
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_update_errors() {
+    std::string path = "/tmp/logosdb_test_update_err";
+    std::filesystem::remove_all(path);
+
+    logosdb::DB db(path, {.dim = 32});
+    auto v0 = unit_vec(32, 3400);
+    auto v1 = unit_vec(32, 3500);
+    db.put(v0, "a");
+
+    char * err = nullptr;
+    uint64_t r = logosdb_update(db.handle(), 99, v1.data(), 32, "x", nullptr, &err);
+    CHECK(r == UINT64_MAX, "update oob: rc==MAX");
+    CHECK(err != nullptr, "update oob: err set");
+    free(err); err = nullptr;
+
+    auto wrong = unit_vec(16, 3600);
+    r = logosdb_update(db.handle(), 0, wrong.data(), 16, "x", nullptr, &err);
+    CHECK(r == UINT64_MAX, "update dim: rc==MAX");
+    CHECK(err != nullptr, "update dim: err set");
+    free(err); err = nullptr;
+
+    logosdb_delete(db.handle(), 0, &err);
+    free(err); err = nullptr;
+    r = logosdb_update(db.handle(), 0, v1.data(), 32, "x", nullptr, &err);
+    CHECK(r == UINT64_MAX, "update deleted: rc==MAX");
+    CHECK(err != nullptr, "update deleted: err set");
+    free(err);
+
+    std::filesystem::remove_all(path);
+}
+
+static void test_delete_reput_independence() {
+    std::string path = "/tmp/logosdb_test_delete_reput";
+    std::filesystem::remove_all(path);
+
+    int dim = 32;
+    logosdb::DB db(path, {.dim = dim});
+
+    auto v0 = unit_vec(dim, 3700);
+    auto v1 = unit_vec(dim, 3800);
+
+    uint64_t id0 = db.put(v0, "first");
+    db.del(id0);
+
+    uint64_t id1 = db.put(v1, "second");
+    CHECK(id1 == 1, "reput: new put gets fresh id (no slot reuse)");
+    CHECK(db.count() == 2, "reput: total count==2");
+    CHECK(db.count_live() == 1, "reput: live count==1");
+
+    auto hits = db.search(v1, 1);
+    CHECK(!hits.empty() && hits[0].id == id1, "reput: new row retrievable");
+
+    std::filesystem::remove_all(path);
+}
+
 static void test_large_dim() {
     std::string path = "/tmp/logosdb_test_largedim";
     std::filesystem::remove_all(path);
@@ -468,6 +684,13 @@ int main() {
     test_persistence_append_after_reopen();
     test_cpp_wrapper_exception();
     test_score_self_is_one();
+    test_delete_basic();
+    test_delete_errors();
+    test_delete_persistence();
+    test_delete_persistence_without_index_file();
+    test_update_basic();
+    test_update_errors();
+    test_delete_reput_independence();
     test_large_dim();
 
     printf("\n%d/%d tests passed.\n", tests_passed, tests_run);
