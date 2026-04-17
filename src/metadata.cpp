@@ -78,6 +78,26 @@ bool MetadataStore::open(const std::string & path, std::string & err) {
         std::string line;
         while (std::getline(in, line)) {
             if (line.empty()) continue;
+            // Tombstone record: {"op":"del","id":N}
+            if (line.find("\"op\":\"del\"") != std::string::npos) {
+                auto key = std::string("\"id\":");
+                auto pos = line.find(key);
+                if (pos == std::string::npos) continue;
+                pos += key.size();
+                uint64_t id = 0;
+                bool got_digit = false;
+                while (pos < line.size() && (line[pos] == ' ' || line[pos] == '\t')) ++pos;
+                while (pos < line.size() && line[pos] >= '0' && line[pos] <= '9') {
+                    id = id * 10 + (uint64_t)(line[pos] - '0');
+                    got_digit = true;
+                    ++pos;
+                }
+                if (got_digit && id < rows_.size() && !rows_[id].deleted) {
+                    rows_[id].deleted = true;
+                    ++num_deleted_;
+                }
+                continue;
+            }
             MetaRow r;
             r.text      = extract_field(line, "text");
             r.timestamp = extract_field(line, "ts");
@@ -93,6 +113,7 @@ void MetadataStore::close() {
         fd_ = -1;
     }
     rows_.clear();
+    num_deleted_ = 0;
     path_.clear();
 }
 
@@ -113,6 +134,38 @@ uint64_t MetadataStore::append(const char * text, const char * timestamp,
     uint64_t id = rows_.size();
     rows_.push_back({text ? text : "", timestamp ? timestamp : ""});
     return id;
+}
+
+bool MetadataStore::mark_deleted(uint64_t id, std::string & err) {
+    if (fd_ < 0) { err = "meta not open"; return false; }
+    if (id >= rows_.size()) {
+        err = "delete: id out of range";
+        return false;
+    }
+    if (rows_[id].deleted) {
+        err = "delete: id already deleted";
+        return false;
+    }
+
+    std::string line = "{\"op\":\"del\",\"id\":" + std::to_string(id) + "}\n";
+    ssize_t written = ::write(fd_, line.data(), line.size());
+    if (written != (ssize_t)line.size()) {
+        err = std::string("write tombstone: ") + strerror(errno);
+        return false;
+    }
+
+    rows_[id].deleted = true;
+    ++num_deleted_;
+    return true;
+}
+
+std::vector<uint64_t> MetadataStore::deleted_ids() const {
+    std::vector<uint64_t> out;
+    out.reserve(num_deleted_);
+    for (size_t i = 0; i < rows_.size(); ++i) {
+        if (rows_[i].deleted) out.push_back((uint64_t)i);
+    }
+    return out;
 }
 
 bool MetadataStore::sync(std::string & err) {

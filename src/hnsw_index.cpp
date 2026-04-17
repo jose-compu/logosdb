@@ -71,6 +71,35 @@ bool HnswIndex::add(uint64_t label, const float * vec, std::string & err) {
     return true;
 }
 
+bool HnswIndex::mark_deleted(uint64_t label, std::string & err) {
+    if (!impl_ || !impl_->alg) { err = "index not open"; return false; }
+    try {
+        impl_->alg->markDelete((hnswlib::labeltype)label);
+    } catch (const std::exception & e) {
+        err = std::string("hnsw markDelete: ") + e.what();
+        return false;
+    }
+    return true;
+}
+
+bool HnswIndex::is_deleted(uint64_t label) const {
+    if (!impl_ || !impl_->alg) return false;
+    auto & lookup = impl_->alg->label_lookup_;
+    std::unique_lock<std::mutex> lk(impl_->alg->label_lookup_lock);
+    auto it = lookup.find((hnswlib::labeltype)label);
+    if (it == lookup.end()) return false;
+    auto internal_id = it->second;
+    lk.unlock();
+    return impl_->alg->isMarkedDeleted(internal_id);
+}
+
+bool HnswIndex::has_label(uint64_t label) const {
+    if (!impl_ || !impl_->alg) return false;
+    auto & lookup = impl_->alg->label_lookup_;
+    std::unique_lock<std::mutex> lk(impl_->alg->label_lookup_lock);
+    return lookup.find((hnswlib::labeltype)label) != lookup.end();
+}
+
 std::vector<std::pair<uint64_t, float>>
 HnswIndex::search(const float * query, int top_k, std::string & err) const {
     std::vector<std::pair<uint64_t, float>> results;

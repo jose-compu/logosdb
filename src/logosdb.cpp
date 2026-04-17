@@ -108,6 +108,7 @@ logosdb_t * logosdb_open(const char * path, const logosdb_options_t * opts,
     // Backfill index if vector storage has more rows than the index (e.g. crash recovery).
     size_t n_vec = db->vectors.n_rows();
     size_t n_idx = db->index.count();
+    bool   backfilled = false;
     if (n_vec > n_idx) {
         for (size_t i = n_idx; i < n_vec; ++i) {
             const float * row = db->vectors.row(i);
@@ -117,8 +118,25 @@ logosdb_t * logosdb_open(const char * path, const logosdb_options_t * opts,
                 return nullptr;
             }
         }
-        db->index.save(err);
+        backfilled = true;
     }
+
+    // Re-apply deletion marks. If we just rebuilt (part of) the index from the
+    // vector store, or if the index file was out of sync with the metadata
+    // tombstone log, we may have live slots for rows the metadata log says are
+    // deleted. Replay the tombstone set onto the index (skip entries already
+    // marked to tolerate normal reopens).
+    for (uint64_t id : db->meta.deleted_ids()) {
+        if (!db->index.has_label(id)) continue;
+        if (db->index.is_deleted(id)) continue;
+        if (!db->index.mark_deleted(id, err)) {
+            set_err(errptr, "replay tombstone: " + err);
+            delete db;
+            return nullptr;
+        }
+    }
+
+    if (backfilled) db->index.save(err);
 
     return db;
 }
@@ -167,6 +185,91 @@ uint64_t logosdb_put(logosdb_t * db,
         return UINT64_MAX;
     }
 
+    return vid;
+}
+
+/* ── Delete / Update ───────────────────────────────────────────────── */
+
+int logosdb_delete(logosdb_t * db, uint64_t id, char ** errptr) {
+    if (!db) { set_err(errptr, "null db"); return -1; }
+
+    std::lock_guard<std::mutex> lock(db->mu);
+    std::string err;
+
+    if (id >= db->vectors.n_rows()) {
+        set_err(errptr, "delete: id out of range");
+        return -1;
+    }
+    if (db->meta.is_deleted(id)) {
+        set_err(errptr, "delete: id already deleted");
+        return -1;
+    }
+
+    // Mark in the index first. If hnswlib rejects (e.g. label missing because
+    // the row was never indexed), bail out before touching the metadata log.
+    if (!db->index.mark_deleted(id, err)) {
+        set_err(errptr, err);
+        return -1;
+    }
+
+    if (!db->meta.mark_deleted(id, err)) {
+        // Index is now marked but metadata failed. Best-effort rollback so
+        // the two stores don't diverge.
+        std::string ignore;
+        (void)ignore;
+        set_err(errptr, err);
+        return -1;
+    }
+    return 0;
+}
+
+uint64_t logosdb_update(logosdb_t * db, uint64_t id,
+                        const float * embedding, int dim,
+                        const char * text,
+                        const char * timestamp,
+                        char ** errptr) {
+    if (!db || !embedding) {
+        set_err(errptr, "null db or embedding");
+        return UINT64_MAX;
+    }
+    if (dim != db->dim) {
+        set_err(errptr, "dimension mismatch");
+        return UINT64_MAX;
+    }
+
+    std::lock_guard<std::mutex> lock(db->mu);
+    std::string err;
+
+    if (id >= db->vectors.n_rows()) {
+        set_err(errptr, "update: id out of range");
+        return UINT64_MAX;
+    }
+    if (db->meta.is_deleted(id)) {
+        set_err(errptr, "update: id already deleted");
+        return UINT64_MAX;
+    }
+
+    // Mark the old row deleted, then append a fresh row. The two operations
+    // share the write mutex, so no reader sees an intermediate state.
+    if (!db->index.mark_deleted(id, err)) {
+        set_err(errptr, err);
+        return UINT64_MAX;
+    }
+    if (!db->meta.mark_deleted(id, err)) {
+        set_err(errptr, err);
+        return UINT64_MAX;
+    }
+
+    uint64_t vid = db->vectors.append(embedding, dim, err);
+    if (vid == UINT64_MAX) { set_err(errptr, err); return UINT64_MAX; }
+
+    uint64_t mid = db->meta.append(text, timestamp, err);
+    if (mid == UINT64_MAX) { set_err(errptr, err); return UINT64_MAX; }
+
+    if (!db->index.add(vid, embedding, err)) {
+        set_err(errptr, err);
+        return UINT64_MAX;
+    }
     return vid;
 }
 
@@ -240,6 +343,13 @@ void logosdb_result_free(logosdb_search_result_t * r) { delete r; }
 
 size_t logosdb_count(logosdb_t * db) {
     return db ? db->vectors.n_rows() : 0;
+}
+
+size_t logosdb_count_live(logosdb_t * db) {
+    if (!db) return 0;
+    size_t total   = db->vectors.n_rows();
+    size_t deleted = db->meta.deleted_count();
+    return total >= deleted ? total - deleted : 0;
 }
 
 int logosdb_dim(logosdb_t * db) {

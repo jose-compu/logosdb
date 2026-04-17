@@ -44,6 +44,26 @@ uint64_t logosdb_put(logosdb_t * db,
                      const char * timestamp,
                      char ** errptr);
 
+/* Mark the row with the given id as deleted. The vector bytes remain on
+ * disk but the row is excluded from search results and future `raw_vectors`
+ * bulk views (logosdb_count_live reflects live rows only).
+ *
+ * Returns 0 on success, -1 on error (id out of range, already deleted,
+ * db not open). On error `*errptr` is set to a newly-allocated message
+ * that the caller must free(). */
+int logosdb_delete(logosdb_t * db, uint64_t id, char ** errptr);
+
+/* Replace the row with the given id. This is implemented as a
+ * delete-then-put, so the returned id is NEW (not the original `id`).
+ * Callers must update any stored references.
+ *
+ * Returns the new id on success, UINT64_MAX on error. */
+uint64_t logosdb_update(logosdb_t * db, uint64_t id,
+                        const float * embedding, int dim,
+                        const char * text,
+                        const char * timestamp,
+                        char ** errptr);
+
 /* ── Search ────────────────────────────────────────────────────────── */
 
 logosdb_search_result_t * logosdb_search(logosdb_t * db,
@@ -60,8 +80,13 @@ void        logosdb_result_free     (logosdb_search_result_t * r);
 
 /* ── Info ──────────────────────────────────────────────────────────── */
 
-size_t logosdb_count(logosdb_t * db);
-int    logosdb_dim  (logosdb_t * db);
+/* Total row count, including rows that have been marked deleted. */
+size_t logosdb_count     (logosdb_t * db);
+
+/* Live row count: total rows minus rows marked deleted. */
+size_t logosdb_count_live(logosdb_t * db);
+
+int    logosdb_dim       (logosdb_t * db);
 
 /* ── Bulk read (for tensor construction) ───────────────────────────── */
 
@@ -141,6 +166,34 @@ public:
         return id;
     }
 
+    void del(uint64_t id) {
+        char * err = nullptr;
+        int rc = logosdb_delete(db_, id, &err);
+        if (rc != 0) {
+            std::string msg = err ? err : "unknown";
+            free(err);
+            throw std::runtime_error("logosdb_delete: " + msg);
+        }
+    }
+
+    uint64_t update(uint64_t id,
+                    const std::vector<float> & embedding,
+                    const std::string & text = {},
+                    const std::string & timestamp = {}) {
+        char * err = nullptr;
+        uint64_t new_id = logosdb_update(db_, id,
+                                         embedding.data(), (int)embedding.size(),
+                                         text.empty() ? nullptr : text.c_str(),
+                                         timestamp.empty() ? nullptr : timestamp.c_str(),
+                                         &err);
+        if (err) {
+            std::string msg(err);
+            free(err);
+            throw std::runtime_error("logosdb_update: " + msg);
+        }
+        return new_id;
+    }
+
     std::vector<SearchHit> search(const std::vector<float> & query, int top_k) {
         char * err = nullptr;
         logosdb_search_result_t * r = logosdb_search(db_, query.data(),
@@ -168,8 +221,9 @@ public:
         return hits;
     }
 
-    size_t count() const { return logosdb_count(db_); }
-    int    dim()   const { return logosdb_dim(db_); }
+    size_t count()      const { return logosdb_count(db_); }
+    size_t count_live() const { return logosdb_count_live(db_); }
+    int    dim()        const { return logosdb_dim(db_); }
 
     const float * raw_vectors(size_t & n_rows, int & d) const {
         return logosdb_raw_vectors(db_, &n_rows, &d);
