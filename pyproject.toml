@@ -69,8 +69,11 @@ build-verbosity = 1
 test-requires = "pytest"
 test-command = "pytest {project}/tests/python -v"
 
-[tool.cibuildwheel.linux]
-archs = ["x86_64", "aarch64"]
+# Linux: do not set archs here. Listing both x86_64 and aarch64 would make
+# cibuildwheel try to run the x86_64 manylinux Docker image on ARM runners
+# (exec format error). publish.yml uses ubuntu-latest (native x86_64) and
+# ubuntu-24.04-arm (native aarch64); default CIBW_ARCHS=auto builds one arch
+# per machine.
 
 [tool.cibuildwheel.macos]
 archs = ["x86_64", "arm64"]
