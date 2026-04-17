@@ -4,11 +4,11 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "logosdb"
-version = "0.1.0"
+version = "0.2.0"
 description = "Fast semantic vector database (HNSW + mmap) with Python bindings"
 readme = "README.md"
 license = { file = "LICENSE" }
-authors = [{ name = "Jose", email = "jose@example.com" }]
+authors = [{ name = "Jose", email = "jose-compu@users.noreply.github.com" }]
 requires-python = ">=3.9"
 keywords = ["vector-database", "hnsw", "embeddings", "semantic-search", "nearest-neighbor"]
 classifiers = [
@@ -49,3 +49,30 @@ LOGOSDB_BUILD_TESTS = "OFF"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
+
+# ─────────────────────────────────────────────────────────────────────
+# cibuildwheel: produces binary wheels for every target platform.
+# Invoked by .github/workflows/publish.yml when a v* tag is pushed.
+# ─────────────────────────────────────────────────────────────────────
+[tool.cibuildwheel]
+build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
+# Skip PyPy, 32-bit Linux, musl i686, and Windows (no Windows support yet,
+# see issue #10). Free-threaded CPython (cp3??t-*) is also skipped for now.
+skip = [
+    "pp*",
+    "*-musllinux_i686",
+    "*-manylinux_i686",
+    "*-win32",
+    "cp3??t-*",
+]
+build-verbosity = 1
+test-requires = "pytest"
+test-command = "pytest {project}/tests/python -v"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64", "aarch64"]
+
+[tool.cibuildwheel.macos]
+archs = ["x86_64", "arm64"]
+# Pin a stable macOS deployment target so wheels run on older hosts.
+environment = { MACOSX_DEPLOYMENT_TARGET = "11.0" }

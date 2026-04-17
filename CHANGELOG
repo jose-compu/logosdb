@@ -1,20 +1,14 @@
 logosdb change log
 ==================
 
-unreleased
-----------
+0.2.0  (2026-04-17)
+-------------------
 
-  * Added Python bindings (pybind11 + scikit-build-core). `pip install .`
-    builds a native extension that exposes logosdb.DB with put, search,
-    delete, update, count, count_live, dim, raw_vectors (zero-copy numpy
-    view) and logosdb.SearchHit. Smoke tests under tests/python/ and a
-    numpy/sentence-transformers example under examples/python/. A new
-    .github/workflows/python.yml job builds wheels and runs pytest on
-    Linux and macOS for Python 3.10 and 3.12.
-  * CMakeLists.txt gained LOGOSDB_BUILD_TOOLS, LOGOSDB_BUILD_TESTS, and
-    LOGOSDB_BUILD_PYTHON options so the Python wheel build skips CLI /
-    benchmark / C++ test targets. The static core library now builds with
-    position-independent code so it can be linked into the Python extension.
+  Highlights: first PyPI release with Python bindings, public delete/update
+  API, and CI across Linux and macOS.
+
+  Delete / update API (closes #3)
+
   * Added logosdb_delete(id) and logosdb_update(id, ...) to the public C API,
     with matching DB::del() and DB::update() on the C++ wrapper. Deletions
     are persisted as tombstone records in the JSONL metadata log and replayed
@@ -25,8 +19,38 @@ unreleased
     tombstoned rows) for storage-level introspection.
   * Metadata JSONL format now also carries tombstone records of the form
     {"op":"del","id":N}. Older data files remain readable.
-  * New tests cover delete/update/re-put, persistence across reopen, and
+  * New C++ tests cover delete/update/re-put, persistence across reopen, and
     tombstone replay after an index rebuild.
+
+  Python bindings and PyPI release (closes #4)
+
+  * Added Python bindings (pybind11 + scikit-build-core). pip install logosdb
+    installs a native extension that exposes logosdb.DB with put, search,
+    delete, update, count, count_live, dim, raw_vectors (zero-copy numpy
+    view) and logosdb.SearchHit. Smoke tests under tests/python/ and a
+    numpy/sentence-transformers example under examples/python/.
+  * CMakeLists.txt gained LOGOSDB_BUILD_TOOLS, LOGOSDB_BUILD_TESTS, and
+    LOGOSDB_BUILD_PYTHON options so the Python wheel build skips CLI /
+    benchmark / C++ test targets. The static core library now builds with
+    position-independent code so it can be linked into the Python extension.
+  * Added PyPI release plumbing: cibuildwheel configuration in
+    pyproject.toml and a .github/workflows/publish.yml workflow that, on
+    every v* tag, builds wheels for {Linux, macOS} x {x86_64, arm64} x
+    CPython {3.9..3.13}, builds the sdist, uploads everything to TestPyPI,
+    and finally to PyPI via Trusted Publishing (OIDC, no API tokens). A
+    RELEASING.md runbook documents the one-time Trusted Publisher setup
+    and the release flow.
+
+  CI and infrastructure (closes #1)
+
+  * New .github/workflows/ci.yml builds and tests on ubuntu-latest and
+    macos-latest in both Debug and Release via CMake + Ninja, runs ctest,
+    and smoke-tests the CLI. Build directory is cached across runs.
+  * New .github/workflows/python.yml builds the Python wheel and runs the
+    pytest smoke suite on Linux and macOS for CPython 3.10 and 3.12.
+  * Fixed a latent transitive-include bug in tools/logosdb-bench.cpp that
+    broke the build on Ubuntu's libstdc++ (std::partial_sort requires an
+    explicit <algorithm> include).
 
 0.1.0  (2025-06-25)
 -------------------
