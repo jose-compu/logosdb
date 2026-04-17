@@ -8,42 +8,43 @@ uses [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
 
 ## One-time setup
 
-You need to do this **before** the first tag push succeeds. It takes ~5 min.
+You need to do this **before** the first tag push succeeds. It takes ~2 min.
 
-### 1. Reserve the name on TestPyPI and PyPI
+### 1. Reserve the name on PyPI
 
-- https://test.pypi.org/manage/account/publishing/
-- https://pypi.org/manage/account/publishing/
+https://pypi.org/manage/account/publishing/ → *"Add a new pending publisher"*:
 
-On each site click *"Add a new pending publisher"* and fill in:
+| Field              | Value         |
+|--------------------|---------------|
+| PyPI Project Name  | `logosdb`     |
+| Owner              | `jose-compu`  |
+| Repository name    | `logosdb`     |
+| Workflow name      | `publish.yml` |
+| Environment name   | `pypi`        |
 
-| Field                     | Value                                  |
-|---------------------------|----------------------------------------|
-| PyPI Project Name         | `logosdb`                              |
-| Owner                     | `jose-compu`                           |
-| Repository name           | `logosdb`                              |
-| Workflow name             | `publish.yml`                          |
-| Environment name (PyPI)   | `pypi`                                 |
-| Environment name (TestPyPI) | `testpypi`                           |
+Environment name may be left blank (matches *Any*); using `pypi` lets you
+add GitHub-side protection rules that scope only to release uploads.
 
-### 2. Create the two GitHub environments
+### 2. (Optional) Create the `pypi` GitHub Environment
 
-Go to `Settings → Environments → New environment` in the GitHub repo and create
-both `testpypi` and `pypi`. For `pypi` it is highly recommended to enable
-*"Required reviewers"* so a human has to approve the upload.
+`Settings → Environments → New environment → pypi`. Enabling
+*"Required reviewers"* is highly recommended so a human has to approve every
+upload. GitHub will auto-create the environment on first use even without
+this, but without a protection rule the upload happens unattended.
 
-That's it — the workflow already references these environments by name.
+That's it — the workflow already references the environment by name.
 
 ## Cutting a release
 
 ```bash
-# 1. Bump the version in both files. They MUST match.
-#    - pyproject.toml        → [project].version
+# 1. Bump the version in all three files. They MUST match.
+#    - pyproject.toml            → [project].version
 #    - include/logosdb/logosdb.h → LOGOSDB_VERSION_* and LOGOSDB_VERSION_STRING
+#    - CMakeLists.txt            → project(logosdb VERSION ...)
 
 # 2. Update the CHANGELOG entry with the release date and notes.
 
-git add pyproject.toml include/logosdb/logosdb.h CHANGELOG
+git add pyproject.toml include/logosdb/logosdb.h CMakeLists.txt CHANGELOG
 git commit -m "Release v0.2.0"
 git push origin main
 
@@ -59,21 +60,19 @@ The tag push triggers `.github/workflows/publish.yml`:
    CPython version (3.9–3.13). Each wheel is tested against the pytest suite
    inside the isolated build environment.
 2. **`build_sdist`** builds the source distribution.
-3. **`publish_testpypi`** uploads everything to TestPyPI.
-4. **`publish_pypi`** (waits for reviewer approval if configured) uploads the
-   same artifacts to PyPI.
+3. **`publish_pypi`** waits for reviewer approval (if configured) and then
+   uploads the wheels + sdist to PyPI.
 
-## Verifying a TestPyPI release before PyPI
+If a build or test fails, nothing is uploaded — the job simply stops before
+the publish step. Because PyPI never allows re-uploading the same version,
+always bump the version number when retrying (`0.2.0` → `0.2.1`) rather than
+deleting and re-pushing a tag.
 
-The `publish_pypi` job only runs after `publish_testpypi` finishes. If you've
-enabled *Required reviewers* on the `pypi` environment, GitHub will pause and
-request approval; use that window to spot-check TestPyPI:
+## Verifying a release after it lands
 
 ```bash
 python -m venv /tmp/v && . /tmp/v/bin/activate
-pip install --index-url https://test.pypi.org/simple/ \
-            --extra-index-url https://pypi.org/simple/ \
-            logosdb==0.2.0
+pip install --upgrade logosdb
 python -c "
 import logosdb, numpy as np
 db = logosdb.DB('/tmp/smoke', dim=8)
@@ -82,19 +81,20 @@ print('ok:', db.count(), logosdb.__version__)
 "
 ```
 
-If something looks wrong: decline the review in GitHub, delete the bad tag
-(`git tag -d v0.2.0 && git push --delete origin v0.2.0`), fix, and start over
-with a new version (`0.2.1`). PyPI *never* lets you re-upload the same version.
-
 ## Manual dry-run (no tag)
 
-To exercise the full wheel matrix without publishing:
+To exercise the full wheel + sdist matrix without publishing anything:
 
 ```
-Actions → Publish → Run workflow → target: testpypi_only
+Actions → Publish → Run workflow → target: dry_run
 ```
 
-This builds every wheel, uploads to TestPyPI, and stops. No PyPI upload.
+This builds every wheel and the sdist, uploads them as workflow artifacts
+(downloadable from the run summary), and stops. No PyPI upload.
+
+If you want to publish from the `main` branch without tagging (e.g. a
+hot-fix where tagging hasn't happened yet), choose `target: pypi` instead.
+It still goes through the `pypi` environment's protection rules.
 
 ## Supported platforms
 
