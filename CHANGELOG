@@ -36,10 +36,9 @@ logosdb change log
   * Added PyPI release plumbing: cibuildwheel configuration in
     pyproject.toml and a .github/workflows/publish.yml workflow that, on
     every v* tag, builds wheels for {Linux, macOS} x {x86_64, arm64} x
-    CPython {3.9..3.13}, builds the sdist, uploads everything to TestPyPI,
-    and finally to PyPI via Trusted Publishing (OIDC, no API tokens). A
-    RELEASING.md runbook documents the one-time Trusted Publisher setup
-    and the release flow.
+    CPython {3.9..3.13}, builds the sdist, and uploads everything to PyPI
+    via Trusted Publishing (OIDC, no API tokens). A RELEASING.md runbook
+    documents the one-time Trusted Publisher setup and the release flow.
 
   CI and infrastructure (closes #1)
 

@@ -5,18 +5,18 @@ on:
   #   git tag v0.2.0 && git push origin v0.2.0
   push:
     tags: ["v*"]
-  # Manual trigger lets you test the full wheel matrix (→ TestPyPI) without
-  # cutting a real release. Choose `testpypi_only` or `pypi` on the dispatch
-  # form; the default is TestPyPI so accidental runs never hit production.
+  # Manual trigger lets you exercise the full wheel matrix without cutting a
+  # tag. The default target is `dry_run` (build only, no upload) so accidental
+  # runs can never hit production; choose `pypi` to actually publish.
   workflow_dispatch:
     inputs:
       target:
         description: "Where to upload"
         required: true
-        default: "testpypi_only"
+        default: "dry_run"
         type: choice
         options:
-          - testpypi_only
+          - dry_run
           - pypi
 
 jobs:
@@ -80,43 +80,13 @@ jobs:
           path: dist/*.tar.gz
           if-no-files-found: error
 
-  # ── Publish: TestPyPI ────────────────────────────────────────────
-  # Runs for every tag push AND for manual dispatch. Acts as the
-  # mandatory pre-flight for the real PyPI upload.
-  publish_testpypi:
-    name: Upload to TestPyPI
-    needs: [build_wheels, build_sdist]
-    runs-on: ubuntu-latest
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/project/logosdb/
-    permissions:
-      id-token: write   # Trusted Publishing (OIDC)
-    steps:
-      - name: Download all artifacts into dist/
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-
-      - name: List artifacts
-        run: ls -la dist/
-
-      - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          # TestPyPI is noisy; skip silently if a file already exists for
-          # this version (e.g. re-running a tagged build).
-          skip-existing: true
-
   # ── Publish: PyPI ────────────────────────────────────────────────
   # Runs only when a version tag was pushed, OR when dispatched manually
   # with target=pypi. The `environment: pypi` can be configured in the
   # repo settings to require a reviewer before this job runs.
   publish_pypi:
     name: Upload to PyPI
-    needs: publish_testpypi
+    needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
