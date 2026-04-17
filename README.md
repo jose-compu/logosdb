@@ -1,5 +1,7 @@
 [![CI](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml)
 [![Python](https://github.com/jose-compu/logosdb/actions/workflows/python.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/python.yml)
+[![PyPI](https://img.shields.io/pypi/v/logosdb.svg)](https://pypi.org/project/logosdb/)
+[![Python versions](https://img.shields.io/pypi/pyversions/logosdb.svg)](https://pypi.org/project/logosdb/)
 
 LogosDB is a fast semantic vector database written in C/C++ that provides approximate nearest-neighbor search over embedding vectors with associated text metadata.
 
@@ -107,7 +109,13 @@ for (auto &r : results) {
 
 LogosDB ships Python bindings built with [pybind11](https://pybind11.readthedocs.io/) and [scikit-build-core](https://scikit-build-core.readthedocs.io/).
 
-Install:
+Install from PyPI (binary wheels provided for Linux x86_64/aarch64 and macOS x86_64/arm64 on CPython 3.9–3.13):
+
+```bash
+pip install logosdb
+```
+
+Or build from source in a clone:
 
 ```bash
 pip install .
@@ -169,7 +177,7 @@ Here is a performance report from the included `logosdb-bench` program. The resu
 
 We use databases with 1K, 10K, and 100K vectors. Each vector has 2048 dimensions (matching typical LLM embedding sizes). Vectors are L2-normalized random unit vectors.
 
-    LogosDB:    version 0.1.0
+    LogosDB:    version 0.2.0
     CPU:        Apple M-series (ARM64)
     Dim:        2048
     HNSW M:     16, ef_construction: 200, ef_search: 50

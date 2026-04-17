@@ -1,0 +1,140 @@
+name: Publish
+
+on:
+  # Release flow: push an annotated tag matching v*.*.*
+  #   git tag v0.2.0 && git push origin v0.2.0
+  push:
+    tags: ["v*"]
+  # Manual trigger lets you test the full wheel matrix (→ TestPyPI) without
+  # cutting a real release. Choose `testpypi_only` or `pypi` on the dispatch
+  # form; the default is TestPyPI so accidental runs never hit production.
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Where to upload"
+        required: true
+        default: "testpypi_only"
+        type: choice
+        options:
+          - testpypi_only
+          - pypi
+
+jobs:
+  # ── Build ────────────────────────────────────────────────────────
+  build_wheels:
+    name: Wheels ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu-latest     → manylinux x86_64
+        # ubuntu-24.04-arm  → manylinux aarch64
+        # macos-13          → macOS x86_64 (Intel runner)
+        # macos-14          → macOS arm64 (Apple Silicon runner)
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-14]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.21
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: ./wheelhouse/*.whl
+          if-no-files-found: error
+
+  build_sdist:
+    name: Source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist
+        run: pipx run build --sdist
+
+      - name: Verify sdist contents
+        run: |
+          echo "── sdist contents ──"
+          ls -la dist/
+          tar tzf dist/*.tar.gz | head -60
+          echo "── checking third_party/hnswlib is included ──"
+          tar tzf dist/*.tar.gz | grep hnswlib | head -5
+
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  # ── Publish: TestPyPI ────────────────────────────────────────────
+  # Runs for every tag push AND for manual dispatch. Acts as the
+  # mandatory pre-flight for the real PyPI upload.
+  publish_testpypi:
+    name: Upload to TestPyPI
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/logosdb/
+    permissions:
+      id-token: write   # Trusted Publishing (OIDC)
+    steps:
+      - name: Download all artifacts into dist/
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # TestPyPI is noisy; skip silently if a file already exists for
+          # this version (e.g. re-running a tagged build).
+          skip-existing: true
+
+  # ── Publish: PyPI ────────────────────────────────────────────────
+  # Runs only when a version tag was pushed, OR when dispatched manually
+  # with target=pypi. The `environment: pypi` can be configured in the
+  # repo settings to require a reviewer before this job runs.
+  publish_pypi:
+    name: Upload to PyPI
+    needs: publish_testpypi
+    runs-on: ubuntu-latest
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+    environment:
+      name: pypi
+      url: https://pypi.org/project/logosdb/
+    permissions:
+      id-token: write   # Trusted Publishing (OIDC)
+    steps:
+      - name: Download all artifacts into dist/
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
