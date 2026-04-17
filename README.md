@@ -133,15 +133,23 @@ v = np.random.randn(128).astype(np.float32)
 v /= np.linalg.norm(v)
 
 rid = db.put(v, text="hello", timestamp="2025-06-25T10:00:00Z")
+# rid is the row id for this vector (often 0 for the first insert).
 hits = db.search(v, top_k=5)
 print(hits[0].text, hits[0].score)
 
-# delete / update
-db.delete(rid)
-new_id = db.update(0, v, text="replaced")
+# Replace an existing row: first arg is that row's id (must still be "live").
+# update() tombstones the old row and appends a new one; it returns the NEW id.
+v2 = np.random.randn(128).astype(np.float32)
+v2 /= np.linalg.norm(v2)
+new_id = db.update(rid, v2, text="replaced")
 
-# zero-copy bulk view over the mmap-backed storage
-vectors = db.raw_vectors()   # shape: (count, dim), read-only
+# Tombstone a row by id (excluded from search). count() includes deleted rows;
+# count_live() does not.
+db.delete(new_id)
+
+# After a delete, that id cannot be updated again — insert a fresh row with put().
+# zero-copy bulk view over mmap-backed storage (shape: (count, dim), read-only)
+vectors = db.raw_vectors()
 
 print(db.count(), db.count_live(), db.dim)
 ```

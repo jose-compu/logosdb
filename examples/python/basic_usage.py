@@ -38,24 +38,31 @@ def main() -> None:
             "rome was not built in a day",
             "to be or not to be",
         ]
+        # put() returns a row id per vector (0, 1, 2, … for a fresh database).
         ids = [db.put(random_unit(rng, dim), text=t) for t in texts]
         print(f"inserted ids: {ids}")
         print(f"count={db.count()}  count_live={db.count_live()}")
 
-        # Search near one of the inserted vectors (we recompute it for the demo).
+        # Search: rebuild the same pseudo-random stream as above so "query"
+        # matches the vector we stored as ids[1] (second text).
         rng2 = np.random.default_rng(0)
-        _ = random_unit(rng2, dim)  # id 0
-        query = random_unit(rng2, dim)  # id 1
+        _ = random_unit(rng2, dim)  # same draws as ids[0]
+        query = random_unit(rng2, dim)  # same draw as ids[1]
         hits = db.search(query, top_k=3)
         print("top 3 hits:")
         for h in hits:
             print(f"  id={h.id} score={h.score:.4f} text={h.text!r}")
 
-        # Update and delete.
-        new_id = db.update(0, random_unit(rng, dim), text="updated first memory")
-        print(f"update(0) -> new id {new_id}")
-        db.delete(2)
+        # update(old_id, …) replaces one *live* row: it tombstones that id and
+        # appends a new row; the return value is the NEW id (not the same as old_id).
+        first_id = ids[0]  # same as 0 on a fresh DB — use the variable, not a magic 0
+        new_id = db.update(first_id, random_unit(rng, dim), text="updated first memory")
+        print(f"update({first_id}) -> new row id {new_id}")
+
+        # delete(id) tombstones that row (it no longer appears in search).
+        db.delete(ids[2])
         print(f"after update+delete: count={db.count()}  count_live={db.count_live()}")
+        # count() is total rows ever stored (including tombstones); count_live() is active rows.
 
         # Zero-copy bulk view.
         vecs = db.raw_vectors()
