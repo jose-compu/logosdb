@@ -4,6 +4,17 @@ logosdb change log
 unreleased
 ----------
 
+  * Added Python bindings (pybind11 + scikit-build-core). `pip install .`
+    builds a native extension that exposes logosdb.DB with put, search,
+    delete, update, count, count_live, dim, raw_vectors (zero-copy numpy
+    view) and logosdb.SearchHit. Smoke tests under tests/python/ and a
+    numpy/sentence-transformers example under examples/python/. A new
+    .github/workflows/python.yml job builds wheels and runs pytest on
+    Linux and macOS for Python 3.10 and 3.12.
+  * CMakeLists.txt gained LOGOSDB_BUILD_TOOLS, LOGOSDB_BUILD_TESTS, and
+    LOGOSDB_BUILD_PYTHON options so the Python wheel build skips CLI /
+    benchmark / C++ test targets. The static core library now builds with
+    position-independent code so it can be linked into the Python extension.
   * Added logosdb_delete(id) and logosdb_update(id, ...) to the public C API,
     with matching DB::del() and DB::update() on the C++ wrapper. Deletions
     are persisted as tombstone records in the JSONL metadata log and replayed

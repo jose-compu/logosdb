@@ -1,4 +1,5 @@
 [![CI](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml)
+[![Python](https://github.com/jose-compu/logosdb/actions/workflows/python.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/python.yml)
 
 LogosDB is a fast semantic vector database written in C/C++ that provides approximate nearest-neighbor search over embedding vectors with associated text metadata.
 
@@ -102,6 +103,54 @@ for (auto &r : results) {
 }
 ```
 
+# Python
+
+LogosDB ships Python bindings built with [pybind11](https://pybind11.readthedocs.io/) and [scikit-build-core](https://scikit-build-core.readthedocs.io/).
+
+Install:
+
+```bash
+pip install .
+```
+
+Usage:
+
+```python
+import numpy as np
+import logosdb
+
+db = logosdb.DB("/tmp/mydb", dim=128)
+
+v = np.random.randn(128).astype(np.float32)
+v /= np.linalg.norm(v)
+
+rid = db.put(v, text="hello", timestamp="2025-06-25T10:00:00Z")
+hits = db.search(v, top_k=5)
+print(hits[0].text, hits[0].score)
+
+# delete / update
+db.delete(rid)
+new_id = db.update(0, v, text="replaced")
+
+# zero-copy bulk view over the mmap-backed storage
+vectors = db.raw_vectors()   # shape: (count, dim), read-only
+
+print(db.count(), db.count_live(), db.dim)
+```
+
+Run the Python tests and examples:
+
+```bash
+pip install ".[test]"
+pytest tests/python/
+
+python examples/python/basic_usage.py
+
+# sentence-transformers demo (optional heavy dep)
+pip install ".[examples]"
+python examples/python/sentence_transformers_demo.py
+```
+
 # CLI
 
 ```bash
@@ -175,7 +224,12 @@ LogosDB uses the same HNSW implementation as ChromaDB (hnswlib) but eliminates P
     src/hnsw_index.h / .cpp       Thin wrapper around hnswlib
     tools/logosdb-cli.cpp         Command-line interface
     tools/logosdb-bench.cpp       Benchmark tool
-    tests/test_basic.cpp          Unit tests (76 checks)
+    tests/test_basic.cpp          C++ unit tests
+    tests/python/test_smoke.py    Python smoke tests (pytest)
+    python/src/bindings.cpp       pybind11 Python bindings
+    python/logosdb/               Python package (logosdb._core + stubs)
+    examples/python/              Python usage examples
+    pyproject.toml                Python build/config (scikit-build-core)
     third_party/hnswlib/          Vendored hnswlib (header-only)
     CHANGELOG                     Release history
     LICENSE                       MIT license text
