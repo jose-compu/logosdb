@@ -4,3 +4,12 @@ build/
 *.so
 *.dylib
 .DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+dist/
+wheelhouse/
