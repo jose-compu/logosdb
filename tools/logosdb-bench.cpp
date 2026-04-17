@@ -1,5 +1,6 @@
 #include <logosdb/logosdb.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
