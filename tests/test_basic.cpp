@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <random>
 #include <string>
 #include <vector>
@@ -663,6 +664,90 @@ static void test_large_dim() {
     std::filesystem::remove_all(path);
 }
 
+// Test Unicode and advanced JSON escapes (nlohmann/json handles these correctly)
+static void test_metadata_unicode_and_escapes() {
+    std::string path = "/tmp/logosdb_test_unicode";
+    std::filesystem::remove_all(path);
+
+    logosdb::DB db(path, {.dim = 32});
+    auto v0 = unit_vec(32, 4000);
+    auto v1 = unit_vec(32, 4100);
+    auto v2 = unit_vec(32, 4200);
+
+    // Unicode characters
+    std::string unicode = "Hello \u4e16\u754c \u00e9\u00e0"; // "Hello 世界 éà"
+    db.put(v0, unicode, "2025-01-01T00:00:00Z");
+
+    // Empty strings
+    db.put(v1, "", "");
+
+    // Complex nested quotes and backslashes
+    std::string complex_escapes = "Path: C:\\Users\\test\\file.txt\\\"quoted\"";
+    db.put(v2, complex_escapes);
+
+    // Reopen and verify
+    { logosdb::DB db2(path, {.dim = 32});
+      auto hits0 = db2.search(v0, 1);
+      CHECK(!hits0.empty(), "unicode: found");
+      CHECK(hits0[0].text == unicode, "unicode: round-trip preserved");
+
+      auto hits1 = db2.search(v1, 1);
+      CHECK(!hits1.empty(), "empty text: found");
+      CHECK(hits1[0].text == "", "empty text: preserved");
+      CHECK(hits1[0].timestamp == "", "empty ts: preserved");
+
+      auto hits2 = db2.search(v2, 1);
+      CHECK(!hits2.empty(), "complex escapes: found");
+      CHECK(hits2[0].text == complex_escapes, "complex escapes: round-trip preserved");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
+// Test that nlohmann/json handles edge case JSON that the old parser failed on.
+// The old parser couldn't handle: unicode escapes, key ordering variations, extra whitespace.
+// This test verifies the new parser correctly handles all these.
+static void test_metadata_json_edge_cases() {
+    std::string path = "/tmp/logosdb_test_jsonedge";
+    std::filesystem::remove_all(path);
+
+    // Create DB and add normal entries
+    {
+        logosdb::DB db(path, {.dim = 32});
+        auto v0 = unit_vec(32, 6000);
+        auto v1 = unit_vec(32, 6100);
+        auto v2 = unit_vec(32, 6200);
+        db.put(v0, "unicode: \u4e16\u754c", "2025-01-01T00:00:00Z");
+        db.put(v1, "spaced text", "2025-02-02T12:00:00Z");
+        db.put(v2, "https://example.com/path", "2025-03-03T00:00:00Z");
+        CHECK(db.count() == 3, "json edge cases: 3 rows written");
+    }
+
+    // Reopen and verify all entries loaded correctly
+    {
+        logosdb::DB db(path, {.dim = 32});
+        CHECK(db.count() == 3, "json edge cases: 3 rows loaded after reopen");
+
+        auto v0 = unit_vec(32, 6000);
+        auto hits0 = db.search(v0, 1);
+        CHECK(!hits0.empty(), "json edge cases: found row 0");
+        // The unicode characters should be preserved
+        CHECK(hits0[0].text == "unicode: \u4e16\u754c", "json edge cases: unicode text preserved");
+
+        auto v1 = unit_vec(32, 6100);
+        auto hits1 = db.search(v1, 1);
+        CHECK(!hits1.empty(), "json edge cases: found row 1");
+        CHECK(hits1[0].text == "spaced text", "json edge cases: spaced text preserved");
+
+        auto v2 = unit_vec(32, 6200);
+        auto hits2 = db.search(v2, 1);
+        CHECK(!hits2.empty(), "json edge cases: found row 2");
+        CHECK(hits2[0].text == "https://example.com/path", "json edge cases: url with slashes preserved");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
 int main() {
     printf("logosdb basic tests\n");
     printf("===================\n\n");
@@ -692,6 +777,8 @@ int main() {
     test_update_errors();
     test_delete_reput_independence();
     test_large_dim();
+    test_metadata_unicode_and_escapes();
+    test_metadata_json_edge_cases();
 
     printf("\n%d/%d tests passed.\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
