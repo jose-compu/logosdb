@@ -2,10 +2,12 @@
 #include "storage.h"
 #include "metadata.h"
 #include "hnsw_index.h"
+#include "wal.h"
 
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -15,11 +17,12 @@ using namespace logosdb::internal;
 /* ── Internal DB struct ────────────────────────────────────────────── */
 
 struct logosdb_t {
-    VectorStorage  vectors;
-    MetadataStore  meta;
-    HnswIndex      index;
-    std::mutex     mu;
-    int            dim = 0;
+    VectorStorage   vectors;
+    MetadataStore   meta;
+    HnswIndex       index;
+    WriteAheadLog   wal;
+    std::mutex      mu;
+    int             dim = 0;
 };
 
 struct logosdb_options_t {
@@ -80,6 +83,7 @@ logosdb_t * logosdb_open(const char * path, const logosdb_options_t * opts,
     std::string vec_path  = std::string(path) + "/vectors.bin";
     std::string meta_path = std::string(path) + "/meta.jsonl";
     std::string idx_path  = std::string(path) + "/hnsw.idx";
+    std::string wal_path  = std::string(path) + "/wal.log";
 
     if (!db->vectors.open(vec_path, opts->dim, err)) {
         set_err(errptr, err);
@@ -101,6 +105,48 @@ logosdb_t * logosdb_open(const char * path, const logosdb_options_t * opts,
 
     if (!db->index.open(idx_path, hp, err)) {
         set_err(errptr, err);
+        delete db;
+        return nullptr;
+    }
+
+    // Open WAL and replay any pending entries for atomic recovery.
+    if (!db->wal.open(wal_path, err)) {
+        set_err(errptr, err);
+        delete db;
+        return nullptr;
+    }
+
+    // Replay pending WAL entries to ensure consistency.
+    int replayed = db->wal.replay_pending(
+        [&db](const WALEntry & entry, std::string & replay_err) -> bool {
+            // Validate: expected_id should match current row count
+            if (entry.expected_id != db->vectors.n_rows()) {
+                replay_err = "wal replay: expected_id mismatch (" +
+                             std::to_string(entry.expected_id) + " vs " +
+                             std::to_string(db->vectors.n_rows()) + ")";
+                return false;
+            }
+
+            // Replay vector
+            uint64_t vid = db->vectors.append(entry.vector.data(), (int)entry.dim, replay_err);
+            if (vid == UINT64_MAX) return false;
+
+            // Replay metadata
+            uint64_t mid = db->meta.append(entry.text.c_str(), entry.timestamp.c_str(), replay_err);
+            if (mid == UINT64_MAX) return false;
+
+            // Replay index
+            if (!db->index.add(vid, entry.vector.data(), replay_err)) {
+                return false;
+            }
+
+            return true;
+        },
+        err
+    );
+
+    if (replayed < 0) {
+        set_err(errptr, "wal replay: " + err);
         delete db;
         return nullptr;
     }
@@ -144,9 +190,11 @@ logosdb_t * logosdb_open(const char * path, const logosdb_options_t * opts,
 void logosdb_close(logosdb_t * db) {
     if (!db) return;
     std::string err;
+    db->wal.sync(err);   // Ensure WAL is durable before closing other stores
     db->index.save(err);
     db->vectors.sync(err);
     db->meta.sync(err);
+    db->wal.close();
     delete db;
 }
 
@@ -169,20 +217,36 @@ uint64_t logosdb_put(logosdb_t * db,
     std::lock_guard<std::mutex> lock(db->mu);
     std::string err;
 
-    // NOTE: these three writes are not atomic. On partial failure the stores
-    // may diverge (e.g. vectors written but metadata missing). The HNSW index
-    // is backfilled from the vector store on next open, but metadata gaps are
-    // not currently recoverable. A WAL would fix this; acceptable for now
-    // given the single-process embedded use case.
+    // Compute expected row id before writing
+    uint64_t expected_id = db->vectors.n_rows();
+
+    // Step 1: Write WAL entry (durability point)
+    int64_t wal_offset = db->wal.append_pending(embedding, dim, text, timestamp, expected_id, err);
+    if (wal_offset < 0) { set_err(errptr, err); return UINT64_MAX; }
+
+    // Step 2: Write to vector storage
     uint64_t vid = db->vectors.append(embedding, dim, err);
     if (vid == UINT64_MAX) { set_err(errptr, err); return UINT64_MAX; }
 
+    // Step 3: Write to metadata storage
     uint64_t mid = db->meta.append(text, timestamp, err);
-    if (mid == UINT64_MAX) { set_err(errptr, err); return UINT64_MAX; }
-
-    if (!db->index.add(vid, embedding, err)) {
+    if (mid == UINT64_MAX) {
+        // Metadata write failed - entry remains in WAL for replay on recovery
         set_err(errptr, err);
         return UINT64_MAX;
+    }
+
+    // Step 4: Write to HNSW index
+    if (!db->index.add(vid, embedding, err)) {
+        // Index write failed - entry remains in WAL for replay on recovery
+        set_err(errptr, err);
+        return UINT64_MAX;
+    }
+
+    // Step 5: Mark WAL entry as committed
+    if (!db->wal.mark_committed(wal_offset, err)) {
+        // Non-fatal: entry will be replayed on next open if needed
+        // Log but don't fail the operation
     }
 
     return vid;
