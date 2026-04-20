@@ -11,6 +11,13 @@
 #include <string>
 #include <vector>
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+// Forward declaration for WAL test (defined after main)
+static void test_wal_crash_recovery();
+
 static int tests_run = 0;
 static int tests_passed = 0;
 
@@ -779,7 +786,96 @@ int main() {
     test_large_dim();
     test_metadata_unicode_and_escapes();
     test_metadata_json_edge_cases();
+    test_wal_crash_recovery();
 
     printf("\n%d/%d tests passed.\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
+}
+
+// Test WAL crash recovery: simulate incomplete writes by manually creating
+// a WAL with pending entries, then verify they are replayed on open.
+static void test_wal_crash_recovery() {
+    std::string path = "/tmp/logosdb_test_wal";
+    std::filesystem::remove_all(path);
+
+    // Create a fresh database with some data
+    {
+        logosdb::DB db(path, {.dim = 32});
+        auto v0 = unit_vec(32, 7000);
+        auto v1 = unit_vec(32, 7100);
+        db.put(v0, "first", "2025-01-01T00:00:00Z");
+        db.put(v1, "second", "2025-02-01T00:00:00Z");
+        CHECK(db.count() == 2, "wal: initial 2 rows");
+    }
+
+    // Simulate crash scenario: manually append a pending WAL entry
+    // This mimics what would happen if logosdb_put crashed AFTER writing to WAL
+    // but BEFORE writing to any of the three stores (vectors, metadata, index).
+    // In this case, the stores are in consistent state (2 rows), and WAL
+    // contains the pending operation that needs to be replayed.
+    {
+        // Manually write a WAL entry
+        int fd = ::open((path + "/wal.log").c_str(), O_RDWR);
+        CHECK(fd >= 0, "wal: can open wal file");
+
+        // Seek to end
+        ::lseek(fd, 0, SEEK_END);
+
+        // Write a pending entry manually
+        uint8_t state = 0;  // PENDING
+        ::write(fd, &state, 1);
+
+        uint32_t dim = 32;
+        ::write(fd, &dim, 4);
+
+        auto v2 = unit_vec(32, 7200);
+        uint32_t vec_bytes = 32 * sizeof(float);
+        ::write(fd, &vec_bytes, 4);
+        ::write(fd, v2.data(), vec_bytes);
+
+        std::string text = "third (from wal)";
+        uint32_t text_len = text.size();
+        ::write(fd, &text_len, 4);
+        ::write(fd, text.data(), text_len);
+
+        std::string ts = "2025-03-01T00:00:00Z";
+        uint32_t ts_len = ts.size();
+        ::write(fd, &ts_len, 4);
+        ::write(fd, ts.data(), ts_len);
+
+        // expected_id should be 2 (next row index, since we have 2 rows: 0, 1)
+        uint64_t expected_id = 2;
+        ::write(fd, &expected_id, 8);
+
+        ::fsync(fd);
+        ::close(fd);
+    }
+
+    // Reopen DB - WAL should replay the pending entry
+    // At this point: vectors.bin has 2 rows, meta.jsonl has 2 rows, index has 2 entries
+    // WAL has pending entry with expected_id=2, which matches current n_rows
+    {
+        logosdb::DB db(path, {.dim = 32});
+        CHECK(db.count() == 3, "wal: replayed to 3 rows");
+
+        auto v2 = unit_vec(32, 7200);
+        auto hits = db.search(v2, 1);
+        CHECK(!hits.empty(), "wal: found replayed vector");
+        CHECK(hits[0].text == "third (from wal)", "wal: replayed metadata correct");
+        CHECK(hits[0].id == 2, "wal: replayed id correct");
+    }
+
+    // Reopen again - should still be consistent (no double replay)
+    // The WAL entry was marked committed during the first replay
+    {
+        logosdb::DB db(path, {.dim = 32});
+        CHECK(db.count() == 3, "wal: still 3 rows after second reopen");
+
+        auto v2 = unit_vec(32, 7200);
+        auto hits = db.search(v2, 1);
+        CHECK(!hits.empty(), "wal: vector still searchable");
+        CHECK(hits[0].text == "third (from wal)", "wal: metadata still correct");
+    }
+
+    std::filesystem::remove_all(path);
 }

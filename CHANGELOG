@@ -1,6 +1,21 @@
 logosdb change log
 ==================
 
+0.2.2  (2026-04-20)
+-------------------
+
+  * Introduced Write-Ahead Log (WAL) for atomic Put operations. Closes #2.
+    - New `src/wal.{h,cpp}` implementing `WriteAheadLog` class with binary
+      append-only format, state tracking (PENDING/COMMITTED), and replay.
+    - `logosdb_put` now writes to WAL first (durability point), then modifies
+      vector storage, metadata, and HNSW index. On success, WAL entry is marked
+      committed; on crash, pending entries are replayed on next open.
+    - `logosdb_open` replays any pending WAL entries before serving requests,
+      ensuring consistency across all three stores after partial failures.
+    - New `wal.log` file in database directory; backward compatible with
+      existing databases (WAL is empty on first open).
+    - New test `test_wal_crash_recovery` validates crash recovery behavior.
+
 0.2.1  (2026-04-20)
 -------------------
 
