@@ -1,6 +1,17 @@
 logosdb change log
 ==================
 
+unreleased
+----------
+
+  * Replaced hand-rolled JSON parser with nlohmann/json (v3.11.3, single-header,
+    vendored in third_party/nlohmann/). This fixes multiple parsing edge cases:
+    unicode escape sequences (\uXXXX), key ordering independence, extra
+    whitespace tolerance, and proper escape handling. Closes #5.
+    Added regression tests for unicode, empty strings, complex backslash
+    escapes, and key-order variations. All 130 C++ tests pass; total assertions
+    up from 115 to 130.
+
 0.2.0  (2026-04-17)
 -------------------
 

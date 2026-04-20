@@ -8,9 +8,12 @@ option(LOGOSDB_BUILD_TOOLS  "Build CLI and benchmark tools" ON)
 option(LOGOSDB_BUILD_TESTS  "Build unit tests"              ON)
 option(LOGOSDB_BUILD_PYTHON "Build Python bindings (pybind11)" OFF)
 
-# hnswlib is header-only
+# hnswlib and nlohmann/json are header-only
 add_library(hnswlib INTERFACE)
 target_include_directories(hnswlib INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+
+add_library(nlohmann_json INTERFACE)
+target_include_directories(nlohmann_json INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 
 # Core library
 add_library(logosdb
@@ -23,7 +26,7 @@ target_include_directories(logosdb PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
-target_link_libraries(logosdb PRIVATE hnswlib)
+target_link_libraries(logosdb PRIVATE hnswlib nlohmann_json)
 
 # Position-independent code is required when the static library is linked
 # into a shared object (the Python extension is a .so).
