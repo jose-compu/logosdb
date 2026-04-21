@@ -1,6 +1,13 @@
 logosdb change log
 ==================
 
+0.3.2  (2026-04-20)
+-------------------
+
+  * Fixed POSIX compilation issues for older systems (manylinux).
+    - Added missing `<sys/types.h>` includes.
+    - Added `_GNU_SOURCE` define for `pread`/`pwrite` on older glibc.
+
 0.3.1  (2026-04-20)
 -------------------
 
