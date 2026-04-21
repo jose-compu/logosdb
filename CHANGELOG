@@ -1,6 +1,23 @@
 logosdb change log
 ==================
 
+0.3.0  (2026-04-20)
+-------------------
+
+  * Added batch Put API for efficient bulk ingestion. Closes #6.
+    - New C API: `logosdb_put_batch(db, embeddings, n, dim, texts, timestamps,
+      out_ids, errptr)` for inserting N vectors in one call.
+    - New C++ wrapper: `DB::put_batch(embeddings, n, texts, timestamps)` returning
+      a vector of assigned row ids.
+    - Optimized implementation:
+      * Single ftruncate + pwrite for all vectors (vs N separate calls).
+      * Single batch write for all metadata JSONL lines.
+      * Single mmap remap at the end (vs N remaps).
+      * Write mutex held once for entire batch.
+    - Benchmark: batch insertion of 100K vectors is ~4× faster than equivalent
+      loop of individual put() calls.
+    - New tests: `test_put_batch_basic`, `test_put_batch_empty`.
+
 0.2.2  (2026-04-20)
 -------------------
 

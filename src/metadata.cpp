@@ -94,6 +94,39 @@ uint64_t MetadataStore::append(const char * text, const char * timestamp,
     return id;
 }
 
+uint64_t MetadataStore::append_batch(const char * const * texts, const char * const * timestamps,
+                                      int n, std::string & err) {
+    if (fd_ < 0) { err = "meta not open"; return UINT64_MAX; }
+    if (n <= 0) { return rows_.size(); }
+
+    // Build all JSON lines and write in a single batch
+    std::string batch;
+    batch.reserve(n * 64);  // rough estimate
+
+    for (int i = 0; i < n; ++i) {
+        json j;
+        j["text"] = texts && texts[i] ? texts[i] : "";
+        j["ts"] = timestamps && timestamps[i] ? timestamps[i] : "";
+        batch += j.dump();
+        batch += "\n";
+    }
+
+    ssize_t written = ::write(fd_, batch.data(), batch.size());
+    if (written != (ssize_t)batch.size()) {
+        err = std::string("write meta batch: ") + strerror(errno);
+        return UINT64_MAX;
+    }
+
+    uint64_t start_id = rows_.size();
+    for (int i = 0; i < n; ++i) {
+        rows_.push_back({
+            texts && texts[i] ? texts[i] : "",
+            timestamps && timestamps[i] ? timestamps[i] : ""
+        });
+    }
+    return start_id;
+}
+
 bool MetadataStore::mark_deleted(uint64_t id, std::string & err) {
     if (fd_ < 0) { err = "meta not open"; return false; }
     if (id >= rows_.size()) {

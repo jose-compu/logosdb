@@ -148,5 +148,69 @@ int main(int argc, char ** argv) {
     printf("%-20s %14s %14s\n", "100K search (ms)", "~5-10", "(see above)");
     printf("%-20s %14s %14s\n", "Startup overhead", "Python RT", "zero");
 
+    // Batch benchmark: compare individual puts vs batch puts
+    printf("\n--- Batch Put Benchmark (100K vectors, dim=256) ---\n");
+    {
+        int batch_n = 100000;
+        int batch_dim = 256;
+        double individual_ms = 0.0;
+        double batch_ms = 0.0;
+
+        // Individual puts
+        std::string tmp1 = "/tmp/logosdb_bench_individual";
+        std::filesystem::remove_all(tmp1);
+        {
+            logosdb::Options opts;
+            opts.dim = batch_dim;
+            opts.max_elements = (size_t)(batch_n * 1.2);
+            logosdb::DB db(tmp1, opts);
+
+            std::mt19937 rng(42);
+            double t0 = now_ms();
+            for (int i = 0; i < batch_n; ++i) {
+                auto v = random_unit_vec(batch_dim, rng);
+                db.put(v, "row_" + std::to_string(i));
+            }
+            individual_ms = now_ms() - t0;
+
+            printf("Individual puts:  %.1f ms (%.1f vectors/sec)\n",
+                   individual_ms, batch_n / (individual_ms / 1000.0));
+        }
+        std::filesystem::remove_all(tmp1);
+
+        // Batch puts
+        std::string tmp2 = "/tmp/logosdb_bench_batch";
+        std::filesystem::remove_all(tmp2);
+        {
+            logosdb::Options opts;
+            opts.dim = batch_dim;
+            opts.max_elements = (size_t)(batch_n * 1.2);
+            logosdb::DB db(tmp2, opts);
+
+            std::mt19937 rng(42);
+            std::vector<float> embeddings;
+            embeddings.reserve(batch_n * batch_dim);
+            std::vector<std::string> texts;
+            texts.reserve(batch_n);
+
+            for (int i = 0; i < batch_n; ++i) {
+                auto v = random_unit_vec(batch_dim, rng);
+                embeddings.insert(embeddings.end(), v.begin(), v.end());
+                texts.push_back("row_" + std::to_string(i));
+            }
+
+            double t0 = now_ms();
+            auto ids = db.put_batch(embeddings, batch_n, texts);
+            batch_ms = now_ms() - t0;
+
+            printf("Batch put:        %.1f ms (%.1f vectors/sec)\n",
+                   batch_ms, batch_n / (batch_ms / 1000.0));
+        }
+        std::filesystem::remove_all(tmp2);
+
+        double speedup = individual_ms / batch_ms;
+        printf("Speedup:          %.2fx faster\n", speedup);
+    }
+
     return 0;
 }

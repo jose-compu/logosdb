@@ -43,6 +43,10 @@ public:
 
     uint64_t append(const float * vec, int dim, std::string & err);
 
+    /* Append n vectors efficiently. Returns the starting id, or UINT64_MAX on error.
+     * 'data' must contain n * dim floats. */
+    uint64_t append_batch(const float * data, int n, int dim, std::string & err);
+
     size_t      n_rows() const { return header_.n_rows; }
     int         dim()    const { return (int)header_.dim; }
 

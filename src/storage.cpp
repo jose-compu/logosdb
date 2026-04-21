@@ -146,6 +146,51 @@ uint64_t VectorStorage::append(const float * vec, int dim, std::string & err) {
     return id;
 }
 
+uint64_t VectorStorage::append_batch(const float * data, int n, int dim, std::string & err) {
+    if (fd_ < 0) { err = "not open"; return UINT64_MAX; }
+    if (n <= 0) { return header_.n_rows; }
+    if ((uint32_t)dim != header_.dim) {
+        err = "dim mismatch on batch append";
+        return UINT64_MAX;
+    }
+
+    size_t new_size = 0;
+    if (!checked_file_size(header_.n_rows + n, dim, new_size)) {
+        err = "storage size overflow";
+        return UINT64_MAX;
+    }
+
+    // Single ftruncate to final size
+    if (::ftruncate(fd_, (off_t)new_size) != 0) {
+        err = std::string("ftruncate: ") + strerror(errno);
+        return UINT64_MAX;
+    }
+
+    // Single pwrite for all vectors
+    size_t stride = row_stride(dim);
+    size_t total_bytes = (size_t)n * stride;
+    size_t offset = sizeof(StorageHeader) + header_.n_rows * stride;
+
+    if (::pwrite(fd_, data, total_bytes, (off_t)offset) != (ssize_t)total_bytes) {
+        err = "pwrite batch vec failed";
+        return UINT64_MAX;
+    }
+
+    uint64_t start_id = header_.n_rows;
+    header_.n_rows += n;
+    file_size_ = new_size;
+
+    // Update header once
+    if (::pwrite(fd_, &header_, sizeof(header_), 0) != sizeof(header_)) {
+        err = "pwrite header failed";
+        return UINT64_MAX;
+    }
+
+    // Single remap at the end
+    if (!remap(err)) return UINT64_MAX;
+    return start_id;
+}
+
 const float * VectorStorage::row(uint64_t idx) const {
     if (!map_base_ || idx >= header_.n_rows) return nullptr;
     size_t stride = row_stride((int)header_.dim);
