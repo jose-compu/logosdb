@@ -1,6 +1,18 @@
 logosdb change log
 ==================
 
+0.3.1  (2026-04-20)
+-------------------
+
+  * Fixed Windows build compatibility issues.
+    - New `src/platform.{h,cpp}` providing cross-platform abstraction layer.
+    - Windows implementations for file operations using `_write`, `_read`, `_lseek`,
+      `_close`, `_commit` instead of POSIX `pwrite`/`pread`/`fsync`/`close`.
+    - Windows memory mapping using `CreateFileMapping`/`MapViewOfFile` instead
+      of POSIX `mmap`/`munmap`.
+    - Fixed `strdup` deprecation warning on Windows (use `_strdup`).
+    - All 553 tests pass on macOS; code compiles for Windows (MSVC/Clang).
+
 0.3.0  (2026-04-20)
 -------------------
 

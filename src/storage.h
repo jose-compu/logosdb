@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -68,6 +70,7 @@ private:
     uint8_t *      map_base_  = nullptr;
     size_t         map_size_  = 0;
     size_t         file_size_ = 0;
+    platform::MappedFile platform_map_{};  // For Windows memory mapping
 };
 
 } // namespace internal

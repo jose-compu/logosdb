@@ -1,4 +1,5 @@
 #include <logosdb/logosdb.h>
+#include "platform.h"
 #include "storage.h"
 #include "metadata.h"
 #include "hnsw_index.h"
@@ -47,7 +48,7 @@ struct logosdb_search_result_t {
 
 static void set_err(char ** errptr, const std::string & msg) {
     if (errptr) {
-        *errptr = strdup(msg.c_str());
+        *errptr = platform::string_duplicate(msg.c_str());
     }
 }
 

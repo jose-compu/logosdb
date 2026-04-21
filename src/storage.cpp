@@ -1,11 +1,17 @@
 #include "storage.h"
+#include "platform.h"
 
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
-#include <unistd.h>
+#include <sys/types.h>
+
+#ifdef _WIN32
+    #include <io.h>
+#else
+    #include <unistd.h>
+#endif
 
 namespace logosdb {
 namespace internal {
@@ -27,7 +33,12 @@ bool VectorStorage::open(const std::string & path, int dim, std::string & err) {
     close();
     path_ = path;
 
-    fd_ = ::open(path.c_str(), O_RDWR | O_CREAT, 0644);
+#ifdef _WIN32
+    int flags = O_RDWR | O_CREAT | O_BINARY;
+#else
+    int flags = O_RDWR | O_CREAT;
+#endif
+    fd_ = ::open(path.c_str(), flags, 0644);
     if (fd_ < 0) {
         err = std::string("open: ") + strerror(errno);
         return false;
@@ -45,7 +56,7 @@ bool VectorStorage::open(const std::string & path, int dim, std::string & err) {
         header_ = {};
         header_.dim = (uint32_t)dim;
         header_.n_rows = 0;
-        if (::ftruncate(fd_, sizeof(StorageHeader)) != 0) {
+        if (!platform::file_truncate(fd_, sizeof(StorageHeader))) {
             err = std::string("ftruncate: ") + strerror(errno);
             close();
             return false;
@@ -102,7 +113,11 @@ bool VectorStorage::open(const std::string & path, int dim, std::string & err) {
 void VectorStorage::close() {
     unmap();
     if (fd_ >= 0) {
+#ifdef _WIN32
+        _close(fd_);
+#else
         ::close(fd_);
+#endif
         fd_ = -1;
     }
     header_ = {};
@@ -124,7 +139,7 @@ uint64_t VectorStorage::append(const float * vec, int dim, std::string & err) {
     size_t stride = row_stride(dim);
     size_t offset = new_size - stride;
 
-    if (::ftruncate(fd_, (off_t)new_size) != 0) {
+    if (!platform::file_truncate(fd_, new_size)) {
         err = std::string("ftruncate: ") + strerror(errno);
         return UINT64_MAX;
     }
@@ -161,7 +176,7 @@ uint64_t VectorStorage::append_batch(const float * data, int n, int dim, std::st
     }
 
     // Single ftruncate to final size
-    if (::ftruncate(fd_, (off_t)new_size) != 0) {
+    if (!platform::file_truncate(fd_, new_size)) {
         err = std::string("ftruncate: ") + strerror(errno);
         return UINT64_MAX;
     }
@@ -208,7 +223,7 @@ const float * VectorStorage::data() const {
 
 bool VectorStorage::sync(std::string & err) {
     if (fd_ < 0) { err = "not open"; return false; }
-    if (::fsync(fd_) != 0) {
+    if (platform::file_sync(fd_) != 0) {
         err = std::string("fsync: ") + strerror(errno);
         return false;
     }
@@ -224,21 +239,38 @@ bool VectorStorage::remap(std::string & err) {
     }
     map_size_ = (size_t)st.st_size;
     if (map_size_ == 0) return true;
+
+#ifdef _WIN32
+    // Windows: close and reopen with platform mapping
+    platform::mmap_close(platform_map_);
+    if (!platform::mmap_open(path_, map_size_, platform_map_, err)) {
+        return false;
+    }
+    map_base_ = platform_map_.data;
+#else
+    // POSIX: direct mmap
     map_base_ = (uint8_t *)mmap(nullptr, map_size_, PROT_READ, MAP_SHARED, fd_, 0);
     if (map_base_ == MAP_FAILED) {
         map_base_ = nullptr;
         err = std::string("mmap: ") + strerror(errno);
         return false;
     }
+#endif
     return true;
 }
 
 void VectorStorage::unmap() {
+#ifdef _WIN32
+    platform::mmap_close(platform_map_);
+    map_base_ = nullptr;
+    map_size_ = 0;
+#else
     if (map_base_ && map_size_ > 0) {
         munmap(map_base_, map_size_);
     }
     map_base_ = nullptr;
     map_size_ = 0;
+#endif
 }
 
 } // namespace internal

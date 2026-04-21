@@ -6,8 +6,8 @@
 
 #define LOGOSDB_VERSION_MAJOR 0
 #define LOGOSDB_VERSION_MINOR 3
-#define LOGOSDB_VERSION_PATCH 0
-#define LOGOSDB_VERSION_STRING "0.3.0"
+#define LOGOSDB_VERSION_PATCH 1
+#define LOGOSDB_VERSION_STRING "0.3.1"
 
 #ifdef __cplusplus
 extern "C" {
