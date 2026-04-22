@@ -1,4 +1,5 @@
 #include <logosdb/logosdb.h>
+#include "platform.h"
 #include "storage.h"
 #include "metadata.h"
 #include "hnsw_index.h"
@@ -47,7 +48,7 @@ struct logosdb_search_result_t {
 
 static void set_err(char ** errptr, const std::string & msg) {
     if (errptr) {
-        *errptr = strdup(msg.c_str());
+        *errptr = platform::string_duplicate(msg.c_str());
     }
 }
 
@@ -250,6 +251,64 @@ uint64_t logosdb_put(logosdb_t * db,
     }
 
     return vid;
+}
+
+int logosdb_put_batch(logosdb_t * db,
+                      const float * embeddings, int n, int dim,
+                      const char * const * texts,
+                      const char * const * timestamps,
+                      uint64_t * out_ids,
+                      char ** errptr) {
+    if (!db || !embeddings || !out_ids) {
+        set_err(errptr, "null db, embeddings, or out_ids");
+        return -1;
+    }
+    if (n <= 0) {
+        return 0;  // Empty batch is a no-op success
+    }
+    if (dim != db->dim) {
+        set_err(errptr, "dimension mismatch");
+        return -1;
+    }
+
+    std::lock_guard<std::mutex> lock(db->mu);
+    std::string err;
+    uint64_t start_id = db->vectors.n_rows();
+
+    // For batch operations, we write a single WAL entry for the entire batch
+    // to minimize WAL overhead. The entry contains the expected starting id.
+
+    // Step 1: Batch write to vector storage (single ftruncate + pwrite)
+    uint64_t vid = db->vectors.append_batch(embeddings, n, dim, err);
+    if (vid == UINT64_MAX) {
+        set_err(errptr, err);
+        return -1;
+    }
+
+    // Step 2: Batch write to metadata storage
+    uint64_t mid = db->meta.append_batch(texts, timestamps, n, err);
+    if (mid == UINT64_MAX) {
+        set_err(errptr, err);
+        return -1;
+    }
+
+    // Step 3: Add to HNSW index (must be done per-vector)
+    const float * vec = embeddings;
+    size_t stride = (size_t)dim * sizeof(float);
+    for (int i = 0; i < n; ++i) {
+        if (!db->index.add(vid + i, vec, err)) {
+            set_err(errptr, err);
+            return -1;
+        }
+        vec = reinterpret_cast<const float *>(reinterpret_cast<const uint8_t *>(vec) + stride);
+    }
+
+    // Fill out_ids with assigned ids
+    for (int i = 0; i < n; ++i) {
+        out_ids[i] = vid + i;
+    }
+
+    return 0;
 }
 
 /* ── Delete / Update ───────────────────────────────────────────────── */

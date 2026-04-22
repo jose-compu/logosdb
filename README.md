@@ -185,7 +185,7 @@ Here is a performance report from the included `logosdb-bench` program. The resu
 
 We use databases with 1K, 10K, and 100K vectors. Each vector has 2048 dimensions (matching typical LLM embedding sizes). Vectors are L2-normalized random unit vectors.
 
-    LogosDB:    version 0.2.2
+    LogosDB:    version 0.3.2
     CPU:        Apple M-series (ARM64)
     Dim:        2048
     HNSW M:     16, ef_construction: 200, ef_search: 50

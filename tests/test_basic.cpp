@@ -15,8 +15,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-// Forward declaration for WAL test (defined after main)
+// Forward declarations for tests defined after main
 static void test_wal_crash_recovery();
+static void test_put_batch_basic();
+static void test_put_batch_empty();
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -787,6 +789,8 @@ int main() {
     test_metadata_unicode_and_escapes();
     test_metadata_json_edge_cases();
     test_wal_crash_recovery();
+    test_put_batch_basic();
+    test_put_batch_empty();
 
     printf("\n%d/%d tests passed.\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
@@ -875,6 +879,104 @@ static void test_wal_crash_recovery() {
         auto hits = db.search(v2, 1);
         CHECK(!hits.empty(), "wal: vector still searchable");
         CHECK(hits[0].text == "third (from wal)", "wal: metadata still correct");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
+// Test batch put API: basic functionality and search
+static void test_put_batch_basic() {
+    std::string path = "/tmp/logosdb_test_batch";
+    std::filesystem::remove_all(path);
+
+    {
+        logosdb::DB db(path, {.dim = 32});
+
+        // Prepare 100 vectors
+        int n = 100;
+        std::vector<float> embeddings;
+        embeddings.reserve(n * 32);
+        std::vector<std::string> texts;
+        std::vector<std::string> timestamps;
+
+        for (int i = 0; i < n; ++i) {
+            auto v = unit_vec(32, 8000 + i);
+            embeddings.insert(embeddings.end(), v.begin(), v.end());
+            texts.push_back("text_" + std::to_string(i));
+            timestamps.push_back("2025-01-01T00:00:" + std::to_string(i) + "Z");
+        }
+
+        // Batch insert
+        auto ids = db.put_batch(embeddings, n, texts, timestamps);
+        CHECK((int)ids.size() == n, "batch: returned 100 ids");
+        CHECK(db.count() == (size_t)n, "batch: count is 100");
+
+        // Verify sequential ids
+        for (int i = 0; i < n; ++i) {
+            CHECK(ids[i] == (uint64_t)i, "batch: sequential ids");
+        }
+
+        // Verify searchable
+        for (int i = 0; i < n; ++i) {
+            auto v = unit_vec(32, 8000 + i);
+            auto hits = db.search(v, 1);
+            CHECK(!hits.empty(), "batch: found vector");
+            CHECK(hits[0].id == (uint64_t)i, "batch: correct id");
+            CHECK(hits[0].text == "text_" + std::to_string(i), "batch: correct text");
+        }
+    }
+
+    // Reopen and verify persistence
+    {
+        logosdb::DB db(path, {.dim = 32});
+        CHECK(db.count() == 100, "batch: 100 rows after reopen");
+
+        auto v50 = unit_vec(32, 8050);
+        auto hits = db.search(v50, 1);
+        CHECK(!hits.empty(), "batch: found after reopen");
+        CHECK(hits[0].id == 50, "batch: correct id after reopen");
+        CHECK(hits[0].text == "text_50", "batch: correct text after reopen");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
+// Test batch put with empty batch and edge cases
+static void test_put_batch_empty() {
+    std::string path = "/tmp/logosdb_test_batch_empty";
+    std::filesystem::remove_all(path);
+
+    {
+        logosdb::DB db(path, {.dim = 32});
+
+        // Empty batch
+        std::vector<float> embeddings;
+        auto ids = db.put_batch(embeddings, 0);
+        CHECK(ids.empty(), "batch empty: returned empty ids");
+        CHECK(db.count() == 0, "batch empty: count still 0");
+
+        // Single item batch
+        auto v = unit_vec(32, 9000);
+        embeddings = v;
+        ids = db.put_batch(embeddings, 1);
+        CHECK(ids.size() == 1, "batch single: returned 1 id");
+        CHECK(db.count() == 1, "batch single: count is 1");
+
+        // Batch without metadata (optional texts/timestamps)
+        embeddings.clear();
+        for (int i = 0; i < 10; ++i) {
+            auto v2 = unit_vec(32, 9100 + i);
+            embeddings.insert(embeddings.end(), v2.begin(), v2.end());
+        }
+        ids = db.put_batch(embeddings, 10);  // No texts/timestamps
+        CHECK(ids.size() == 10, "batch no meta: returned 10 ids");
+        CHECK(db.count() == 11, "batch no meta: count is 11");
+
+        // Verify searchable even without metadata
+        auto v_search = unit_vec(32, 9105);
+        auto hits = db.search(v_search, 1);
+        CHECK(!hits.empty(), "batch no meta: found vector");
+        CHECK(hits[0].id == 6, "batch no meta: correct id (1 + 5)");
     }
 
     std::filesystem::remove_all(path);

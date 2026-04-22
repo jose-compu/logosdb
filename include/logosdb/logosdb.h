@@ -5,9 +5,9 @@
 #include <stdint.h>
 
 #define LOGOSDB_VERSION_MAJOR 0
-#define LOGOSDB_VERSION_MINOR 2
+#define LOGOSDB_VERSION_MINOR 3
 #define LOGOSDB_VERSION_PATCH 2
-#define LOGOSDB_VERSION_STRING "0.2.2"
+#define LOGOSDB_VERSION_STRING "0.3.2"
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,6 +43,21 @@ uint64_t logosdb_put(logosdb_t * db,
                      const char * text,
                      const char * timestamp,
                      char ** errptr);
+
+/* Batch insert of N vectors. More efficient than N separate logosdb_put calls.
+ *   embeddings: flattened (n x dim) float array
+ *   texts, timestamps: arrays of n pointers (may be NULL)
+ *   out_ids: pre-allocated array of size n to receive assigned row ids
+ *
+ * Returns 0 on success, -1 on error (partial insert may have occurred).
+ * On error, *errptr is set to a newly-allocated message that the caller
+ * must free(). */
+int logosdb_put_batch(logosdb_t * db,
+                      const float * embeddings, int n, int dim,
+                      const char * const * texts,
+                      const char * const * timestamps,
+                      uint64_t * out_ids,
+                      char ** errptr);
 
 /* Mark the row with the given id as deleted. The vector bytes remain on
  * disk but the row is excluded from search results and future `raw_vectors`
@@ -164,6 +179,43 @@ public:
             throw std::runtime_error("logosdb_put: " + msg);
         }
         return id;
+    }
+
+    /* Batch insert of n vectors. 'embeddings' must contain n*dim floats.
+     * Returns vector of assigned row ids. Throws on error. */
+    std::vector<uint64_t> put_batch(const std::vector<float> & embeddings, int n,
+                                    const std::vector<std::string> & texts = {},
+                                    const std::vector<std::string> & timestamps = {}) {
+        if (n <= 0) return {};
+        if ((int)embeddings.size() < n * dim()) {
+            throw std::runtime_error("put_batch: embeddings size too small");
+        }
+        std::vector<uint64_t> ids(n);
+        std::vector<const char *> text_ptrs;
+        std::vector<const char *> ts_ptrs;
+        if (!texts.empty()) {
+            text_ptrs.reserve(n);
+            for (int i = 0; i < n; ++i) {
+                text_ptrs.push_back(i < (int)texts.size() && !texts[i].empty() ? texts[i].c_str() : nullptr);
+            }
+        }
+        if (!timestamps.empty()) {
+            ts_ptrs.reserve(n);
+            for (int i = 0; i < n; ++i) {
+                ts_ptrs.push_back(i < (int)timestamps.size() && !timestamps[i].empty() ? timestamps[i].c_str() : nullptr);
+            }
+        }
+        char * err = nullptr;
+        int rc = logosdb_put_batch(db_, embeddings.data(), n, dim(),
+                                   texts.empty() ? nullptr : text_ptrs.data(),
+                                   timestamps.empty() ? nullptr : ts_ptrs.data(),
+                                   ids.data(), &err);
+        if (rc != 0) {
+            std::string msg = err ? err : "unknown";
+            free(err);
+            throw std::runtime_error("logosdb_put_batch: " + msg);
+        }
+        return ids;
     }
 
     void del(uint64_t id) {

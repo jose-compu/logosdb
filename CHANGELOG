@@ -1,6 +1,42 @@
 logosdb change log
 ==================
 
+0.3.2  (2026-04-20)
+-------------------
+
+  * Fixed POSIX compilation issues for older systems (manylinux).
+    - Added missing `<sys/types.h>` includes.
+    - Added `_GNU_SOURCE` define for `pread`/`pwrite` on older glibc.
+
+0.3.1  (2026-04-20)
+-------------------
+
+  * Fixed Windows build compatibility issues.
+    - New `src/platform.{h,cpp}` providing cross-platform abstraction layer.
+    - Windows implementations for file operations using `_write`, `_read`, `_lseek`,
+      `_close`, `_commit` instead of POSIX `pwrite`/`pread`/`fsync`/`close`.
+    - Windows memory mapping using `CreateFileMapping`/`MapViewOfFile` instead
+      of POSIX `mmap`/`munmap`.
+    - Fixed `strdup` deprecation warning on Windows (use `_strdup`).
+    - All 553 tests pass on macOS; code compiles for Windows (MSVC/Clang).
+
+0.3.0  (2026-04-20)
+-------------------
+
+  * Added batch Put API for efficient bulk ingestion. Closes #6.
+    - New C API: `logosdb_put_batch(db, embeddings, n, dim, texts, timestamps,
+      out_ids, errptr)` for inserting N vectors in one call.
+    - New C++ wrapper: `DB::put_batch(embeddings, n, texts, timestamps)` returning
+      a vector of assigned row ids.
+    - Optimized implementation:
+      * Single ftruncate + pwrite for all vectors (vs N separate calls).
+      * Single batch write for all metadata JSONL lines.
+      * Single mmap remap at the end (vs N remaps).
+      * Write mutex held once for entire batch.
+    - Benchmark: batch insertion of 100K vectors is ~4× faster than equivalent
+      loop of individual put() calls.
+    - New tests: `test_put_batch_basic`, `test_put_batch_empty`.
+
 0.2.2  (2026-04-20)
 -------------------
 

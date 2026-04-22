@@ -33,6 +33,10 @@ public:
 
     uint64_t append(const char * text, const char * timestamp, std::string & err);
 
+    /* Append n metadata rows efficiently. Returns the starting id, or UINT64_MAX on error. */
+    uint64_t append_batch(const char * const * texts, const char * const * timestamps,
+                          int n, std::string & err);
+
     // Append a tombstone for `id`. Returns false if the id is out of range
     // or already deleted. `err` is set on failure.
     bool mark_deleted(uint64_t id, std::string & err);
