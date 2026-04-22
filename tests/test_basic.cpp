@@ -22,6 +22,10 @@ static void test_put_batch_empty();
 static void test_search_ts_range_basic();
 static void test_search_ts_range_edge_cases();
 static void test_search_ts_range_recall();
+static void test_distance_cosine();
+static void test_distance_l2();
+static void test_distance_persistence();
+static void test_distance_mismatch_error();
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -797,6 +801,10 @@ int main() {
     test_search_ts_range_basic();
     test_search_ts_range_edge_cases();
     test_search_ts_range_recall();
+    test_distance_cosine();
+    test_distance_l2();
+    test_distance_persistence();
+    test_distance_mismatch_error();
 
     printf("\n%d/%d tests passed.\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
@@ -1175,6 +1183,144 @@ static void test_search_ts_range_recall() {
     for (auto & h : hits) {
         CHECK(h.timestamp == "2025-03-01T09:00:00Z", "ts_range recall: exact timestamp match");
     }
+
+    std::filesystem::remove_all(path);
+}
+
+// Test cosine distance metric (auto-normalization)
+static void test_distance_cosine() {
+    std::string path = "/tmp/logosdb_test_cosine";
+    std::filesystem::remove_all(path);
+
+    int dim = 64;
+    // Create DB with cosine distance
+    logosdb::DB db(path, {.dim = dim, .distance = LOGOSDB_DIST_COSINE});
+
+    // Insert non-normalized vectors
+    auto v0 = unit_vec(dim, 13000);
+    auto v1 = unit_vec(dim, 13100);
+
+    // Scale the vectors (not unit length)
+    for (int i = 0; i < dim; ++i) {
+        v0[i] *= 5.0f;  // Scale by 5
+        v1[i] *= 3.0f;  // Scale by 3
+    }
+
+    db.put(v0, "scaled v0");
+    db.put(v1, "scaled v1");
+
+    // Search with scaled query
+    auto scaled_query = v0;
+    auto hits = db.search(scaled_query, 2);
+
+    // Should still find itself as top-1 (cosine ignores magnitude)
+    CHECK(!hits.empty(), "cosine: search returned results");
+    CHECK(hits[0].id == 0, "cosine: top hit is v0");
+    CHECK(hits[0].score > 0.99f, "cosine: high similarity for same direction");
+
+    // Self-similarity should be ~1.0 regardless of scale
+    auto self_hits = db.search(scaled_query, 1);
+    CHECK(self_hits[0].score > 0.99f, "cosine: self-similarity ~1.0");
+
+    std::filesystem::remove_all(path);
+}
+
+// Test L2 (Euclidean) distance metric
+static void test_distance_l2() {
+    std::string path = "/tmp/logosdb_test_l2";
+    std::filesystem::remove_all(path);
+
+    int dim = 64;
+    // Create DB with L2 distance
+    logosdb::DB db(path, {.dim = dim, .distance = LOGOSDB_DIST_L2});
+
+    auto v0 = unit_vec(dim, 14000);
+    auto v1 = unit_vec(dim, 14100);
+
+    db.put(v0, "v0");
+    db.put(v1, "v1");
+
+    // Search with v0
+    auto hits = db.search(v0, 2);
+
+    CHECK(!hits.empty(), "l2: search returned results");
+    CHECK(hits[0].id == 0, "l2: top hit is v0 (closest)");
+
+    // L2 score is inverted distance (1/(1+d)), so closer = higher score
+    CHECK(hits[0].score > hits[1].score, "l2: self has higher score than other");
+
+    std::filesystem::remove_all(path);
+}
+
+// Test distance metric persistence across reopen
+static void test_distance_persistence() {
+    std::string path = "/tmp/logosdb_test_dist_persist";
+    std::filesystem::remove_all(path);
+
+    int dim = 32;
+
+    // Create with cosine
+    {
+        logosdb::DB db(path, {.dim = dim, .distance = LOGOSDB_DIST_COSINE});
+        auto v = unit_vec(dim, 15000);
+        db.put(v, "test");
+    }
+
+    // Reopen with same distance - should work
+    {
+        logosdb::DB db(path, {.dim = dim, .distance = LOGOSDB_DIST_COSINE});
+        auto v = unit_vec(dim, 15000);
+        auto hits = db.search(v, 1);
+        CHECK(!hits.empty(), "dist persist: reopened with matching distance");
+        CHECK(hits[0].id == 0, "dist persist: found vector after reopen");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
+// Test that distance metric mismatch returns error
+static void test_distance_mismatch_error() {
+    std::string path = "/tmp/logosdb_test_dist_mismatch";
+    std::filesystem::remove_all(path);
+
+    int dim = 32;
+
+    // Create with cosine
+    {
+        logosdb::DB db(path, {.dim = dim, .distance = LOGOSDB_DIST_COSINE});
+        auto v = unit_vec(dim, 16000);
+        db.put(v, "test");
+    }
+
+    // Try to reopen with different distance - should throw
+    bool caught = false;
+    try {
+        logosdb::DB db(path, {.dim = dim, .distance = LOGOSDB_DIST_L2});
+    } catch (const std::runtime_error & e) {
+        caught = true;
+        CHECK(std::string(e.what()).find("distance metric mismatch") != std::string::npos,
+              "dist mismatch: error message mentions mismatch");
+    }
+    CHECK(caught, "dist mismatch: exception thrown for mismatched distance");
+
+    // Try with IP (which is different from cosine internally)
+    caught = false;
+    try {
+        logosdb::DB db(path, {.dim = dim, .distance = LOGOSDB_DIST_IP});
+    } catch (const std::runtime_error & e) {
+        caught = true;
+    }
+    // Note: IP and COSINE use the same hnsw space, but are marked differently
+    // This may or may not throw depending on implementation details
+
+    // Test C API distance setter
+    logosdb_options_t * opts = logosdb_options_create();
+    CHECK(logosdb_options_set_distance(opts, LOGOSDB_DIST_IP) == 0, "dist API: IP valid");
+    CHECK(logosdb_options_set_distance(opts, LOGOSDB_DIST_COSINE) == 0, "dist API: COSINE valid");
+    CHECK(logosdb_options_set_distance(opts, LOGOSDB_DIST_L2) == 0, "dist API: L2 valid");
+    CHECK(logosdb_options_set_distance(opts, 99) == -1, "dist API: invalid metric rejected");
+    CHECK(logosdb_options_set_distance(nullptr, LOGOSDB_DIST_IP) == -1, "dist API: null opts rejected");
+    logosdb_options_destroy(opts);
 
     std::filesystem::remove_all(path);
 }

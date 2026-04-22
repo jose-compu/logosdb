@@ -31,7 +31,8 @@ struct logosdb_options_t {
     size_t max_elements    = 1000000;
     int    ef_construction = 200;
     int    M               = 16;
-    int    ef_search        = 50;
+    int    ef_search       = 50;
+    int    distance        = 0;  /* LOGOSDB_DIST_IP default */
 };
 
 struct logosdb_search_result_t {
@@ -65,6 +66,13 @@ void logosdb_options_set_max_elements(logosdb_options_t * o, size_t n) { if (o &
 void logosdb_options_set_ef_construction(logosdb_options_t * o, int e) { if (o && e > 0) o->ef_construction = e; }
 void logosdb_options_set_M(logosdb_options_t * o, int m)              { if (o && m > 0) o->M = m; }
 void logosdb_options_set_ef_search(logosdb_options_t * o, int e)      { if (o && e > 0) o->ef_search = e; }
+
+int logosdb_options_set_distance(logosdb_options_t * o, int metric) {
+    if (!o) return -1;
+    if (metric < 0 || metric > 2) return -1;  /* Invalid metric */
+    o->distance = metric;
+    return 0;
+}
 
 /* ── Lifecycle ─────────────────────────────────────────────────────── */
 
@@ -103,6 +111,7 @@ logosdb_t * logosdb_open(const char * path, const logosdb_options_t * opts,
     hp.ef_construction = opts->ef_construction;
     hp.M               = opts->M;
     hp.ef_search       = opts->ef_search;
+    hp.distance        = opts->distance;
 
     if (!db->index.open(idx_path, hp, err)) {
         set_err(errptr, err);

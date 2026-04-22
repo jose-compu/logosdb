@@ -9,12 +9,20 @@
 namespace logosdb {
 namespace internal {
 
+/* Distance metrics - match the public API constants */
+enum DistanceMetric {
+    DIST_IP = 0,      /* Inner product */
+    DIST_COSINE = 1,  /* Cosine (IP on normalized vectors) */
+    DIST_L2 = 2       /* Euclidean distance */
+};
+
 struct HnswParams {
     int    dim             = 0;
     size_t max_elements    = 1000000;
     int    ef_construction = 200;
     int    M               = 16;
-    int    ef_search        = 50;
+    int    ef_search       = 50;
+    int    distance        = DIST_IP;  /* DIST_IP, DIST_COSINE, or DIST_L2 */
 };
 
 // Thin wrapper around hnswlib for inner-product search on L2-normalized vectors.

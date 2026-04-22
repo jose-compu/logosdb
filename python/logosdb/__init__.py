@@ -12,6 +12,12 @@ Example:
     'hello'
 """
 
-from ._core import DB, SearchHit, LOGOSDB_VERSION, __version__
+from ._core import (
+    DB, SearchHit, LOGOSDB_VERSION, __version__,
+    DIST_IP, DIST_COSINE, DIST_L2,
+)
 
-__all__ = ["DB", "SearchHit", "LOGOSDB_VERSION", "__version__"]
+__all__ = [
+    "DB", "SearchHit", "LOGOSDB_VERSION", "__version__",
+    "DIST_IP", "DIST_COSINE", "DIST_L2",
+]

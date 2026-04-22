@@ -5,9 +5,14 @@
 #include <stdint.h>
 
 #define LOGOSDB_VERSION_MAJOR 0
-#define LOGOSDB_VERSION_MINOR 3
-#define LOGOSDB_VERSION_PATCH 2
-#define LOGOSDB_VERSION_STRING "0.3.2"
+#define LOGOSDB_VERSION_MINOR 4
+#define LOGOSDB_VERSION_PATCH 0
+#define LOGOSDB_VERSION_STRING "0.4.0"
+
+/* Distance metrics for vector similarity search */
+#define LOGOSDB_DIST_IP      0  /* Inner product (default, requires L2-normalized vectors) */
+#define LOGOSDB_DIST_COSINE  1  /* Cosine similarity (auto-normalizes vectors) */
+#define LOGOSDB_DIST_L2      2  /* Euclidean distance (L2 space) */
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,6 +34,18 @@ void logosdb_options_set_max_elements(logosdb_options_t * opts, size_t n);
 void logosdb_options_set_ef_construction(logosdb_options_t * opts, int ef);
 void logosdb_options_set_M(logosdb_options_t * opts, int M);
 void logosdb_options_set_ef_search(logosdb_options_t * opts, int ef);
+
+/* Set distance metric for vector similarity.
+ *   metric: one of LOGOSDB_DIST_IP, LOGOSDB_DIST_COSINE, or LOGOSDB_DIST_L2
+ *           (default is LOGOSDB_DIST_IP)
+ *
+ * For LOGOSDB_DIST_IP: vectors must be L2-normalized by caller.
+ * For LOGOSDB_DIST_COSINE: vectors are automatically L2-normalized on put/search.
+ * For LOGOSDB_DIST_L2: Euclidean distance is used (lower is more similar).
+ *
+ * The distance metric is persisted in the index file and must match on reopen.
+ * Returns 0 on success, -1 on invalid metric. */
+int logosdb_options_set_distance(logosdb_options_t * opts, int metric);
 
 /* ── Lifecycle ─────────────────────────────────────────────────────── */
 
@@ -147,6 +164,7 @@ struct Options {
     int    ef_construction  = 200;
     int    M               = 16;
     int    ef_search        = 50;
+    int    distance         = LOGOSDB_DIST_IP;  /* IP, COSINE, or L2 */
 };
 
 struct SearchHit {
@@ -165,6 +183,7 @@ public:
         if (opts.ef_construction > 0)  logosdb_options_set_ef_construction(o, opts.ef_construction);
         if (opts.M > 0)               logosdb_options_set_M(o, opts.M);
         if (opts.ef_search > 0)        logosdb_options_set_ef_search(o, opts.ef_search);
+        logosdb_options_set_distance(o, opts.distance);
         char * err = nullptr;
         db_ = logosdb_open(path.c_str(), o, &err);
         logosdb_options_destroy(o);

@@ -13,6 +13,8 @@ Authors: Jose ([@jose-compu](https://github.com/jose-compu))
   * Approximate nearest-neighbor search via [HNSW](https://arxiv.org/abs/1603.09320) (hnswlib), O(log n) query time.
   * Each vector row carries optional text and ISO 8601 timestamp metadata (JSONL sidecar).
   * The basic operations are `Put(embedding, text, timestamp)` and `Search(query, top_k)`.
+  * **Timestamp range filtering**: search within a time window (e.g., "last 24 hours").
+  * **Multiple distance metrics**: inner product, cosine similarity (auto-normalized), or L2 Euclidean.
   * Bulk vector access for direct tensor construction (e.g. loading into GPU memory).
   * Thread-safe writes via internal mutex; concurrent reads are lock-free.
   * Crash recovery: HNSW index is automatically backfilled from the append-only vector store on open.
@@ -27,15 +29,16 @@ Guide to header files:
 * **include/logosdb/logosdb.h**: Main interface to the DB. Start here. Contains:
   - C API with opaque handles and `errptr` convention (RocksDB/LevelDB style)
   - C++ convenience wrapper (`logosdb::DB`) with RAII and exceptions
-  - `logosdb::Options` for HNSW tuning parameters
+  - `logosdb::Options` for HNSW tuning and distance metric selection
   - `logosdb::SearchHit` result struct
+  - `logosdb_search_ts_range()` for timestamp-filtered search
 
 # Limitations
 
   * This is not a general-purpose vector database. It is purpose-built for embedding-based memory retrieval in LLM inference ([funes.cpp](../funes.cpp)).
   * Only a single process (possibly multi-threaded) can access a particular database at a time.
   * There is no client-server support built into the library. An application that needs such support will have to wrap their own server around the library.
-  * Vectors must be L2-normalized before insertion (inner-product similarity is used).
+  * For inner-product distance (`LOGOSDB_DIST_IP`, the default), vectors must be L2-normalized before insertion. Use `LOGOSDB_DIST_COSINE` for automatic normalization.
   * Embedding generation is external — the caller provides pre-computed float vectors.
 
 # Getting the Source
@@ -91,11 +94,68 @@ logosdb_result_free(res);
 logosdb_close(db);
 ```
 
+## Search with timestamp range filter
+
+```c
+#include <logosdb/logosdb.h>
+
+char *err = NULL;
+logosdb_options_t *opts = logosdb_options_create();
+logosdb_options_set_dim(opts, 2048);
+
+logosdb_t *db = logosdb_open("/tmp/mydb", opts, &err);
+
+// Search for top-5 matches within the last 24 hours
+logosdb_search_result_t *res = logosdb_search_ts_range(
+    db, query_vec, 2048, 5,
+    "2025-04-21T10:00:00Z",  // from (inclusive), NULL for no lower bound
+    "2025-04-22T10:00:00Z",  // to (inclusive), NULL for no upper bound
+    50,                      // candidate_k: internal fetch multiplier (10x top_k recommended)
+    &err);
+
+for (int i = 0; i < logosdb_result_count(res); i++) {
+    printf("#%d score=%.4f ts=%s text=%s\n", i,
+           logosdb_result_score(res, i),
+           logosdb_result_timestamp(res, i),
+           logosdb_result_text(res, i));
+}
+logosdb_result_free(res);
+logosdb_close(db);
+```
+
+## Using different distance metrics
+
+```c
+#include <logosdb/logosdb.h>
+
+char *err = NULL;
+logosdb_options_t *opts = logosdb_options_create();
+logosdb_options_set_dim(opts, 2048);
+
+// Use cosine similarity (automatically normalizes vectors)
+logosdb_options_set_distance(opts, LOGOSDB_DIST_COSINE);
+
+// Or use L2 Euclidean distance
+// logosdb_options_set_distance(opts, LOGOSDB_DIST_L2);
+
+// Default is LOGOSDB_DIST_IP (inner product on L2-normalized vectors)
+
+logosdb_t *db = logosdb_open("/tmp/mydb", opts, &err);
+logosdb_options_destroy(opts);
+
+// For cosine: vectors are automatically normalized on put/search
+float vec[2048] = { /* ... unnormalized vector ... */ };
+logosdb_put(db, vec, 2048, "entry", "2025-04-22T10:00:00Z", &err);
+
+logosdb_close(db);
+```
+
 # Usage (C++ wrapper)
 
 ```cpp
 #include <logosdb/logosdb.h>
 
+// Basic usage with default inner-product distance
 logosdb::DB db("/tmp/mydb", {.dim = 2048});
 db.put(embedding, "My commute is 42 minutes", "2025-06-25T10:00:00Z");
 
@@ -103,6 +163,43 @@ auto results = db.search(query, 5);
 for (auto &r : results) {
     printf("id=%llu score=%.4f text=%s\n", r.id, r.score, r.text.c_str());
 }
+```
+
+## C++: Search with timestamp filter
+
+```cpp
+#include <logosdb/logosdb.h>
+
+logosdb::DB db("/tmp/mydb", {.dim = 2048});
+
+// Search within a time window
+auto results = db.search_ts_range(
+    query, 5,
+    "2025-04-21T00:00:00Z",  // from timestamp
+    "2025-04-22T00:00:00Z",  // to timestamp
+    50);                     // candidate_k (optional, defaults to 10x top_k)
+
+for (auto &r : results) {
+    printf("id=%llu score=%.4f ts=%s\n", r.id, r.score, r.timestamp.c_str());
+}
+```
+
+## C++: Using cosine or L2 distance
+
+```cpp
+#include <logosdb/logosdb.h>
+
+// Cosine similarity - vectors are automatically normalized
+logosdb::DB db("/tmp/mydb", {.dim = 2048, .distance = LOGOSDB_DIST_COSINE});
+
+// Put unnormalized vectors - they will be normalized automatically
+db.put(unnormalized_embedding, "entry", "2025-04-22T10:00:00Z");
+
+auto results = db.search(query, 5);
+// scores are cosine similarities in [0, 1]
+
+// L2 Euclidean distance
+// logosdb::DB db("/tmp/mydb", {.dim = 2048, .distance = LOGOSDB_DIST_L2});
 ```
 
 # Python
@@ -130,7 +227,7 @@ import logosdb
 db = logosdb.DB("/tmp/mydb", dim=128)
 
 v = np.random.randn(128).astype(np.float32)
-v /= np.linalg.norm(v)
+v /= np.linalg.norm(v)  # Required for default inner-product distance
 
 rid = db.put(v, text="hello", timestamp="2025-06-25T10:00:00Z")
 # rid is the row id for this vector (often 0 for the first insert).
@@ -152,6 +249,24 @@ db.delete(new_id)
 vectors = db.raw_vectors()
 
 print(db.count(), db.count_live(), db.dim)
+```
+
+## Python: Using cosine distance (no manual normalization needed)
+
+```python
+import numpy as np
+import logosdb
+
+# With cosine distance, vectors are automatically normalized
+db = logosdb.DB("/tmp/mydb", dim=128, distance=logosdb.DIST_COSINE)
+
+# No need to normalize - just put raw vectors
+v = np.random.randn(128).astype(np.float32)
+rid = db.put(v, text="unnormalized vector", timestamp="2025-04-22T10:00:00Z")
+
+# Search also works with unnormalized queries
+query = np.random.randn(128).astype(np.float32)
+hits = db.search(query, top_k=5)
 ```
 
 Run the Python tests and examples:
@@ -185,7 +300,7 @@ Here is a performance report from the included `logosdb-bench` program. The resu
 
 We use databases with 1K, 10K, and 100K vectors. Each vector has 2048 dimensions (matching typical LLM embedding sizes). Vectors are L2-normalized random unit vectors.
 
-    LogosDB:    version 0.3.2
+    LogosDB:    version 0.4.0
     CPU:        Apple M-series (ARM64)
     Dim:        2048
     HNSW M:     16, ef_construction: 200, ef_search: 50
