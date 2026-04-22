@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "logosdb"
-version = "0.3.2"
+version = "0.4.1"
 description = "Fast semantic vector database (HNSW + mmap) with Python bindings"
 readme = "README.md"
 license = { file = "LICENSE" }

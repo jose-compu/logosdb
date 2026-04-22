@@ -1,6 +1,11 @@
 logosdb change log
 ==================
 
+0.4.1  (2026-04-22)
+-------------------
+
+  * Version bump to synchronize C++ and Python package versions.
+
 0.4.0  (2026-04-22)
 -------------------
 
