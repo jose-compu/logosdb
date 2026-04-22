@@ -1,6 +1,32 @@
 logosdb change log
 ==================
 
+0.4.0  (2026-04-22)
+-------------------
+
+  Configurable distance metrics (closes #8)
+
+  * Added support for three distance metrics via `logosdb_options_set_distance()`:
+    - `LOGOSDB_DIST_IP` (default): Inner product on L2-normalized vectors.
+    - `LOGOSDB_DIST_COSINE`: Cosine similarity with automatic L2-normalization.
+    - `LOGOSDB_DIST_L2`: Euclidean distance using hnswlib::L2Space.
+  * The distance metric is persisted in `hnsw.idx.meta` and validated on reopen.
+    Reopening a database with a mismatched distance metric returns a clear error.
+  * Cosine mode automatically normalizes vectors during `put()` and `search()`
+    operations — callers no longer need to pre-normalize embeddings.
+  * C++ API: `Options::distance` field accepts the same constants.
+  * Added 16 test assertions for distance metric functionality.
+
+  Metadata-filtered search with timestamp range (closes #7)
+
+  * New `logosdb_search_ts_range()` API for post-filtered vector search.
+    - Filters results by ISO 8601 timestamp range (inclusive bounds).
+    - `ts_from_iso8601` and `ts_to_iso8601` parameters are optional (NULL/empty = no bound).
+    - `candidate_k` parameter controls internal fetch size for recall vs latency tradeoff.
+  * C++ API: `DB::search_ts_range(query, top_k, ts_from, ts_to, candidate_k)`.
+  * Use case: "search within last 24h" or "search within conversation X" for LLM memory.
+  * Added 34 test assertions for timestamp range filtering, edge cases, and recall.
+
 0.3.2  (2026-04-20)
 -------------------
 
