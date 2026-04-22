@@ -438,6 +438,68 @@ logosdb_search_result_t * logosdb_search(logosdb_t * db,
     return r;
 }
 
+logosdb_search_result_t * logosdb_search_ts_range(logosdb_t * db,
+                                                 const float * query, int dim,
+                                                 int top_k,
+                                                 const char * ts_from_iso8601,
+                                                 const char * ts_to_iso8601,
+                                                 int candidate_k,
+                                                 char ** errptr) {
+    if (!db || !query) {
+        set_err(errptr, "null db or query");
+        return nullptr;
+    }
+    if (dim != db->dim) {
+        set_err(errptr, "dimension mismatch in search");
+        return nullptr;
+    }
+    if (top_k <= 0) {
+        set_err(errptr, "top_k must be > 0");
+        return nullptr;
+    }
+    if (candidate_k < top_k) {
+        candidate_k = top_k;  // Ensure we fetch at least top_k candidates
+    }
+
+    std::string err;
+    // Fetch more candidates than needed to allow for filtering
+    auto raw = db->index.search(query, candidate_k, err);
+    if (!err.empty()) {
+        set_err(errptr, err);
+        return nullptr;
+    }
+
+    auto * r = new logosdb_search_result_t();
+    r->hits.reserve(top_k);
+
+    for (auto & [label, score] : raw) {
+        // Check if we've collected enough results
+        if ((int)r->hits.size() >= top_k) break;
+
+        // Get metadata for this row
+        auto * m = db->meta.row(label);
+        if (!m) continue;
+
+        // Apply timestamp filter
+        if (ts_from_iso8601 && !m->timestamp.empty()) {
+            if (m->timestamp < ts_from_iso8601) continue;  // Before start
+        }
+        if (ts_to_iso8601 && !m->timestamp.empty()) {
+            if (m->timestamp > ts_to_iso8601) continue;  // After end
+        }
+
+        // This result passes the filter
+        logosdb_search_result_t::Hit h;
+        h.id    = label;
+        h.score = score;
+        h.text  = m->text;
+        h.timestamp = m->timestamp;
+        r->hits.push_back(std::move(h));
+    }
+
+    return r;
+}
+
 int logosdb_result_count(const logosdb_search_result_t * r) {
     return r ? (int)r->hits.size() : 0;
 }

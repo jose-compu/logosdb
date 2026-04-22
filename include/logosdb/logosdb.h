@@ -86,6 +86,26 @@ logosdb_search_result_t * logosdb_search(logosdb_t * db,
                                          int top_k,
                                          char ** errptr);
 
+/* Search with timestamp range filter.
+ *   ts_from_iso8601: optional start timestamp (inclusive), NULL for no lower bound
+ *   ts_to_iso8601:   optional end timestamp (inclusive), NULL for no upper bound
+ *   candidate_k:     internal multiplier for post-filtering (e.g., 10x top_k)
+ *
+ * Returns top_k results that match both the vector similarity and timestamp range.
+ * Uses post-filtering: fetches candidate_k results internally, filters by timestamp,
+ * then returns the top_k that pass. Higher candidate_k improves recall but costs more.
+ *
+ * Timestamp format: ISO 8601 strings (e.g., "2025-01-01T00:00:00Z").
+ * Comparison is lexicographic (string compare), which works correctly for ISO 8601.
+ */
+logosdb_search_result_t * logosdb_search_ts_range(logosdb_t * db,
+                                                 const float * query, int dim,
+                                                 int top_k,
+                                                 const char * ts_from_iso8601,
+                                                 const char * ts_to_iso8601,
+                                                 int candidate_k,
+                                                 char ** errptr);
+
 int         logosdb_result_count    (const logosdb_search_result_t * r);
 uint64_t    logosdb_result_id       (const logosdb_search_result_t * r, int i);
 float       logosdb_result_score    (const logosdb_search_result_t * r, int i);
@@ -255,6 +275,47 @@ public:
             std::string msg(err);
             free(err);
             throw std::runtime_error("logosdb_search: " + msg);
+        }
+        std::vector<SearchHit> hits;
+        int n = logosdb_result_count(r);
+        hits.reserve(n);
+        for (int i = 0; i < n; ++i) {
+            SearchHit h;
+            h.id    = logosdb_result_id(r, i);
+            h.score = logosdb_result_score(r, i);
+            const char * t = logosdb_result_text(r, i);
+            if (t) h.text = t;
+            const char * ts = logosdb_result_timestamp(r, i);
+            if (ts) h.timestamp = ts;
+            hits.push_back(std::move(h));
+        }
+        logosdb_result_free(r);
+        return hits;
+    }
+
+    /* Search with timestamp range filter.
+     *   ts_from: optional start timestamp (inclusive), empty for no lower bound
+     *   ts_to:   optional end timestamp (inclusive), empty for no upper bound
+     *   candidate_k: internal multiplier for post-filtering (default 10x top_k)
+     *
+     * Timestamp format: ISO 8601 strings (e.g., "2025-01-01T00:00:00Z").
+     */
+    std::vector<SearchHit> search_ts_range(const std::vector<float> & query,
+                                              int top_k,
+                                              const std::string & ts_from,
+                                              const std::string & ts_to,
+                                              int candidate_k = 0) {
+        char * err = nullptr;
+        int ck = candidate_k > 0 ? candidate_k : top_k * 10;
+        logosdb_search_result_t * r = logosdb_search_ts_range(
+            db_, query.data(), (int)query.size(), top_k,
+            ts_from.empty() ? nullptr : ts_from.c_str(),
+            ts_to.empty() ? nullptr : ts_to.c_str(),
+            ck, &err);
+        if (err) {
+            std::string msg(err);
+            free(err);
+            throw std::runtime_error("logosdb_search_ts_range: " + msg);
         }
         std::vector<SearchHit> hits;
         int n = logosdb_result_count(r);
