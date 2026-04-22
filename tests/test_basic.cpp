@@ -19,6 +19,9 @@
 static void test_wal_crash_recovery();
 static void test_put_batch_basic();
 static void test_put_batch_empty();
+static void test_search_ts_range_basic();
+static void test_search_ts_range_edge_cases();
+static void test_search_ts_range_recall();
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -791,6 +794,9 @@ int main() {
     test_wal_crash_recovery();
     test_put_batch_basic();
     test_put_batch_empty();
+    test_search_ts_range_basic();
+    test_search_ts_range_edge_cases();
+    test_search_ts_range_recall();
 
     printf("\n%d/%d tests passed.\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
@@ -977,6 +983,197 @@ static void test_put_batch_empty() {
         auto hits = db.search(v_search, 1);
         CHECK(!hits.empty(), "batch no meta: found vector");
         CHECK(hits[0].id == 6, "batch no meta: correct id (1 + 5)");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
+// Test timestamp range search - basic functionality
+static void test_search_ts_range_basic() {
+    std::string path = "/tmp/logosdb_test_ts_range";
+    std::filesystem::remove_all(path);
+
+    int dim = 64;
+    logosdb::DB db(path, {.dim = dim});
+
+    // Insert vectors with different timestamps
+    auto v0 = unit_vec(dim, 10000);
+    auto v1 = unit_vec(dim, 10100);
+    auto v2 = unit_vec(dim, 10200);
+    auto v3 = unit_vec(dim, 10300);
+
+    db.put(v0, "early morning", "2025-01-15T08:00:00Z");
+    db.put(v1, "mid morning",   "2025-01-15T10:00:00Z");
+    db.put(v2, "afternoon",     "2025-01-15T14:00:00Z");
+    db.put(v3, "evening",       "2025-01-15T20:00:00Z");
+
+    // Test 1: Filter from 09:00 to 15:00 (should get v1 and v2)
+    auto hits = db.search_ts_range(v0, 5, "2025-01-15T09:00:00Z", "2025-01-15T15:00:00Z");
+    CHECK(hits.size() == 2, "ts_range: got 2 results for 09-15 window");
+    if (hits.size() >= 1) CHECK(hits[0].id == 1 || hits[0].id == 2, "ts_range: first result is v1 or v2");
+    if (hits.size() >= 2) CHECK(hits[1].id == 1 || hits[1].id == 2, "ts_range: second result is v1 or v2");
+
+    // Verify the correct results are returned
+    bool found_v1 = false, found_v2 = false;
+    for (auto & h : hits) {
+        if (h.id == 1) found_v1 = true;
+        if (h.id == 2) found_v2 = true;
+    }
+    CHECK(found_v1, "ts_range: found v1 (10:00) in window");
+    CHECK(found_v2, "ts_range: found v2 (14:00) in window");
+
+    // Test 2: Only from timestamp (v2, v3 should be found)
+    hits = db.search_ts_range(v0, 5, "2025-01-15T14:00:00Z", "");
+    CHECK(hits.size() == 2, "ts_range: got 2 results for from-only filter");
+    bool found_v3 = false;
+    for (auto & h : hits) {
+        if (h.id == 2) found_v2 = true;
+        if (h.id == 3) found_v3 = true;
+    }
+    CHECK(found_v2, "ts_range: found v2 with from-only");
+    CHECK(found_v3, "ts_range: found v3 with from-only");
+
+    // Test 3: Only to timestamp (v0, v1 should be found)
+    hits = db.search_ts_range(v0, 5, "", "2025-01-15T10:00:00Z");
+    bool found_v0 = false;
+    found_v1 = false;
+    for (auto & h : hits) {
+        if (h.id == 0) found_v0 = true;
+        if (h.id == 1) found_v1 = true;
+    }
+    CHECK(found_v0, "ts_range: found v0 with to-only");
+    CHECK(found_v1, "ts_range: found v1 with to-only");
+
+    // Test 4: No filters (same as regular search)
+    hits = db.search_ts_range(v0, 4, "", "");
+    CHECK(hits.size() == 4, "ts_range: no filters returns all");
+
+    std::filesystem::remove_all(path);
+}
+
+// Test timestamp range search - edge cases and error handling
+static void test_search_ts_range_edge_cases() {
+    std::string path = "/tmp/logosdb_test_ts_range_edge";
+    std::filesystem::remove_all(path);
+
+    int dim = 32;
+    logosdb::DB db(path, {.dim = dim});
+
+    // Insert some data
+    auto v0 = unit_vec(dim, 11000);
+    auto v1 = unit_vec(dim, 11100);
+    db.put(v0, "entry1", "2025-02-01T12:00:00Z");
+    db.put(v1, "entry2", "2025-02-01T14:00:00Z");
+
+    // Test with no results
+    auto hits = db.search_ts_range(v0, 5, "2025-12-01T00:00:00Z", "2025-12-31T23:59:59Z");
+    CHECK(hits.empty(), "ts_range edge: future window returns empty");
+
+    // Test with empty timestamps in data
+    auto v2 = unit_vec(dim, 11200);
+    db.put(v2, "no timestamp", "");
+    hits = db.search_ts_range(v0, 5, "", "");
+    // Empty timestamp rows should still appear when no timestamp filter is set
+    CHECK(hits.size() == 3, "ts_range edge: empty ts row included when no filter");
+
+    // Test with C API
+    char * err = nullptr;
+    logosdb_search_result_t * r = logosdb_search_ts_range(
+        db.handle(), v0.data(), dim, 2,
+        "2025-02-01T00:00:00Z", "2025-02-01T23:59:59Z",
+        10, &err);
+    CHECK(r != nullptr, "ts_range C API: success");
+    CHECK(err == nullptr, "ts_range C API: no error");
+    if (r) {
+        CHECK(logosdb_result_count(r) == 2, "ts_range C API: got 2 results");
+        logosdb_result_free(r);
+    }
+
+    // Test with null db
+    r = logosdb_search_ts_range(nullptr, v0.data(), dim, 1,
+                                nullptr, nullptr, 10, &err);
+    CHECK(r == nullptr, "ts_range C API: null db rejected");
+    CHECK(err != nullptr, "ts_range C API: error set for null db");
+    free(err); err = nullptr;
+
+    // Test with invalid top_k
+    r = logosdb_search_ts_range(db.handle(), v0.data(), dim, 0,
+                                nullptr, nullptr, 10, &err);
+    CHECK(r == nullptr, "ts_range C API: top_k=0 rejected");
+    CHECK(err != nullptr, "ts_range C API: error set for top_k=0");
+    free(err);
+
+    std::filesystem::remove_all(path);
+}
+
+// Test timestamp range search recall - verify post-filtering works correctly
+static void test_search_ts_range_recall() {
+    std::string path = "/tmp/logosdb_test_ts_range_recall";
+    std::filesystem::remove_all(path);
+
+    int dim = 64;
+    int n = 100;
+    logosdb::DB db(path, {.dim = dim, .max_elements = 200});
+
+    // Insert many vectors alternating timestamps
+    std::vector<std::vector<float>> morning_vecs;
+    std::vector<std::vector<float>> evening_vecs;
+
+    for (int i = 0; i < n; ++i) {
+        auto v = unit_vec(dim, 12000 + i);
+        if (i % 2 == 0) {
+            morning_vecs.push_back(v);
+            db.put(v, "morning_" + std::to_string(i), "2025-03-01T09:00:00Z");
+        } else {
+            evening_vecs.push_back(v);
+            db.put(v, "evening_" + std::to_string(i), "2025-03-01T18:00:00Z");
+        }
+    }
+
+    // Search with morning timestamp filter
+    auto query = morning_vecs[0];
+    auto hits = db.search_ts_range(query, 10, "2025-03-01T00:00:00Z", "2025-03-01T12:00:00Z");
+
+    // All results should be morning entries (even IDs)
+    bool all_morning = true;
+    for (auto & h : hits) {
+        if (h.id % 2 != 0) {
+            all_morning = false;
+            break;
+        }
+    }
+    CHECK(all_morning, "ts_range recall: all results are morning entries");
+
+    // We should get 10 results since there are 50 morning entries
+    CHECK(hits.size() == 10, "ts_range recall: got requested top_k=10");
+
+    // Verify results are sorted by score (descending)
+    for (size_t i = 1; i < hits.size(); ++i) {
+        CHECK(hits[i-1].score >= hits[i].score, "ts_range recall: results sorted by score");
+    }
+
+    // Test with evening filter
+    auto evening_query = evening_vecs[0];
+    hits = db.search_ts_range(evening_query, 10, "2025-03-01T12:00:00Z", "2025-03-01T23:59:59Z");
+
+    // All results should be evening entries (odd IDs)
+    bool all_evening = true;
+    for (auto & h : hits) {
+        if (h.id % 2 == 0) {
+            all_evening = false;
+            break;
+        }
+    }
+    CHECK(all_evening, "ts_range recall: all results are evening entries");
+
+    // Test that higher candidate_k improves recall when filter is very selective
+    // Create a narrow time window that only includes a few entries
+    hits = db.search_ts_range(morning_vecs[0], 5,
+                              "2025-03-01T09:00:00Z", "2025-03-01T09:00:00Z",
+                              100);  // High candidate_k
+    // With exact timestamp match, all results should have the same timestamp
+    for (auto & h : hits) {
+        CHECK(h.timestamp == "2025-03-01T09:00:00Z", "ts_range recall: exact timestamp match");
     }
 
     std::filesystem::remove_all(path);
