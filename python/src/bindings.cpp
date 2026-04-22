@@ -31,6 +31,11 @@ PYBIND11_MODULE(_core, m) {
 #endif
     m.attr("LOGOSDB_VERSION") = LOGOSDB_VERSION_STRING;
 
+    // Distance metric constants
+    m.attr("DIST_IP")     = LOGOSDB_DIST_IP;
+    m.attr("DIST_COSINE") = LOGOSDB_DIST_COSINE;
+    m.attr("DIST_L2")     = LOGOSDB_DIST_L2;
+
     // ── SearchHit ──────────────────────────────────────────────────
     py::class_<logosdb::SearchHit>(m, "SearchHit",
         "A single search result: id, score, and optional text/timestamp metadata.")
@@ -56,13 +61,15 @@ PYBIND11_MODULE(_core, m) {
                          size_t max_elements,
                          int ef_construction,
                          int M,
-                         int ef_search) {
+                         int ef_search,
+                         int distance) {
             logosdb::Options o;
             o.dim              = dim;
             o.max_elements     = max_elements;
             o.ef_construction  = ef_construction;
             o.M                = M;
             o.ef_search        = ef_search;
+            o.distance         = distance;
             return std::make_unique<logosdb::DB>(path, o);
         }),
         py::arg("path"),
@@ -71,6 +78,7 @@ PYBIND11_MODULE(_core, m) {
         py::arg("ef_construction") = 200,
         py::arg("M")               = 16,
         py::arg("ef_search")       = 50,
+        py::arg("distance")        = LOGOSDB_DIST_IP,
         R"doc(Open or create a database at `path`.
 
 Args:
@@ -80,6 +88,7 @@ Args:
     ef_construction: HNSW build-time search width (default 200).
     M: HNSW graph out-degree (default 16).
     ef_search: HNSW query-time search width (default 50).
+    distance: distance metric (DIST_IP, DIST_COSINE, or DIST_L2; default DIST_IP).
 )doc")
 
         .def("put",
@@ -120,6 +129,34 @@ Args:
             py::arg("query"),
             py::arg("top_k") = 5,
             "Top-k approximate nearest-neighbor search. Returns list[SearchHit].")
+
+        .def("search_ts_range",
+            [](logosdb::DB & self,
+               FloatArray query,
+               int top_k,
+               const std::string & ts_from,
+               const std::string & ts_to,
+               int candidate_k) {
+                return self.search_ts_range(
+                    to_vector(query, "query"), top_k, ts_from, ts_to, candidate_k);
+            },
+            py::arg("query"),
+            py::arg("top_k") = 5,
+            py::arg("ts_from") = "",
+            py::arg("ts_to") = "",
+            py::arg("candidate_k") = 0,
+            R"doc(Search with timestamp range filter.
+
+Args:
+    query: query vector (1-D float32 numpy array).
+    top_k: number of results to return.
+    ts_from: start timestamp (ISO 8601, inclusive), empty for no lower bound.
+    ts_to: end timestamp (ISO 8601, inclusive), empty for no upper bound.
+    candidate_k: internal fetch multiplier (default 10x top_k for good recall).
+
+Returns:
+    list[SearchHit]: filtered results sorted by score.
+)doc")
 
         .def("count",
             &logosdb::DB::count,
