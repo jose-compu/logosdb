@@ -1,6 +1,39 @@
 logosdb change log
 ==================
 
+0.5.0  (2026-04-27)
+-------------------
+
+  LogosDB CLI polish (closes #13)
+
+  * info command now reads dim from vectors.bin header (--dim optional).
+  * Added --json output mode for info and search commands (machine-parseable).
+  * New export command: export DB to JSONL with base64-encoded vectors.
+  * New import command: import from JSONL with base64 vectors (round-trip capable).
+  * Added --query-id option: use existing vector as search query.
+  * Added --ts-from and --ts-to for timestamp range filtering in search.
+  * Added --version flag and proper --help for each subcommand.
+  * Consistent exit codes (0 success, 1 error).
+
+  Avoid full munmap/mmap on every vector append (closes #14)
+
+  * Implemented reservation mapping to eliminate costly munmap/mmap on append.
+  * Reserve 1GB virtual address space on open (Linux: MAP_NORESERVE, Windows: large mapping).
+  * Extend active mapping incrementally when file grows within reservation.
+  * Full remap only triggered when file exceeds reserved space.
+  * Pointers returned by row()/data() now remain valid across concurrent appends.
+  * Added test verifying pointer stability across 100 appends.
+
+  LangChain VectorStore adapter (closes #22)
+
+  * New LogosDBVectorStore class implementing LangChain's VectorStore interface.
+  * API: add_texts(), add_documents(), similarity_search(), similarity_search_by_vector(),
+    similarity_search_with_score(), delete(), from_documents(), from_texts().
+  * Supports timestamp range filtering via kwargs (ts_from, ts_to).
+  * Cosine similarity mode with automatic vector normalization.
+  * Optional dependency: pip install 'logosdb[langchain]'.
+  * 14 test cases covering all functionality.
+
 0.4.1  (2026-04-22)
 -------------------
 
