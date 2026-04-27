@@ -17,7 +17,17 @@ from ._core import (
     DIST_IP, DIST_COSINE, DIST_L2,
 )
 
-__all__ = [
-    "DB", "SearchHit", "LOGOSDB_VERSION", "__version__",
-    "DIST_IP", "DIST_COSINE", "DIST_L2",
-]
+# LangChain adapter is available as optional import
+try:
+    from .langchain import LogosDBVectorStore
+    __all__ = [
+        "DB", "SearchHit", "LOGOSDB_VERSION", "__version__",
+        "DIST_IP", "DIST_COSINE", "DIST_L2",
+        "LogosDBVectorStore",
+    ]
+except ImportError:
+    # langchain-core not installed
+    __all__ = [
+        "DB", "SearchHit", "LOGOSDB_VERSION", "__version__",
+        "DIST_IP", "DIST_COSINE", "DIST_L2",
+    ]
