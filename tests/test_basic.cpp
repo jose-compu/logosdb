@@ -26,6 +26,9 @@ static void test_distance_cosine();
 static void test_distance_l2();
 static void test_distance_persistence();
 static void test_distance_mismatch_error();
+static void test_cli_info_reads_dim();
+static void test_cli_export_import_roundtrip();
+static void test_cli_search_ts_range();
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -805,6 +808,9 @@ int main() {
     test_distance_l2();
     test_distance_persistence();
     test_distance_mismatch_error();
+    test_cli_info_reads_dim();
+    test_cli_export_import_roundtrip();
+    test_cli_search_ts_range();
 
     printf("\n%d/%d tests passed.\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
@@ -1323,4 +1329,132 @@ static void test_distance_mismatch_error() {
     logosdb_options_destroy(opts);
 
     std::filesystem::remove_all(path);
+}
+
+// Helper to run CLI command and capture output
+static int run_cli(const std::string& args, std::string& output) {
+    std::string cmd = "./logosdb-cli " + args + " 2>&1";
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) return -1;
+    char buffer[4096];
+    output.clear();
+    while (fgets(buffer, sizeof(buffer), pipe)) {
+        output += buffer;
+    }
+    return pclose(pipe);
+}
+
+// Test that CLI info command reads dim from vectors.bin header
+static void test_cli_info_reads_dim() {
+    std::string path = "/tmp/logosdb_test_cli_info";
+    std::filesystem::remove_all(path);
+
+    // Create a DB with put
+    logosdb::DB db(path, {.dim = 64});
+    auto v = unit_vec(64, 17000);
+    db.put(v, "test entry", "2025-01-01T00:00:00Z");
+
+    // Test info without --dim (should read from header)
+    std::string output;
+    int rc = run_cli("info " + path, output);
+    CHECK(rc == 0, "cli info: returns success");
+    CHECK(output.find("dim        : 64") != std::string::npos, "cli info: shows correct dim");
+    CHECK(output.find("count      : 1") != std::string::npos, "cli info: shows count=1");
+
+    // Test info --json
+    output.clear();
+    rc = run_cli("info " + path + " --json", output);
+    CHECK(rc == 0, "cli info json: returns success");
+    CHECK(output.find("\"dim\": 64") != std::string::npos, "cli info json: shows correct dim");
+    CHECK(output.find("\"count\": 1") != std::string::npos, "cli info json: shows count");
+
+    std::filesystem::remove_all(path);
+}
+
+// Test CLI export/import roundtrip
+static void test_cli_export_import_roundtrip() {
+    std::string path = "/tmp/logosdb_test_cli_export";
+    std::string import_path = "/tmp/logosdb_test_cli_import";
+    std::string export_file = "/tmp/test_export.jsonl";
+    std::filesystem::remove_all(path);
+    std::filesystem::remove_all(import_path);
+    std::remove(export_file.c_str());
+
+    // Create a DB with some data
+    logosdb::DB db(path, {.dim = 32});
+    auto v0 = unit_vec(32, 18000);
+    auto v1 = unit_vec(32, 18100);
+    db.put(v0, "first", "2025-01-10T00:00:00Z");
+    db.put(v1, "second", "2025-01-11T00:00:00Z");
+
+    // Export to file
+    std::string output;
+    int rc = run_cli("export " + path + " --output " + export_file, output);
+    CHECK(rc == 0, "cli export: returns success");
+    CHECK(output.find("Exported 2 rows") != std::string::npos, "cli export: reports 2 rows");
+
+    // Check export file exists and has content
+    std::ifstream check(export_file);
+    CHECK(check.good(), "cli export: file created");
+    check.close();
+
+    // Import to new DB
+    rc = run_cli("import " + import_path + " --dim 32 --input " + export_file, output);
+    CHECK(rc == 0, "cli import: returns success");
+    CHECK(output.find("Imported 2 rows") != std::string::npos, "cli import: reports 2 rows");
+
+    // Verify imported data
+    logosdb::DB import_db(import_path, {.dim = 32});
+    CHECK(import_db.count() == 2, "cli roundtrip: 2 rows in imported DB");
+
+    // Cleanup
+    std::filesystem::remove_all(path);
+    std::filesystem::remove_all(import_path);
+    std::remove(export_file.c_str());
+}
+
+// Test CLI search with timestamp range
+static void test_cli_search_ts_range() {
+    std::string path = "/tmp/logosdb_test_cli_ts";
+    std::filesystem::remove_all(path);
+
+    // Create a DB with timestamped data
+    logosdb::DB db(path, {.dim = 32});
+    auto v0 = unit_vec(32, 19000);
+    auto v1 = unit_vec(32, 19100);
+    db.put(v0, "early", "2025-01-10T08:00:00Z");
+    db.put(v1, "late", "2025-01-15T18:00:00Z");
+
+    // Create a query vector file
+    {
+        std::ofstream qf("/tmp/query_vec.bin", std::ios::binary);
+        qf.write(reinterpret_cast<const char*>(v0.data()), 32 * sizeof(float));
+        qf.close();
+    }
+
+    // Search without timestamp filter - should find both
+    std::string output;
+    int rc = run_cli("search " + path + " --query-file /tmp/query_vec.bin --top-k 10 --json", output);
+    CHECK(rc == 0, "cli search json: returns success");
+    // Count results in JSON output (each result has "rank": N)
+    int results = 0;
+    size_t pos = 0;
+    while ((pos = output.find("\"rank\":", pos)) != std::string::npos) {
+        results++;
+        pos++;
+    }
+    CHECK(results == 2, "cli search no filter: finds 2 results");
+
+    // Search with timestamp filter - should find only early entry
+    output.clear();
+    rc = run_cli("search " + path + " --query-file /tmp/query_vec.bin --ts-from 2025-01-01T00:00:00Z --ts-to 2025-01-12T00:00:00Z --top-k 10 --json", output);
+    CHECK(rc == 0, "cli search ts filter: returns success");
+
+    // Should find only the early entry
+    CHECK(output.find("early") != std::string::npos, "cli search ts filter: finds early entry");
+    CHECK(output.find("late") == std::string::npos, "cli search ts filter: excludes late entry");
+
+    // Cleanup
+    std::filesystem::remove_all(path);
+    std::remove("/tmp/query_vec.bin");
 }
