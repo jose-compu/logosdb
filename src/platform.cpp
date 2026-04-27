@@ -128,6 +128,102 @@ bool mmap_resize(MappedFile& map, size_t new_size, std::string& err) {
     return false;
 }
 
+bool mmap_reserve(const std::string& path, size_t reserve_size, MappedFile& out_map, std::string& err) {
+    out_map = {}; // Clear
+
+    // First, get the current file size
+    HANDLE file_handle = CreateFileA(
+        path.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,  // Allow others to write (file growth)
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr
+    );
+
+    if (file_handle == INVALID_HANDLE_VALUE) {
+        err = "CreateFileA failed: " + std::to_string(GetLastError());
+        return false;
+    }
+
+    LARGE_INTEGER file_size;
+    if (!GetFileSizeEx(file_handle, &file_size)) {
+        err = "GetFileSizeEx failed: " + std::to_string(GetLastError());
+        CloseHandle(file_handle);
+        return false;
+    }
+
+    // Create a file mapping that reserves virtual address space
+    // We use a large maximum size for reservation, but only commit what's needed
+    HANDLE map_handle = CreateFileMapping(
+        file_handle,
+        nullptr,
+        PAGE_READONLY,
+        0,
+        static_cast<DWORD>(reserve_size),  // Maximum size for reservation
+        nullptr
+    );
+
+    if (map_handle == INVALID_HANDLE_VALUE) {
+        err = "CreateFileMapping failed: " + std::to_string(GetLastError());
+        CloseHandle(file_handle);
+        return false;
+    }
+
+    // Map only the current file size initially
+    void* data = MapViewOfFile(
+        map_handle,
+        FILE_MAP_READ,
+        0,
+        0,
+        static_cast<size_t>(file_size.QuadPart)  // Initial view size
+    );
+
+    if (!data) {
+        err = "MapViewOfFile failed: " + std::to_string(GetLastError());
+        CloseHandle(map_handle);
+        CloseHandle(file_handle);
+        return false;
+    }
+
+    out_map.file_handle = file_handle;
+    out_map.map_handle = map_handle;
+    out_map.data = static_cast<uint8_t*>(data);
+    out_map.size = static_cast<size_t>(file_size.QuadPart);
+    return true;
+}
+
+size_t mmap_commit(MappedFile& map, size_t file_size) {
+#ifdef _WIN32
+    // On Windows with file mapping, the view automatically extends
+    // when the file grows (as long as we're within the mapping's max size)
+    // We just need to unmap and remap to the new size
+    if (map.data) {
+        UnmapViewOfFile(map.data);
+    }
+
+    void* data = MapViewOfFile(
+        map.map_handle,
+        FILE_MAP_READ,
+        0,
+        0,
+        file_size  // New view size
+    );
+
+    if (!data) {
+        return map.size;  // Failed, keep old size
+    }
+
+    map.data = static_cast<uint8_t*>(data);
+    map.size = file_size;
+    return map.size;
+#else
+    (void)map;
+    return file_size;
+#endif
+}
+
 #else
 // POSIX memory mapping implementation (Linux/macOS)
 
@@ -199,6 +295,20 @@ bool mmap_resize(MappedFile& map, size_t new_size, std::string& err) {
     map.data = static_cast<uint8_t*>(data);
     map.size = new_size;
     return true;
+}
+
+// Stub implementations for POSIX - reservation is handled directly in storage.cpp
+bool mmap_reserve(const std::string& path, size_t reserve_size, MappedFile& out_map, std::string& err) {
+    (void)path;
+    (void)reserve_size;
+    (void)out_map;
+    err = "mmap_reserve not implemented for POSIX - use storage.cpp implementation";
+    return false;
+}
+
+size_t mmap_commit(MappedFile& map, size_t file_size) {
+    (void)map;
+    return file_size;
 }
 
 #endif

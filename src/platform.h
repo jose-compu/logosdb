@@ -46,6 +46,10 @@ bool mmap_open(const std::string& path, size_t& out_size, MappedFile& out_map, s
 bool mmap_resize(MappedFile& map, size_t new_size, std::string& err);
 void mmap_close(MappedFile& map);
 
+// Reservation mapping (for avoiding remap on append)
+bool mmap_reserve(const std::string& path, size_t reserve_size, MappedFile& out_map, std::string& err);
+size_t mmap_commit(MappedFile& map, size_t file_size);  // Returns actual committed size
+
 // String utilities
 char* string_duplicate(const char* str);
 
