@@ -29,6 +29,7 @@ static void test_distance_mismatch_error();
 static void test_cli_info_reads_dim();
 static void test_cli_export_import_roundtrip();
 static void test_cli_search_ts_range();
+static void test_storage_pointers_stable();
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -811,6 +812,7 @@ int main() {
     test_cli_info_reads_dim();
     test_cli_export_import_roundtrip();
     test_cli_search_ts_range();
+    test_storage_pointers_stable();
 
     printf("\n%d/%d tests passed.\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
@@ -1457,4 +1459,52 @@ static void test_cli_search_ts_range() {
     // Cleanup
     std::filesystem::remove_all(path);
     std::remove("/tmp/query_vec.bin");
+}
+
+// Test that pointers remain valid across appends (reservation mapping)
+static void test_storage_pointers_stable() {
+    std::string path = "/tmp/logosdb_test_stable_pointers";
+    std::filesystem::remove_all(path);
+
+    int dim = 32;
+    logosdb::DB db(path, {.dim = dim});
+
+    // Insert first vector and get pointer
+    auto v0 = unit_vec(dim, 20000);
+    db.put(v0, "first", "2025-01-01T00:00:00Z");
+
+    // Get raw pointer to the data
+    size_t n_rows = 0;
+    int d = 0;
+    const float* raw = db.raw_vectors(n_rows, d);
+    CHECK(raw != nullptr, "stable_ptr: got raw pointer");
+    CHECK(n_rows == 1, "stable_ptr: 1 row");
+
+    // Verify we can read the first vector
+    float first_val = raw[0];
+    float diff = 0.0f;
+    for (int i = 0; i < dim; ++i) {
+        diff += std::fabs(raw[i] - v0[i]);
+    }
+    CHECK(diff < 1e-5f, "stable_ptr: first vector matches before append");
+
+    // Insert many more vectors - with reservation mapping, the pointer should remain valid
+    for (int i = 0; i < 100; ++i) {
+        auto v = unit_vec(dim, 20001 + i);
+        db.put(v, "batch", "2025-01-01T00:00:00Z");
+    }
+
+    // Verify the original pointer is still valid and unchanged
+    diff = 0.0f;
+    for (int i = 0; i < dim; ++i) {
+        diff += std::fabs(raw[i] - v0[i]);
+    }
+    CHECK(diff < 1e-5f, "stable_ptr: first vector unchanged after 100 appends");
+
+    // Also verify we can still search
+    auto hits = db.search(v0, 1);
+    CHECK(!hits.empty(), "stable_ptr: search works after appends");
+    CHECK(hits[0].id == 0, "stable_ptr: first vector still found");
+
+    std::filesystem::remove_all(path);
 }

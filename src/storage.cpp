@@ -103,7 +103,7 @@ bool VectorStorage::open(const std::string & path, int dim, std::string & err) {
         }
     }
 
-    if (!remap(err)) {
+    if (!reserve_mapping(file_size_, err)) {
         close();
         return false;
     }
@@ -122,6 +122,7 @@ void VectorStorage::close() {
     }
     header_ = {};
     file_size_ = 0;
+    reserved_size_ = 0;
 }
 
 uint64_t VectorStorage::append(const float * vec, int dim, std::string & err) {
@@ -157,7 +158,8 @@ uint64_t VectorStorage::append(const float * vec, int dim, std::string & err) {
         return UINT64_MAX;
     }
 
-    if (!remap(err)) return UINT64_MAX;
+    // Extend mapping if file grew beyond current mapping
+    if (!extend_mapping_if_needed(err)) return UINT64_MAX;
     return id;
 }
 
@@ -201,8 +203,8 @@ uint64_t VectorStorage::append_batch(const float * data, int n, int dim, std::st
         return UINT64_MAX;
     }
 
-    // Single remap at the end
-    if (!remap(err)) return UINT64_MAX;
+    // Extend mapping if needed (single remap at end, or just extend if reserved)
+    if (!extend_mapping_if_needed(err)) return UINT64_MAX;
     return start_id;
 }
 
@@ -230,33 +232,77 @@ bool VectorStorage::sync(std::string & err) {
     return true;
 }
 
-bool VectorStorage::remap(std::string & err) {
+bool VectorStorage::reserve_mapping(size_t min_size, std::string & err) {
     unmap();
-    struct stat st;
-    if (fstat(fd_, &st) != 0) {
-        err = std::string("fstat: ") + strerror(errno);
-        return false;
-    }
-    map_size_ = (size_t)st.st_size;
-    if (map_size_ == 0) return true;
+
+    // Reserve at least DEFAULT_RESERVE_SIZE or min_size, rounded up
+    reserved_size_ = std::max(DEFAULT_RESERVE_SIZE, min_size);
+    reserved_size_ = (reserved_size_ + 4095) & ~4095ULL;  // Round up to page size
 
 #ifdef _WIN32
-    // Windows: close and reopen with platform mapping
+    // Windows: use platform mapping
     platform::mmap_close(platform_map_);
-    if (!platform::mmap_open(path_, map_size_, platform_map_, err)) {
+    if (!platform::mmap_reserve(path_, reserved_size_, platform_map_, err)) {
         return false;
     }
     map_base_ = platform_map_.data;
+    map_size_ = platform::mmap_commit(platform_map_, file_size_);
+#elif defined(__linux__)
+    // Linux: use MAP_NORESERVE to reserve address space without committing memory
+    map_base_ = (uint8_t *)mmap(nullptr, reserved_size_, PROT_READ,
+                                  MAP_SHARED | MAP_NORESERVE, fd_, 0);
+    if (map_base_ == MAP_FAILED) {
+        map_base_ = nullptr;
+        err = std::string("mmap reserve: ") + strerror(errno);
+        return false;
+    }
+    // Advise that we don't need the pages beyond current file size yet
+    if (file_size_ < reserved_size_) {
+        madvise(map_base_ + file_size_, reserved_size_ - file_size_, MADV_DONTNEED);
+    }
+    map_size_ = file_size_;
 #else
-    // POSIX: direct mmap
-    map_base_ = (uint8_t *)mmap(nullptr, map_size_, PROT_READ, MAP_SHARED, fd_, 0);
+    // macOS and others: fall back to regular mmap of current file size
+    // We don't reserve extra space on macOS due to lack of MAP_NORESERVE
+    map_base_ = (uint8_t *)mmap(nullptr, file_size_, PROT_READ, MAP_SHARED, fd_, 0);
     if (map_base_ == MAP_FAILED) {
         map_base_ = nullptr;
         err = std::string("mmap: ") + strerror(errno);
         return false;
     }
+    reserved_size_ = file_size_;
+    map_size_ = file_size_;
 #endif
     return true;
+}
+
+bool VectorStorage::extend_mapping_if_needed(std::string & err) {
+    // If file hasn't grown beyond mapped size, nothing to do
+    if (file_size_ <= map_size_) return true;
+
+    // If we have enough reserved space, just extend the active mapping
+    if (file_size_ <= reserved_size_) {
+#ifdef _WIN32
+        // Windows: commit more pages
+        map_size_ = platform::mmap_commit(platform_map_, file_size_);
+#elif defined(__linux__)
+        // Linux: with MAP_SHARED, the mapping automatically covers new file data
+        // Just update our tracked size
+        map_size_ = file_size_;
+#else
+        // macOS: need to remap since we didn't reserve extra space
+        if (!remap(err)) return false;
+#endif
+        return true;
+    }
+
+    // Need to grow reservation - do a full remap
+    return reserve_mapping(file_size_, err);
+}
+
+bool VectorStorage::remap(std::string & err) {
+    // Try to use reserve_mapping for better performance
+    return reserve_mapping(file_size_, err);
 }
 
 void VectorStorage::unmap() {
@@ -264,12 +310,14 @@ void VectorStorage::unmap() {
     platform::mmap_close(platform_map_);
     map_base_ = nullptr;
     map_size_ = 0;
+    reserved_size_ = 0;
 #else
-    if (map_base_ && map_size_ > 0) {
-        munmap(map_base_, map_size_);
+    if (map_base_ && reserved_size_ > 0) {
+        munmap(map_base_, reserved_size_);
     }
     map_base_ = nullptr;
     map_size_ = 0;
+    reserved_size_ = 0;
 #endif
 }
 

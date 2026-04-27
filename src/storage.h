@@ -63,13 +63,17 @@ public:
 private:
     bool remap(std::string & err);
     void unmap();
+    bool reserve_mapping(size_t min_size, std::string & err);
+    bool extend_mapping_if_needed(std::string & err);
 
     std::string    path_;
     int            fd_        = -1;
     StorageHeader  header_    = {};
     uint8_t *      map_base_  = nullptr;
-    size_t         map_size_  = 0;
-    size_t         file_size_ = 0;
+    size_t         map_size_  = 0;        // Currently mapped size
+    size_t         file_size_ = 0;        // Current file size
+    size_t         reserved_size_ = 0;    // Reserved address space size
+    static constexpr size_t DEFAULT_RESERVE_SIZE = 1ULL << 30;  // 1 GB reservation
     platform::MappedFile platform_map_{};  // For Windows memory mapping
 };
 
