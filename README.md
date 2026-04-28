@@ -80,9 +80,13 @@ logosdb_options_set_dim(opts, 2048);
 logosdb_t *db = logosdb_open("/tmp/mydb", opts, &err);
 logosdb_options_destroy(opts);
 
-float vec[2048] = { /* ... */ };
-logosdb_put(db, vec, 2048, "My commute is 42 minutes",
-            "2025-06-25T10:00:00Z", &err);
+float vec[2048] = { /* ... unnormalized vector ... */ };
+
+// L2-normalize for inner-product distance (returns 0 on success, -1 if zero norm)
+if (logosdb_l2_normalize(vec, 2048) == 0) {
+    logosdb_put(db, vec, 2048, "My commute is 42 minutes",
+                "2025-06-25T10:00:00Z", &err);
+}
 
 logosdb_search_result_t *res = logosdb_search(db, query_vec, 2048, 5, &err);
 for (int i = 0; i < logosdb_result_count(res); i++) {
@@ -154,12 +158,20 @@ logosdb_close(db);
 
 ```cpp
 #include <logosdb/logosdb.h>
+#include <vector>
 
 // Basic usage with default inner-product distance
 logosdb::DB db("/tmp/mydb", {.dim = 2048});
-db.put(embedding, "My commute is 42 minutes", "2025-06-25T10:00:00Z");
 
-auto results = db.search(query, 5);
+// L2-normalize your vectors before insertion (required for inner-product distance)
+std::vector<float> embedding = load_some_vector();  // unnormalized
+if (logosdb::l2_normalize(embedding)) {
+    db.put(embedding, "My commute is 42 minutes", "2025-06-25T10:00:00Z");
+}
+
+// Or use l2_normalized() to get a normalized copy
+auto normalized = logosdb::l2_normalized(query);
+auto results = db.search(normalized, 5);
 for (auto &r : results) {
     printf("id=%llu score=%.4f text=%s\n", r.id, r.score, r.text.c_str());
 }
@@ -228,6 +240,7 @@ db = logosdb.DB("/tmp/mydb", dim=128)
 
 v = np.random.randn(128).astype(np.float32)
 v /= np.linalg.norm(v)  # Required for default inner-product distance
+# Or use logosdb.DIST_COSINE for automatic normalization
 
 rid = db.put(v, text="hello", timestamp="2025-06-25T10:00:00Z")
 # rid is the row id for this vector (often 0 for the first insert).

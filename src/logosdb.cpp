@@ -556,3 +556,40 @@ const float * logosdb_raw_vectors(logosdb_t * db, size_t * n_rows, int * dim) {
     if (dim)    *dim    = db->dim;
     return db->vectors.data();
 }
+
+/* ── Vector utilities ──────────────────────────────────────────────── */
+
+#include <cmath>
+
+int logosdb_l2_normalize(float * vec, int dim) {
+    if (!vec || dim <= 0) return -1;
+
+    double sq_sum = 0.0;
+    for (int i = 0; i < dim; ++i) {
+        sq_sum += (double)vec[i] * (double)vec[i];
+    }
+
+    double norm = std::sqrt(sq_sum);
+    if (norm == 0.0) return -1;  // Zero norm - cannot normalize
+
+    float scale = (float)(1.0 / norm);
+    for (int i = 0; i < dim; ++i) {
+        vec[i] *= scale;
+    }
+    return 0;
+}
+
+/* C++ convenience wrappers */
+namespace logosdb {
+
+bool l2_normalize(std::vector<float> & v) {
+    if (v.empty()) return false;
+    return logosdb_l2_normalize(v.data(), (int)v.size()) == 0;
+}
+
+std::vector<float> l2_normalized(std::vector<float> v) {
+    l2_normalize(v);
+    return v;  // NRVO should elide the copy
+}
+
+} // namespace logosdb

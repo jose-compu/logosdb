@@ -144,6 +144,23 @@ int    logosdb_dim       (logosdb_t * db);
 
 const float * logosdb_raw_vectors(logosdb_t * db, size_t * n_rows, int * dim);
 
+/* ── Vector utilities ──────────────────────────────────────────────── */
+
+/* Normalize `vec` in-place using L2 (Euclidean) norm.
+ *   vec: pointer to float array (will be modified in place)
+ *   dim: number of elements in vec
+ *
+ * Returns 0 on success, -1 if the input has zero norm (cannot normalize).
+ * On zero norm, vec is left unchanged.
+ *
+ * Example:
+ *   float vec[128] = { ... };
+ *   if (logosdb_l2_normalize(vec, 128) == 0) {
+ *       logosdb_put(db, vec, 128, "text", NULL, &err);
+ *   }
+ */
+int logosdb_l2_normalize(float * vec, int dim);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
@@ -368,6 +385,36 @@ private:
 };
 
 } // namespace logosdb
+
+/* L2-normalization helpers for C++
+ *
+ * These functions simplify preparing vectors for use with LOGOSDB_DIST_IP
+ * (inner product distance), which requires L2-normalized vectors.
+ *
+ * Example:
+ *   std::vector<float> vec = load_some_vector();  // unnormalized
+ *   if (logosdb::l2_normalize(vec)) {
+ *       db.put(vec, "text", "2025-04-28T10:00:00Z");
+ *   }
+ *
+ * Or use l2_normalized() to get a normalized copy:
+ *   auto normalized = logosdb::l2_normalized(vec);
+ *   db.put(normalized, "text");
+ */
+namespace logosdb {
+
+/* Normalize `v` in-place using L2 norm.
+ * Returns true on success, false if the vector has zero norm.
+ * On zero norm, v is left unchanged. */
+bool l2_normalize(std::vector<float> & v);
+
+/* Return an L2-normalized copy of `v`.
+ * The input `v` is not modified.
+ * Returns a zero vector if input has zero norm (caller should check). */
+std::vector<float> l2_normalized(std::vector<float> v);
+
+} // namespace logosdb
+
 #endif
 
 #endif // LOGOSDB_H
