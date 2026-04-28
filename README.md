@@ -296,6 +296,60 @@ pip install ".[examples]"
 python examples/python/sentence_transformers_demo.py
 ```
 
+## Memory-Efficient On-Prem RAG
+
+LogosDB is designed for memory-efficient retrieval-augmented generation (RAG) that runs entirely on your hardware.
+
+### RAM Model
+
+LogosDB uses `mmap()` for zero-copy access. Your RAM usage scales with **query patterns**, not dataset size:
+
+| Dataset | Dim | Disk | Typical Query RAM |
+|---------|-----|------|-------------------|
+| 100K | 384 | 153 MB | <20 MB |
+| 1M | 384 | 1.5 GB | <100 MB |
+| 10M | 384 | 15 GB | <200 MB |
+
+The OS caches hot index pages; cold data stays on disk. No explicit loading/unloading needed.
+
+### Quick RAG Example
+
+```python
+import numpy as np
+import logosdb
+from sentence_transformers import SentenceTransformer
+
+# 1. Load model (runs locally)
+model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+dim = model.get_sentence_embedding_dimension()
+
+# 2. Create DB with cosine distance (auto-normalizes)
+db = logosdb.DB("/data/knowledge", dim=dim, distance=logosdb.DIST_COSINE)
+
+# 3. Index documents
+for text in documents:
+    emb = model.encode(text)
+    db.put(emb, text=text)  # Auto-normalized with cosine distance
+
+# 4. Query (only touched pages load into RAM)
+query_emb = model.encode("What is HNSW?")
+for hit in db.search(query_emb, top_k=3):
+    print(f"{hit.score:.4f}  {hit.text}")
+```
+
+See [docs/rag-on-prem.md](docs/rag-on-prem.md) for complete guide including:
+- Sizing guidelines for your data
+- Time-sharding for infinite retention
+- External quantization patterns
+- Architecture patterns for production
+
+Run the memory-efficient RAG example:
+
+```bash
+pip install ".[examples]"
+python examples/python/memory_efficient_rag.py
+```
+
 ## Python: LlamaIndex VectorStore
 
 ```bash
