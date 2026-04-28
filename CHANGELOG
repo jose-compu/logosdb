@@ -1,6 +1,29 @@
 logosdb change log
 ==================
 
+0.6.0  (2026-04-28)
+-------------------
+
+  LlamaIndex VectorStore backend (closes #23)
+
+  * New LogosDBIndex class implementing LlamaIndex's VectorStore interface.
+  * API: add(), delete(), query(), persist(), clear(), count(), client().
+  * Supports timestamp range filtering via query kwargs (ts_from, ts_to).
+  * Cosine similarity mode with automatic vector normalization.
+  * Optional dependency: pip install 'logosdb[llama-index]'.
+  * 19 test cases covering all functionality.
+  * Shares helper utilities with LangChain adapter (internal refactor).
+
+  L2-normalization helpers (closes #15)
+
+  * New C API: `logosdb_l2_normalize(float *vec, int dim)` - returns 0 on success,
+    -1 if zero norm (vector unchanged).
+  * New C++ helpers: `logosdb::l2_normalize(vector<float>&)` and
+    `logosdb::l2_normalized(vector<float>)` for in-place and copy variants.
+  * Double-precision norm calculation for accuracy.
+  * Unit tests cover: random vectors, already-normalized, zero vectors, small values.
+  * README examples updated to use helpers instead of hand-rolled loops.
+
 0.5.0  (2026-04-27)
 -------------------
 

@@ -20,14 +20,24 @@ from ._core import (
 # LangChain adapter is available as optional import
 try:
     from .langchain import LogosDBVectorStore
-    __all__ = [
-        "DB", "SearchHit", "LOGOSDB_VERSION", "__version__",
-        "DIST_IP", "DIST_COSINE", "DIST_L2",
-        "LogosDBVectorStore",
-    ]
+    LANGCHAIN_AVAILABLE = True
 except ImportError:
-    # langchain-core not installed
-    __all__ = [
-        "DB", "SearchHit", "LOGOSDB_VERSION", "__version__",
-        "DIST_IP", "DIST_COSINE", "DIST_L2",
-    ]
+    LANGCHAIN_AVAILABLE = False
+
+# LlamaIndex adapter is available as optional import
+try:
+    from .llamaindex import LogosDBIndex
+    LLAMAINDEX_AVAILABLE = True
+except ImportError:
+    LLAMAINDEX_AVAILABLE = False
+
+# Build __all__ based on available optional dependencies
+__all__ = [
+    "DB", "SearchHit", "LOGOSDB_VERSION", "__version__",
+    "DIST_IP", "DIST_COSINE", "DIST_L2",
+]
+
+if LANGCHAIN_AVAILABLE:
+    __all__.append("LogosDBVectorStore")
+if LLAMAINDEX_AVAILABLE:
+    __all__.append("LogosDBIndex")

@@ -19,6 +19,7 @@ Authors: Jose ([@jose-compu](https://github.com/jose-compu))
   * Thread-safe writes via internal mutex; concurrent reads are lock-free.
   * Crash recovery: HNSW index is automatically backfilled from the append-only vector store on open.
   * Scales to millions of vectors.
+  * **Framework integrations**: LangChain and LlamaIndex VectorStore adapters.
 
 # Documentation
 
@@ -294,6 +295,50 @@ python examples/python/basic_usage.py
 pip install ".[examples]"
 python examples/python/sentence_transformers_demo.py
 ```
+
+## Python: LlamaIndex VectorStore
+
+```bash
+pip install 'logosdb[llama-index]'
+```
+
+```python
+from logosdb import LogosDBIndex
+from llama_index.core import Document
+from llama_index.core.schema import TextNode
+from llama_index.core.vector_stores import VectorStoreQuery
+import numpy as np
+
+# Create the vector store
+db = LogosDBIndex(uri="/tmp/mydb", dim=128)
+
+# Add nodes with pre-computed embeddings
+node = TextNode(
+    text="My commute is 42 minutes",
+    embedding=np.random.randn(128).astype(np.float32).tolist(),
+    metadata={"timestamp": "2025-04-28T10:00:00Z"}
+)
+db.add([node])
+
+# Query
+query_emb = np.random.randn(128).astype(np.float32).tolist()
+query = VectorStoreQuery(query_embedding=query_emb, similarity_top_k=5)
+results = db.query(query)
+
+for node, score in zip(results.nodes, results.similarities):
+    print(f"Score: {score:.4f}, Text: {node.text}")
+
+# Timestamp range filtering
+results = db.query(query, ts_from="2025-04-01T00:00:00Z", ts_to="2025-04-30T23:59:59Z")
+```
+
+The `LogosDBIndex` class implements LlamaIndex's `VectorStore` interface, supporting:
+
+- `add(nodes)` - Add nodes with embeddings
+- `delete(node_id)` - Delete by node ID
+- `query(VectorStoreQuery)` - Similarity search by vector
+- `count()` / `len(store)` - Number of live documents
+- Timestamp filtering via `ts_from` and `ts_to` kwargs
 
 # CLI
 
