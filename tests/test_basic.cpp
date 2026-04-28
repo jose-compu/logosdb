@@ -30,6 +30,11 @@ static void test_cli_info_reads_dim();
 static void test_cli_export_import_roundtrip();
 static void test_cli_search_ts_range();
 static void test_storage_pointers_stable();
+static void test_l2_normalize_basic();
+static void test_l2_normalize_already_normalized();
+static void test_l2_normalize_zero_vector();
+static void test_l2_normalize_small_values();
+static void test_l2_normalize_cpp_wrappers();
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -813,6 +818,11 @@ int main() {
     test_cli_export_import_roundtrip();
     test_cli_search_ts_range();
     test_storage_pointers_stable();
+    test_l2_normalize_basic();
+    test_l2_normalize_already_normalized();
+    test_l2_normalize_zero_vector();
+    test_l2_normalize_small_values();
+    test_l2_normalize_cpp_wrappers();
 
     printf("\n%d/%d tests passed.\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
@@ -1507,4 +1517,126 @@ static void test_storage_pointers_stable() {
     CHECK(hits[0].id == 0, "stable_ptr: first vector still found");
 
     std::filesystem::remove_all(path);
+}
+
+// Test L2-normalization: random vectors become unit length
+static void test_l2_normalize_basic() {
+    std::mt19937 rng(12345);
+    std::normal_distribution<float> dist(0.0f, 1.0f);
+
+    int dim = 128;
+    std::vector<float> vec(dim);
+    for (int i = 0; i < dim; ++i) vec[i] = dist(rng);
+
+    // Compute original norm - should NOT be unit length (random values)
+    float orig_norm_sq = 0.0f;
+    for (float v : vec) orig_norm_sq += v * v;
+    float orig_norm = std::sqrt(orig_norm_sq);
+    CHECK(orig_norm > 5.0f, "l2_norm: random vector has non-trivial norm");
+
+    // Normalize (should succeed)
+    int rc = logosdb_l2_normalize(vec.data(), dim);
+    CHECK(rc == 0, "l2_norm: normalize succeeds");
+
+    // Check that it's now unit length
+    float norm_sq = 0.0f;
+    for (float v : vec) norm_sq += v * v;
+    float norm = std::sqrt(norm_sq);
+    CHECK(std::abs(norm - 1.0f) < 1e-5f, "l2_norm: result has unit length");
+
+    // Test with C API on scaled vector
+    std::vector<float> v2(dim);
+    for (int i = 0; i < dim; ++i) v2[i] = 3.0f * dist(rng);  // Scale by 3
+
+    rc = logosdb_l2_normalize(v2.data(), dim);
+    CHECK(rc == 0, "l2_norm: scaled vector normalizes");
+
+    norm_sq = 0.0f;
+    for (float v : v2) norm_sq += v * v;
+    norm = std::sqrt(norm_sq);
+    CHECK(std::abs(norm - 1.0f) < 1e-5f, "l2_norm: scaled result has unit length");
+}
+
+// Test L2-normalization: already-normalized vectors stay normalized
+static void test_l2_normalize_already_normalized() {
+    int dim = 64;
+    auto v = unit_vec(dim, 50000);  // Already unit length
+
+    float norm_sq = 0.0f;
+    for (float val : v) norm_sq += val * val;
+    CHECK(std::abs(std::sqrt(norm_sq) - 1.0f) < 1e-5f, "l2_norm_pre: starts unit");
+
+    // Re-normalizing should be no-op
+    int rc = logosdb_l2_normalize(v.data(), dim);
+    CHECK(rc == 0, "l2_norm_pre: normalize succeeds");
+
+    norm_sq = 0.0f;
+    for (float val : v) norm_sq += val * val;
+    float norm = std::sqrt(norm_sq);
+    CHECK(std::abs(norm - 1.0f) < 1e-5f, "l2_norm_pre: still unit length");
+}
+
+// Test L2-normalization: zero vector returns error
+static void test_l2_normalize_zero_vector() {
+    int dim = 32;
+    std::vector<float> zero_vec(dim, 0.0f);
+
+    int rc = logosdb_l2_normalize(zero_vec.data(), dim);
+    CHECK(rc == -1, "l2_norm_zero: returns -1 for zero vector");
+
+    // Vector should be unchanged
+    for (float v : zero_vec) CHECK(v == 0.0f, "l2_norm_zero: vector unchanged");
+}
+
+// Test L2-normalization: very small values
+static void test_l2_normalize_small_values() {
+    int dim = 128;
+    std::vector<float> small_vec(dim);
+    for (int i = 0; i < dim; ++i) small_vec[i] = 1e-20f;
+
+    int rc = logosdb_l2_normalize(small_vec.data(), dim);
+    CHECK(rc == 0, "l2_norm_small: normalize succeeds");
+
+    float norm_sq = 0.0f;
+    for (float v : small_vec) norm_sq += v * v;
+    float norm = std::sqrt(norm_sq);
+    CHECK(std::abs(norm - 1.0f) < 1e-5f, "l2_norm_small: result has unit length");
+}
+
+// Test C++ convenience wrappers
+static void test_l2_normalize_cpp_wrappers() {
+    int dim = 64;
+    std::mt19937 rng(60000);
+    std::normal_distribution<float> dist(0.0f, 1.0f);
+
+    // Test l2_normalize (in-place)
+    std::vector<float> v1(dim);
+    for (int i = 0; i < dim; ++i) v1[i] = 5.0f * dist(rng);  // Scale by 5
+
+    bool ok = logosdb::l2_normalize(v1);
+    CHECK(ok, "l2_norm_cpp: in-place normalize returns true");
+
+    float norm_sq = 0.0f;
+    for (float v : v1) norm_sq += v * v;
+    CHECK(std::abs(std::sqrt(norm_sq) - 1.0f) < 1e-5f, "l2_norm_cpp: in-place result unit");
+
+    // Test l2_normalized (copy)
+    std::vector<float> v2(dim);
+    for (int i = 0; i < dim; ++i) v2[i] = 3.0f * dist(rng);
+    std::vector<float> v2_orig = v2;
+
+    std::vector<float> v2_normed = logosdb::l2_normalized(v2);
+
+    // Original should be unchanged
+    for (int i = 0; i < dim; ++i) CHECK(v2[i] == v2_orig[i], "l2_norm_cpp: original unchanged");
+
+    // Copy should be normalized
+    norm_sq = 0.0f;
+    for (float v : v2_normed) norm_sq += v * v;
+    CHECK(std::abs(std::sqrt(norm_sq) - 1.0f) < 1e-5f, "l2_norm_cpp: copy is unit");
+
+    // Test zero vector with C++ wrapper
+    std::vector<float> zero_vec(dim, 0.0f);
+    ok = logosdb::l2_normalize(zero_vec);
+    CHECK(!ok, "l2_norm_cpp: zero vector returns false");
 }
