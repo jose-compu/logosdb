@@ -4,6 +4,20 @@ logosdb change log
 0.6.0  (2026-04-28)
 -------------------
 
+  Docs + example: on-prem memory-efficient RAG (closes #27)
+
+  * New `docs/rag-on-prem.md` comprehensive guide for on-premises RAG:
+    - RAM model: explains mmap-based memory scaling with query patterns
+    - Sizing guide: disk size and RAM estimates for 10K to 10M vectors
+    - Architecture patterns: embed offline/query online, time-sharding
+    - External quantization guidance for edge deployments
+  * New `examples/python/memory_efficient_rag.py` with:
+    - RSS memory tracking during ingest and query
+    - Batch processing to limit peak RAM
+    - Database size reporting vs theoretical minimum
+    - Complete RAG loop demonstration
+  * Updated README with memory-efficiency section and quick RAG example.
+
   LlamaIndex VectorStore backend (closes #23)
 
   * New LogosDBIndex class implementing LlamaIndex's VectorStore interface.
