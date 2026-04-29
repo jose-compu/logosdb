@@ -1,6 +1,20 @@
 logosdb change log
 ==================
 
+0.7.0  (TBD)
+-------------------
+
+  Haystack 2.x integration (closes #24)
+
+  * New LogosDBDocumentStore class implementing Haystack 2.x DocumentStore interface.
+  * New LogosDBRetriever component for Haystack 2.x pipelines.
+  * API: write_documents(), delete_documents(), count_documents(), filter_documents().
+  * Retriever supports timestamp range filtering (ts_from, ts_to).
+  * Cosine similarity mode with automatic vector normalization.
+  * Optional dependency: pip install 'logosdb[haystack]'.
+  * 20 test cases covering DocumentStore and Retriever functionality.
+  * Serialization support: to_dict() / from_dict() for pipeline persistence.
+
 0.6.0  (2026-04-28)
 -------------------
 
