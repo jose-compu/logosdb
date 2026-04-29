@@ -33,6 +33,7 @@ struct logosdb_options_t {
     int    M               = 16;
     int    ef_search       = 50;
     int    distance        = 0;  /* LOGOSDB_DIST_IP default */
+    int    dtype           = 0;  /* LOGOSDB_DTYPE_FLOAT32 default */
 };
 
 struct logosdb_search_result_t {
@@ -74,6 +75,13 @@ int logosdb_options_set_distance(logosdb_options_t * o, int metric) {
     return 0;
 }
 
+int logosdb_options_set_dtype(logosdb_options_t * o, int dtype) {
+    if (!o) return -1;
+    if (dtype < 0 || dtype > 2) return -1;  /* Invalid dtype */
+    o->dtype = dtype;
+    return 0;
+}
+
 /* ── Lifecycle ─────────────────────────────────────────────────────── */
 
 logosdb_t * logosdb_open(const char * path, const logosdb_options_t * opts,
@@ -94,7 +102,8 @@ logosdb_t * logosdb_open(const char * path, const logosdb_options_t * opts,
     std::string idx_path  = std::string(path) + "/hnsw.idx";
     std::string wal_path  = std::string(path) + "/wal.log";
 
-    if (!db->vectors.open(vec_path, opts->dim, err)) {
+    StorageDtype dtype = static_cast<StorageDtype>(opts->dtype);
+    if (!db->vectors.open(vec_path, opts->dim, dtype, err)) {
         set_err(errptr, err);
         delete db;
         return nullptr;
@@ -166,9 +175,10 @@ logosdb_t * logosdb_open(const char * path, const logosdb_options_t * opts,
     size_t n_idx = db->index.count();
     bool   backfilled = false;
     if (n_vec > n_idx) {
+        std::vector<float> float32_row(db->dim);
         for (size_t i = n_idx; i < n_vec; ++i) {
-            const float * row = db->vectors.row(i);
-            if (row && !db->index.add(i, row, err)) {
+            db->vectors.row_to_float32(i, float32_row.data());
+            if (!db->index.add(i, float32_row.data(), err)) {
                 set_err(errptr, "backfill index: " + err);
                 delete db;
                 return nullptr;
@@ -554,7 +564,18 @@ const float * logosdb_raw_vectors(logosdb_t * db, size_t * n_rows, int * dim) {
     if (!db) { if (n_rows) *n_rows = 0; if (dim) *dim = 0; return nullptr; }
     if (n_rows) *n_rows = db->vectors.n_rows();
     if (dim)    *dim    = db->dim;
-    return db->vectors.data();
+
+    // For reduced precision storage, we cannot return a direct pointer to float32 data
+    // because the storage is in a different format. Users should use the C++ API or
+    // individual row access for quantized storage.
+    StorageDtype dtype = db->vectors.dtype();
+    if (dtype != DTYPE_FLOAT32) {
+        // Return nullptr to indicate this API doesn't work with quantized storage
+        if (n_rows) *n_rows = 0;
+        if (dim) *dim = 0;
+        return nullptr;
+    }
+    return static_cast<const float *>(db->vectors.data_raw());
 }
 
 /* ── Vector utilities ──────────────────────────────────────────────── */

@@ -175,30 +175,27 @@ Returns:
                 auto & db = self.cast<logosdb::DB &>();
                 size_t n = 0;
                 int    d = 0;
-                const float * p = db.raw_vectors(n, d);
-                if (!p || n == 0) {
-                    // Empty zero-copy placeholder (0 rows × d cols).
+                // raw_vectors now returns a vector<float> (handles quantized storage)
+                std::vector<float> data = db.raw_vectors(n, d);
+                if (data.empty() || n == 0) {
+                    // Empty array (0 rows × d cols).
                     return py::array_t<float>(
                         std::vector<py::ssize_t>{0, (py::ssize_t)d});
                 }
-                // Zero-copy view into the mmap-backed storage. The array keeps
-                // the DB Python object alive via `self` as its base.
+                // Return a numpy array. This copies the data (required because
+                // data is a local vector that will be destroyed).
                 std::vector<py::ssize_t> shape   = {(py::ssize_t)n, (py::ssize_t)d};
-                std::vector<py::ssize_t> strides = {
-                    (py::ssize_t)(d * sizeof(float)),
-                    (py::ssize_t)sizeof(float)
-                };
-                py::array_t<float> arr(shape, strides, p, self);
+                py::array_t<float> arr(shape, data.data());
                 // Mark as read-only.
                 py::detail::array_proxy(arr.ptr())->flags &=
                     ~py::detail::npy_api::NPY_ARRAY_WRITEABLE_;
                 return arr;
             },
-            R"doc(Return a read-only (n_rows, dim) numpy array view over the vector store.
+            R"doc(Return a read-only (n_rows, dim) numpy array copy of the vector store.
 
-The returned array is zero-copy and shares memory with the mmap-backed
-storage; do NOT modify it. The array holds a reference to the DB, so
-it keeps the database open for the lifetime of the array.
+The returned array is a COPY of the vector data. For reduced-precision
+storage (float16/int8), vectors are dequantized to float32 before return.
+This is safe to read but should NOT be modified.
 )doc")
 
         .def("__len__", &logosdb::DB::count_live)
