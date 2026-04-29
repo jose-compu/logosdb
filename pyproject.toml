@@ -33,6 +33,7 @@ examples = ["sentence-transformers>=2.2"]
 langchain = ["langchain-core>=0.2", "numpy>=1.21"]
 llama-index = ["llama-index-core>=0.12", "numpy>=1.21"]
 haystack = ["haystack-ai>=2.0", "numpy>=1.21"]
+mistral = ["requests>=2.31", "numpy>=1.21"]
 
 [project.urls]
 Homepage = "https://github.com/jose-compu/logosdb"

@@ -50,3 +50,13 @@ if LLAMAINDEX_AVAILABLE:
     __all__.append("LogosDBIndex")
 if HAYSTACK_AVAILABLE:
     __all__.extend(["LogosDBDocumentStore", "LogosDBRetriever"])
+
+# Mistral integration is available as optional import
+try:
+    from .mistral import MistralVectorStore, MistralEmbeddingProvider
+    MISTRAL_AVAILABLE = True
+except ImportError:
+    MISTRAL_AVAILABLE = False
+
+if MISTRAL_AVAILABLE:
+    __all__.extend(["MistralVectorStore", "MistralEmbeddingProvider"])
