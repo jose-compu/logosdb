@@ -18,6 +18,15 @@ logosdb change log
   * New ADR document: `docs/adr-002-training-free-quantization.md` describing
     the architecture decision and trade-offs.
 
+  Mistral AI embeddings integration (closes #54)
+
+  * New `python/logosdb/mistral.py` module with `MistralVectorStore`.
+  * Uses Mistral embeddings API (`mistral-embed`) with LogosDB backend storage.
+  * API: `add_texts()` and `search()` with batched embedding requests.
+  * Optional helper: `MistralEmbeddingProvider` for standalone embedding use.
+  * New optional extra: `pip install 'logosdb[mistral]'`.
+  * Added Python tests in `tests/python/test_mistral.py` (network-free via mock).
+
   Node.js bindings and npm package (closes #44)
 
   * New `nodejs/` directory with complete Node.js native addon:
