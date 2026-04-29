@@ -48,8 +48,15 @@ except ImportError:
         pass
     class Document:  # type: ignore  # noqa: F811
         pass
-    def component(cls):  # type: ignore  # noqa: F811
+    # Dummy component decorator with output_types support
+    def _component(cls):
         return cls
+    def _output_types(**kwargs):
+        def decorator(func):
+            return func
+        return decorator
+    _component.output_types = _output_types
+    component = _component  # type: ignore  # noqa: F811
 
 
 class LogosDBDocumentStore(DocumentStore):
