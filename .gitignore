@@ -1,15 +1,39 @@
+# Build directories
 build/
-*.o
-*.a
-*.so
-*.dylib
-.DS_Store
+build_*/
+cmake-build-*/
+
+# Node.js
+node_modules/
+nodejs/build/
+nodejs/prebuilds/
+*.node
 
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
 *.egg-info/
-.pytest_cache/
-.venv/
 dist/
-wheelhouse/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+*.pid
+
+# Test outputs
+test-results/
+coverage/

@@ -4,6 +4,20 @@ logosdb change log
 0.7.0  (TBD)
 -------------------
 
+  Node.js bindings and npm package (closes #44)
+
+  * New `nodejs/` directory with complete Node.js native addon:
+    - N-API C++ bindings in `nodejs/src/node_logosdb.cpp`
+    - JavaScript wrapper API matching Python bindings
+    - TypeScript definitions in `nodejs/types/index.d.ts`
+    - node-gyp build configuration (`binding.gyp`)
+    - Prebuild support for binary distribution
+  * npm package `logosdb` with prebuilt binaries for:
+    - Linux x64, macOS x64/arm64, Windows x64
+  * Full API: DB(), put(), search(), searchTsRange(), update(), delete(), count()
+  * Test suite with 15+ test cases
+  * Install: `npm install logosdb`
+
   Haystack 2.x integration (closes #24)
 
   * New LogosDBDocumentStore class implementing Haystack 2.x DocumentStore interface.
