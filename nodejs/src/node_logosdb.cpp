@@ -10,36 +10,34 @@
 #include <string>
 #include <vector>
 
-using namespace Napi;
-
 // Helper to convert JS array to float vector
-static std::vector<float> JsArrayToFloatVector(const Array& arr) {
+static std::vector<float> JsArrayToFloatVector(const Napi::Array& arr) {
     std::vector<float> vec;
     vec.reserve(arr.Length());
     for (size_t i = 0; i < arr.Length(); i++) {
-        vec.push_back(arr.Get(i).As<Number>().FloatValue());
+        vec.push_back(arr.Get(i).As<Napi::Number>().FloatValue());
     }
     return vec;
 }
 
 // Helper to convert SearchHit to JS object
-static Object SearchHitToJsObject(Env env, const logosdb_search_result_t* result, int index) {
-    Object obj = Object::New(env);
+static Napi::Object SearchHitToJsObject(Napi::Env env, const logosdb_search_result_t* result, int index) {
+    Napi::Object obj = Napi::Object::New(env);
 
     uint64_t id = logosdb_result_id(result, index);
     float score = logosdb_result_score(result, index);
     const char* text = logosdb_result_text(result, index);
     const char* timestamp = logosdb_result_timestamp(result, index);
 
-    obj.Set("id", Number::New(env, static_cast<double>(id)));
-    obj.Set("score", Number::New(env, score));
+    obj.Set("id", Napi::Number::New(env, static_cast<double>(id)));
+    obj.Set("score", Napi::Number::New(env, score));
     if (text) {
-        obj.Set("text", String::New(env, text));
+        obj.Set("text", Napi::String::New(env, text));
     } else {
         obj.Set("text", env.Null());
     }
     if (timestamp) {
-        obj.Set("timestamp", String::New(env, timestamp));
+        obj.Set("timestamp", Napi::String::New(env, timestamp));
     } else {
         obj.Set("timestamp", env.Null());
     }
@@ -48,10 +46,10 @@ static Object SearchHitToJsObject(Env env, const logosdb_search_result_t* result
 }
 
 // DB wrapper class
-class DBWrapper : public ObjectWrap<DBWrapper> {
+class DBWrapper : public Napi::ObjectWrap<DBWrapper> {
 public:
-    static Object Init(Env env, Object exports) {
-        Function func = DefineClass(env, "DB", {
+    static Napi::Object Init(Napi::Env env, Napi::Object exports) {
+        Napi::Function func = DefineClass(env, "DB", {
             InstanceMethod("put", &DBWrapper::Put),
             InstanceMethod("search", &DBWrapper::Search),
             InstanceMethod("searchTsRange", &DBWrapper::SearchTsRange),
@@ -67,14 +65,14 @@ public:
         return exports;
     }
 
-    DBWrapper(const CallbackInfo& info) : ObjectWrap<DBWrapper>(info) {
-        Env env = info.Env();
+    DBWrapper(const Napi::CallbackInfo& info) : Napi::ObjectWrap<DBWrapper>(info) {
+        Napi::Env env = info.Env();
 
         if (info.Length() < 1 || !info[0].IsString()) {
-            throw TypeError::New(env, "Path (string) expected as first argument");
+            throw Napi::TypeError::New(env, "Path (string) expected as first argument");
         }
 
-        std::string path = info[0].As<String>().Utf8Value();
+        std::string path = info[0].As<Napi::String>().Utf8Value();
         int dim = 128;  // default
         size_t max_elements = 1000000;
         int ef_construction = 200;
@@ -84,27 +82,27 @@ public:
 
         // Parse options object if provided
         if (info.Length() > 1 && info[1].IsObject()) {
-            Object options = info[1].As<Object>();
+            Napi::Object options = info[1].As<Napi::Object>();
 
             if (options.Has("dim")) {
-                dim = options.Get("dim").As<Number>().Int32Value();
+                dim = options.Get("dim").As<Napi::Number>().Int32Value();
             }
             if (options.Has("maxElements")) {
                 max_elements = static_cast<size_t>(
-                    options.Get("maxElements").As<Number>().Int64Value()
+                    options.Get("maxElements").As<Napi::Number>().Int64Value()
                 );
             }
             if (options.Has("efConstruction")) {
-                ef_construction = options.Get("efConstruction").As<Number>().Int32Value();
+                ef_construction = options.Get("efConstruction").As<Napi::Number>().Int32Value();
             }
             if (options.Has("M")) {
-                M = options.Get("M").As<Number>().Int32Value();
+                M = options.Get("M").As<Napi::Number>().Int32Value();
             }
             if (options.Has("efSearch")) {
-                ef_search = options.Get("efSearch").As<Number>().Int32Value();
+                ef_search = options.Get("efSearch").As<Napi::Number>().Int32Value();
             }
             if (options.Has("distance")) {
-                distance = options.Get("distance").As<Number>().Int32Value();
+                distance = options.Get("distance").As<Napi::Number>().Int32Value();
             }
         }
 
@@ -124,7 +122,7 @@ public:
         if (!db_) {
             std::string error_msg = err ? err : "Unknown error opening database";
             if (err) free(err);
-            throw Error::New(env, error_msg);
+            throw Napi::Error::New(env, error_msg);
         }
 
         dim_ = dim;
@@ -141,30 +139,30 @@ private:
     logosdb_t* db_ = nullptr;
     int dim_ = 0;
 
-    void Put(const CallbackInfo& info) {
-        Env env = info.Env();
+    Napi::Value Put(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
 
         if (info.Length() < 1 || !info[0].IsArray()) {
-            throw TypeError::New(env, "Embedding (array) expected as first argument");
+            throw Napi::TypeError::New(env, "Embedding (array) expected as first argument");
         }
 
-        Array embeddingArr = info[0].As<Array>();
+        Napi::Array embeddingArr = info[0].As<Napi::Array>();
         std::vector<float> embedding = JsArrayToFloatVector(embeddingArr);
 
         if ((int)embedding.size() != dim_) {
-            throw Error::New(env, "Embedding dimension mismatch");
+            throw Napi::Error::New(env, "Embedding dimension mismatch");
         }
 
         const char* text = nullptr;
         const char* timestamp = nullptr;
 
         if (info.Length() > 1 && info[1].IsString()) {
-            text_str_ = info[1].As<String>().Utf8Value();
+            text_str_ = info[1].As<Napi::String>().Utf8Value();
             text = text_str_.c_str();
         }
 
         if (info.Length() > 2 && info[2].IsString()) {
-            ts_str_ = info[2].As<String>().Utf8Value();
+            ts_str_ = info[2].As<Napi::String>().Utf8Value();
             timestamp = ts_str_.c_str();
         }
 
@@ -174,35 +172,35 @@ private:
         if (id == UINT64_MAX) {
             std::string error_msg = err ? err : "Failed to insert";
             if (err) free(err);
-            throw Error::New(env, error_msg);
+            throw Napi::Error::New(env, error_msg);
         }
 
         if (err) free(err);
 
-        info.GetReturnValue().Set(Number::New(env, static_cast<double>(id)));
+        return Napi::Number::New(env, static_cast<double>(id));
     }
 
     // Storage for string references during put calls
     std::string text_str_;
     std::string ts_str_;
 
-    void Search(const CallbackInfo& info) {
-        Env env = info.Env();
+    Napi::Value Search(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
 
         if (info.Length() < 1 || !info[0].IsArray()) {
-            throw TypeError::New(env, "Query embedding (array) expected as first argument");
+            throw Napi::TypeError::New(env, "Query embedding (array) expected as first argument");
         }
 
-        Array queryArr = info[0].As<Array>();
+        Napi::Array queryArr = info[0].As<Napi::Array>();
         std::vector<float> query = JsArrayToFloatVector(queryArr);
 
         if ((int)query.size() != dim_) {
-            throw Error::New(env, "Query dimension mismatch");
+            throw Napi::Error::New(env, "Query dimension mismatch");
         }
 
         int top_k = 10;
         if (info.Length() > 1 && info[1].IsNumber()) {
-            top_k = info[1].As<Number>().Int32Value();
+            top_k = info[1].As<Napi::Number>().Int32Value();
         }
 
         char* err = nullptr;
@@ -211,13 +209,13 @@ private:
         if (!result) {
             std::string error_msg = err ? err : "Search failed";
             if (err) free(err);
-            throw Error::New(env, error_msg);
+            throw Napi::Error::New(env, error_msg);
         }
 
         if (err) free(err);
 
         int count = logosdb_result_count(result);
-        Array results = Array::New(env, count);
+        Napi::Array results = Napi::Array::New(env, count);
 
         for (int i = 0; i < count; i++) {
             results.Set(i, SearchHitToJsObject(env, result, i));
@@ -225,21 +223,21 @@ private:
 
         logosdb_result_free(result);
 
-        info.GetReturnValue().Set(results);
+        return results;
     }
 
-    void SearchTsRange(const CallbackInfo& info) {
-        Env env = info.Env();
+    Napi::Value SearchTsRange(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
 
         if (info.Length() < 1 || !info[0].IsArray()) {
-            throw TypeError::New(env, "Query embedding (array) expected");
+            throw Napi::TypeError::New(env, "Query embedding (array) expected");
         }
 
-        Array queryArr = info[0].As<Array>();
+        Napi::Array queryArr = info[0].As<Napi::Array>();
         std::vector<float> query = JsArrayToFloatVector(queryArr);
 
         if ((int)query.size() != dim_) {
-            throw Error::New(env, "Query dimension mismatch");
+            throw Napi::Error::New(env, "Query dimension mismatch");
         }
 
         int top_k = 10;
@@ -248,19 +246,19 @@ private:
         int candidate_k = 0;
 
         if (info.Length() > 1 && info[1].IsObject()) {
-            Object options = info[1].As<Object>();
+            Napi::Object options = info[1].As<Napi::Object>();
 
             if (options.Has("topK")) {
-                top_k = options.Get("topK").As<Number>().Int32Value();
+                top_k = options.Get("topK").As<Napi::Number>().Int32Value();
             }
             if (options.Has("tsFrom")) {
-                ts_from = options.Get("tsFrom").As<String>().Utf8Value();
+                ts_from = options.Get("tsFrom").As<Napi::String>().Utf8Value();
             }
             if (options.Has("tsTo")) {
-                ts_to = options.Get("tsTo").As<String>().Utf8Value();
+                ts_to = options.Get("tsTo").As<Napi::String>().Utf8Value();
             }
             if (options.Has("candidateK")) {
-                candidate_k = options.Get("candidateK").As<Number>().Int32Value();
+                candidate_k = options.Get("candidateK").As<Napi::Number>().Int32Value();
             }
         }
 
@@ -280,13 +278,13 @@ private:
         if (!result) {
             std::string error_msg = err ? err : "Search failed";
             if (err) free(err);
-            throw Error::New(env, error_msg);
+            throw Napi::Error::New(env, error_msg);
         }
 
         if (err) free(err);
 
         int count = logosdb_result_count(result);
-        Array results = Array::New(env, count);
+        Napi::Array results = Napi::Array::New(env, count);
 
         for (int i = 0; i < count; i++) {
             results.Set(i, SearchHitToJsObject(env, result, i));
@@ -294,35 +292,35 @@ private:
 
         logosdb_result_free(result);
 
-        info.GetReturnValue().Set(results);
+        return results;
     }
 
-    void Update(const CallbackInfo& info) {
-        Env env = info.Env();
+    Napi::Value Update(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
 
         if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsArray()) {
-            throw TypeError::New(env, "Expected (id, embedding, [text], [timestamp])");
+            throw Napi::TypeError::New(env, "Expected (id, embedding, [text], [timestamp])");
         }
 
-        uint64_t id = static_cast<uint64_t>(info[0].As<Number>().Int64Value());
+        uint64_t id = static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
 
-        Array embeddingArr = info[1].As<Array>();
+        Napi::Array embeddingArr = info[1].As<Napi::Array>();
         std::vector<float> embedding = JsArrayToFloatVector(embeddingArr);
 
         if ((int)embedding.size() != dim_) {
-            throw Error::New(env, "Embedding dimension mismatch");
+            throw Napi::Error::New(env, "Embedding dimension mismatch");
         }
 
         const char* text = nullptr;
         const char* timestamp = nullptr;
 
         if (info.Length() > 2 && info[2].IsString()) {
-            text_str_ = info[2].As<String>().Utf8Value();
+            text_str_ = info[2].As<Napi::String>().Utf8Value();
             text = text_str_.c_str();
         }
 
         if (info.Length() > 3 && info[3].IsString()) {
-            ts_str_ = info[3].As<String>().Utf8Value();
+            ts_str_ = info[3].As<Napi::String>().Utf8Value();
             timestamp = ts_str_.c_str();
         }
 
@@ -332,22 +330,22 @@ private:
         if (new_id == UINT64_MAX) {
             std::string error_msg = err ? err : "Update failed";
             if (err) free(err);
-            throw Error::New(env, error_msg);
+            throw Napi::Error::New(env, error_msg);
         }
 
         if (err) free(err);
 
-        info.GetReturnValue().Set(Number::New(env, static_cast<double>(new_id)));
+        return Napi::Number::New(env, static_cast<double>(new_id));
     }
 
-    void Delete(const CallbackInfo& info) {
-        Env env = info.Env();
+    Napi::Value Delete(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
 
         if (info.Length() < 1 || !info[0].IsNumber()) {
-            throw TypeError::New(env, "ID (number) expected");
+            throw Napi::TypeError::New(env, "ID (number) expected");
         }
 
-        uint64_t id = static_cast<uint64_t>(info[0].As<Number>().Int64Value());
+        uint64_t id = static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
 
         char* err = nullptr;
         int rc = logosdb_delete(db_, id, &err);
@@ -355,47 +353,50 @@ private:
         if (rc != 0) {
             std::string error_msg = err ? err : "Delete failed";
             if (err) free(err);
-            throw Error::New(env, error_msg);
+            throw Napi::Error::New(env, error_msg);
         }
 
         if (err) free(err);
+        return env.Undefined();
     }
 
-    void Count(const CallbackInfo& info) {
-        Env env = info.Env();
+    Napi::Value Count(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
         size_t count = logosdb_count(db_);
-        info.GetReturnValue().Set(Number::New(env, static_cast<double>(count)));
+        return Napi::Number::New(env, static_cast<double>(count));
     }
 
-    void CountLive(const CallbackInfo& info) {
-        Env env = info.Env();
+    Napi::Value CountLive(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
         size_t count = logosdb_count_live(db_);
-        info.GetReturnValue().Set(Number::New(env, static_cast<double>(count)));
+        return Napi::Number::New(env, static_cast<double>(count));
     }
 
-    void Dim(const CallbackInfo& info) {
-        Env env = info.Env();
-        info.GetReturnValue().Set(Number::New(env, dim_));
+    Napi::Value Dim(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
+        return Napi::Number::New(env, dim_);
     }
 
-    void Close(const CallbackInfo& info) {
+    Napi::Value Close(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
         if (db_) {
             logosdb_close(db_);
             db_ = nullptr;
         }
+        return env.Undefined();
     }
 };
 
 // Constants
-static void DefineConstants(Env env, Object exports) {
-    exports.Set("DIST_IP", Number::New(env, LOGOSDB_DIST_IP));
-    exports.Set("DIST_COSINE", Number::New(env, LOGOSDB_DIST_COSINE));
-    exports.Set("DIST_L2", Number::New(env, LOGOSDB_DIST_L2));
-    exports.Set("VERSION", String::New(env, LOGOSDB_VERSION_STRING));
+static void DefineConstants(Napi::Env env, Napi::Object exports) {
+    exports.Set("DIST_IP", Napi::Number::New(env, LOGOSDB_DIST_IP));
+    exports.Set("DIST_COSINE", Napi::Number::New(env, LOGOSDB_DIST_COSINE));
+    exports.Set("DIST_L2", Napi::Number::New(env, LOGOSDB_DIST_L2));
+    exports.Set("VERSION", Napi::String::New(env, LOGOSDB_VERSION_STRING));
 }
 
 // Module initialization
-static Object Init(Env env, Object exports) {
+static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     DBWrapper::Init(env, exports);
     DefineConstants(env, exports);
     return exports;

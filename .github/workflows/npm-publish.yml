@@ -36,6 +36,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - name: Install deps (Ubuntu)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential cmake python3
@@ -45,11 +48,14 @@ jobs:
       - name: Install npm deps
         working-directory: ./nodejs
         run: npm install
+        env:
+          PYTHON: ${{ env.pythonLocation }}/bin/python
       - name: Generate prebuild
         working-directory: ./nodejs
         run: npm run prebuild
         env:
           PREBUILD_ARCH: ${{ matrix.arch }}
+          PYTHON: ${{ env.pythonLocation }}/bin/python
       - uses: actions/upload-artifact@v4
         with:
           name: prebuild-${{ matrix.os }}-${{ matrix.arch }}
@@ -66,15 +72,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - name: Install build deps (Ubuntu)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential cmake python3
       - name: Install npm deps
         working-directory: ./nodejs
         run: npm install
+        env:
+          PYTHON: ${{ env.pythonLocation }}/bin/python
       - name: Build
         working-directory: ./nodejs
         run: npm run build
+        env:
+          PYTHON: ${{ env.pythonLocation }}/bin/python
       - name: Test
         working-directory: ./nodejs
         run: npm test
