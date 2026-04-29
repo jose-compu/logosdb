@@ -139,6 +139,34 @@ static bool checked_file_size(uint64_t n_rows, int dim, StorageDtype dtype, size
     return true;
 }
 
+#ifdef _WIN32
+static int64_t file_pwrite(int fd, const void* buf, size_t count, size_t offset) {
+    if (_lseeki64(fd, static_cast<__int64>(offset), SEEK_SET) < 0) {
+        return -1;
+    }
+    int written = _write(fd, buf, static_cast<unsigned int>(count));
+    return written < 0 ? -1 : static_cast<int64_t>(written);
+}
+
+static int64_t file_pread(int fd, void* buf, size_t count, size_t offset) {
+    if (_lseeki64(fd, static_cast<__int64>(offset), SEEK_SET) < 0) {
+        return -1;
+    }
+    int read_bytes = _read(fd, buf, static_cast<unsigned int>(count));
+    return read_bytes < 0 ? -1 : static_cast<int64_t>(read_bytes);
+}
+#else
+static int64_t file_pwrite(int fd, const void* buf, size_t count, size_t offset) {
+    ssize_t written = ::pwrite(fd, buf, count, static_cast<off_t>(offset));
+    return written < 0 ? -1 : static_cast<int64_t>(written);
+}
+
+static int64_t file_pread(int fd, void* buf, size_t count, size_t offset) {
+    ssize_t read_bytes = ::pread(fd, buf, count, static_cast<off_t>(offset));
+    return read_bytes < 0 ? -1 : static_cast<int64_t>(read_bytes);
+}
+#endif
+
 VectorStorage::~VectorStorage() { close(); }
 
 bool VectorStorage::open(const std::string & path, int dim, StorageDtype dtype, std::string & err) {
@@ -177,7 +205,7 @@ bool VectorStorage::open(const std::string & path, int dim, StorageDtype dtype, 
             close();
             return false;
         }
-        if (::pwrite(fd_, &header_, sizeof(header_), 0) != sizeof(header_)) {
+        if (file_pwrite(fd_, &header_, sizeof(header_), 0) != static_cast<int64_t>(sizeof(header_))) {
             err = "failed to write header";
             close();
             return false;
@@ -189,7 +217,7 @@ bool VectorStorage::open(const std::string & path, int dim, StorageDtype dtype, 
             close();
             return false;
         }
-        if (::pread(fd_, &header_, sizeof(header_), 0) != sizeof(header_)) {
+        if (file_pread(fd_, &header_, sizeof(header_), 0) != static_cast<int64_t>(sizeof(header_))) {
             err = "failed to read header";
             close();
             return false;
@@ -285,7 +313,7 @@ uint64_t VectorStorage::append(const float * vec, int dim, std::string & err) {
 
     // Convert and write based on dtype
     if (dtype == DTYPE_FLOAT32) {
-        if (::pwrite(fd_, vec, stride, (off_t)offset) != (ssize_t)stride) {
+        if (file_pwrite(fd_, vec, stride, offset) != static_cast<int64_t>(stride)) {
             err = "pwrite vec failed";
             return UINT64_MAX;
         }
@@ -294,7 +322,7 @@ uint64_t VectorStorage::append(const float * vec, int dim, std::string & err) {
         for (int i = 0; i < dim; ++i) {
             half[i] = float32_to_float16(vec[i]);
         }
-        if (::pwrite(fd_, half.data(), stride, (off_t)offset) != (ssize_t)stride) {
+        if (file_pwrite(fd_, half.data(), stride, offset) != static_cast<int64_t>(stride)) {
             err = "pwrite float16 vec failed";
             return UINT64_MAX;
         }
@@ -306,7 +334,7 @@ uint64_t VectorStorage::append(const float * vec, int dim, std::string & err) {
         }
         std::vector<int8_t> quantized(dim);
         quantize_float32_to_int8(vec, quantized.data(), dim, header_.scale);
-        if (::pwrite(fd_, quantized.data(), stride, (off_t)offset) != (ssize_t)stride) {
+        if (file_pwrite(fd_, quantized.data(), stride, offset) != static_cast<int64_t>(stride)) {
             err = "pwrite int8 vec failed";
             return UINT64_MAX;
         }
@@ -316,7 +344,7 @@ uint64_t VectorStorage::append(const float * vec, int dim, std::string & err) {
     header_.n_rows++;
     file_size_ = new_size;
 
-    if (::pwrite(fd_, &header_, sizeof(header_), 0) != sizeof(header_)) {
+    if (file_pwrite(fd_, &header_, sizeof(header_), 0) != static_cast<int64_t>(sizeof(header_))) {
         err = "pwrite header failed";
         return UINT64_MAX;
     }
@@ -353,7 +381,7 @@ uint64_t VectorStorage::append_batch(const float * data, int n, int dim, std::st
 
     // Convert and write based on dtype
     if (dtype == DTYPE_FLOAT32) {
-        if (::pwrite(fd_, data, total_bytes, (off_t)offset) != (ssize_t)total_bytes) {
+        if (file_pwrite(fd_, data, total_bytes, offset) != static_cast<int64_t>(total_bytes)) {
             err = "pwrite batch vec failed";
             return UINT64_MAX;
         }
@@ -362,7 +390,7 @@ uint64_t VectorStorage::append_batch(const float * data, int n, int dim, std::st
         for (int i = 0; i < n * dim; ++i) {
             half[i] = float32_to_float16(data[i]);
         }
-        if (::pwrite(fd_, half.data(), total_bytes, (off_t)offset) != (ssize_t)total_bytes) {
+        if (file_pwrite(fd_, half.data(), total_bytes, offset) != static_cast<int64_t>(total_bytes)) {
             err = "pwrite batch float16 vec failed";
             return UINT64_MAX;
         }
@@ -381,7 +409,7 @@ uint64_t VectorStorage::append_batch(const float * data, int n, int dim, std::st
         for (int i = 0; i < n; ++i) {
             quantize_float32_to_int8(data + i * dim, quantized.data() + i * dim, dim, header_.scale);
         }
-        if (::pwrite(fd_, quantized.data(), total_bytes, (off_t)offset) != (ssize_t)total_bytes) {
+        if (file_pwrite(fd_, quantized.data(), total_bytes, offset) != static_cast<int64_t>(total_bytes)) {
             err = "pwrite batch int8 vec failed";
             return UINT64_MAX;
         }
@@ -392,7 +420,7 @@ uint64_t VectorStorage::append_batch(const float * data, int n, int dim, std::st
     file_size_ = new_size;
 
     // Update header once
-    if (::pwrite(fd_, &header_, sizeof(header_), 0) != sizeof(header_)) {
+    if (file_pwrite(fd_, &header_, sizeof(header_), 0) != static_cast<int64_t>(sizeof(header_))) {
         err = "pwrite header failed";
         return UINT64_MAX;
     }
