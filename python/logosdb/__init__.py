@@ -31,6 +31,13 @@ try:
 except ImportError:
     LLAMAINDEX_AVAILABLE = False
 
+# Haystack adapter is available as optional import
+try:
+    from .haystack import LogosDBDocumentStore, LogosDBRetriever
+    HAYSTACK_AVAILABLE = True
+except ImportError:
+    HAYSTACK_AVAILABLE = False
+
 # Build __all__ based on available optional dependencies
 __all__ = [
     "DB", "SearchHit", "LOGOSDB_VERSION", "__version__",
@@ -41,3 +48,5 @@ if LANGCHAIN_AVAILABLE:
     __all__.append("LogosDBVectorStore")
 if LLAMAINDEX_AVAILABLE:
     __all__.append("LogosDBIndex")
+if HAYSTACK_AVAILABLE:
+    __all__.extend(["LogosDBDocumentStore", "LogosDBRetriever"])
