@@ -8,8 +8,8 @@
     "install": "prebuild-install || node-gyp rebuild",
     "build": "node-gyp rebuild",
     "test": "mocha test/test.js",
-    "prebuild": "prebuild --all --strip",
-    "prebuild-upload": "prebuild --upload-all"
+    "prebuild": "prebuild --runtime napi --all --strip",
+    "prebuild-upload": "prebuild --runtime napi --all --strip --upload-all"
   },
   "repository": {
     "type": "git",
@@ -37,6 +37,11 @@
   "devDependencies": {
     "mocha": "^10.2.0",
     "prebuild": "^12.1.0"
+  },
+  "binary": {
+    "napi_versions": [
+      8
+    ]
   },
   "gypfile": true,
   "engines": {
