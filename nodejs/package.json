@@ -30,6 +30,7 @@
   },
   "homepage": "https://github.com/jose-compu/logosdb#readme",
   "dependencies": {
+    "bindings": "^1.5.0",
     "node-addon-api": "^7.0.0",
     "prebuild-install": "^7.1.1"
   },
