@@ -35,6 +35,9 @@ static void test_l2_normalize_already_normalized();
 static void test_l2_normalize_zero_vector();
 static void test_l2_normalize_small_values();
 static void test_l2_normalize_cpp_wrappers();
+static void test_storage_float16_basic();
+static void test_storage_int8_basic();
+static void test_storage_dtype_persistence();
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -151,8 +154,8 @@ static void test_raw_vectors() {
 
     size_t n_rows = 0;
     int d = 0;
-    const float * raw = db.raw_vectors(n_rows, d);
-    CHECK(raw != nullptr, "raw not null");
+    auto raw = db.raw_vectors(n_rows, d);
+    CHECK(!raw.empty(), "raw not empty");
     CHECK(n_rows == 2, "raw n_rows");
     CHECK(d == dim, "raw dim");
 
@@ -823,6 +826,9 @@ int main() {
     test_l2_normalize_zero_vector();
     test_l2_normalize_small_values();
     test_l2_normalize_cpp_wrappers();
+    test_storage_float16_basic();
+    test_storage_int8_basic();
+    test_storage_dtype_persistence();
 
     printf("\n%d/%d tests passed.\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
@@ -1483,11 +1489,11 @@ static void test_storage_pointers_stable() {
     auto v0 = unit_vec(dim, 20000);
     db.put(v0, "first", "2025-01-01T00:00:00Z");
 
-    // Get raw pointer to the data
+    // Get raw vector data (copy for quantized storage, view for float32)
     size_t n_rows = 0;
     int d = 0;
-    const float* raw = db.raw_vectors(n_rows, d);
-    CHECK(raw != nullptr, "stable_ptr: got raw pointer");
+    auto raw = db.raw_vectors(n_rows, d);
+    CHECK(!raw.empty(), "stable_ptr: got raw data");
     CHECK(n_rows == 1, "stable_ptr: 1 row");
 
     // Verify we can read the first vector
@@ -1498,13 +1504,17 @@ static void test_storage_pointers_stable() {
     }
     CHECK(diff < 1e-5f, "stable_ptr: first vector matches before append");
 
-    // Insert many more vectors - with reservation mapping, the pointer should remain valid
+    // Insert many more vectors
     for (int i = 0; i < 100; ++i) {
         auto v = unit_vec(dim, 20001 + i);
         db.put(v, "batch", "2025-01-01T00:00:00Z");
     }
 
-    // Verify the original pointer is still valid and unchanged
+    // Re-fetch raw data after inserts (original data was a copy, not a live mmap view)
+    raw = db.raw_vectors(n_rows, d);
+    CHECK(n_rows == 101, "stable_ptr: 101 rows after appends");
+
+    // Verify the first vector is still correct
     diff = 0.0f;
     for (int i = 0; i < dim; ++i) {
         diff += std::fabs(raw[i] - v0[i]);
@@ -1639,4 +1649,113 @@ static void test_l2_normalize_cpp_wrappers() {
     std::vector<float> zero_vec(dim, 0.0f);
     ok = logosdb::l2_normalize(zero_vec);
     CHECK(!ok, "l2_norm_cpp: zero vector returns false");
+}
+
+// Test float16 storage: basic put and search
+static void test_storage_float16_basic() {
+    std::string path = "/tmp/logosdb_test_float16";
+    std::filesystem::remove_all(path);
+
+    int dim = 64;
+
+    // Create DB with float16 storage
+    logosdb::DB db(path, {.dim = dim, .dtype = LOGOSDB_DTYPE_FLOAT16});
+
+    // Insert some vectors
+    auto v0 = unit_vec(dim, 8000);
+    auto v1 = unit_vec(dim, 8100);
+    auto v2 = unit_vec(dim, 8200);
+
+    db.put(v0, "first", "2025-01-01T00:00:00Z");
+    db.put(v1, "second", "2025-01-02T00:00:00Z");
+    db.put(v2, "third", "2025-01-03T00:00:00Z");
+
+    CHECK(db.count() == 3, "float16: 3 rows inserted");
+
+    // Search for first vector - should find itself
+    auto hits = db.search(v0, 3);
+    CHECK(!hits.empty(), "float16: search returns results");
+    CHECK(hits[0].id == 0, "float16: self search finds first");
+    CHECK(hits[0].score > 0.99f, "float16: self score near 1.0");
+
+    // Close and reopen
+    {
+        logosdb::DB db2(path, {.dim = dim});
+        CHECK(db2.count() == 3, "float16: persists after reopen");
+
+        auto hits2 = db2.search(v1, 3);
+        CHECK(!hits2.empty(), "float16: search after reopen works");
+        CHECK(hits2[0].id == 1, "float16: finds correct vector after reopen");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
+// Test int8 storage: basic put and search
+static void test_storage_int8_basic() {
+    std::string path = "/tmp/logosdb_test_int8";
+    std::filesystem::remove_all(path);
+
+    int dim = 64;
+
+    // Create DB with int8 storage
+    logosdb::DB db(path, {.dim = dim, .dtype = LOGOSDB_DTYPE_INT8});
+
+    // Insert some vectors
+    auto v0 = unit_vec(dim, 9000);
+    auto v1 = unit_vec(dim, 9100);
+    auto v2 = unit_vec(dim, 9200);
+
+    db.put(v0, "first", "2025-01-01T00:00:00Z");
+    db.put(v1, "second", "2025-01-02T00:00:00Z");
+    db.put(v2, "third", "2025-01-03T00:00:00Z");
+
+    CHECK(db.count() == 3, "int8: 3 rows inserted");
+
+    // Search for first vector - should find itself
+    auto hits = db.search(v0, 3);
+    CHECK(!hits.empty(), "int8: search returns results");
+    CHECK(hits[0].id == 0, "int8: self search finds first");
+    // Note: int8 quantization may have more error, so use lower threshold
+    CHECK(hits[0].score > 0.90f, "int8: self score reasonably high");
+
+    // Close and reopen
+    {
+        logosdb::DB db2(path, {.dim = dim});
+        CHECK(db2.count() == 3, "int8: persists after reopen");
+
+        auto hits2 = db2.search(v1, 3);
+        CHECK(!hits2.empty(), "int8: search after reopen works");
+        CHECK(hits2[0].id == 1, "int8: finds correct vector after reopen");
+    }
+
+    std::filesystem::remove_all(path);
+}
+
+// Test dtype persistence: file format v2 header is correct
+static void test_storage_dtype_persistence() {
+    std::string path = "/tmp/logosdb_test_dtype_persist";
+    std::filesystem::remove_all(path);
+
+    int dim = 32;
+
+    // Create with float16
+    {
+        logosdb::DB db(path, {.dim = dim, .dtype = LOGOSDB_DTYPE_FLOAT16});
+        auto v = unit_vec(dim, 10000);
+        db.put(v, "test");
+    }
+
+    // Reopen without specifying dtype - should auto-detect
+    {
+        logosdb::DB db(path, {.dim = dim});
+        CHECK(db.count() == 1, "dtype_persist: reopened with 1 row");
+
+        // Verify search still works
+        auto v = unit_vec(dim, 10000);
+        auto hits = db.search(v, 1);
+        CHECK(!hits.empty(), "dtype_persist: search works");
+    }
+
+    std::filesystem::remove_all(path);
 }

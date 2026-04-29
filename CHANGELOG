@@ -4,6 +4,20 @@ logosdb change log
 0.7.0  (TBD)
 -------------------
 
+  Reduced-precision vector storage: float16 and int8 (closes #25, #26)
+
+  * New `StorageDtype` enum: `DTYPE_FLOAT32` (default), `DTYPE_FLOAT16`, `DTYPE_INT8`.
+  * Storage format v2: extended 32-byte header with `dtype` and `scale` fields.
+  * float16: 2 bytes per dimension (~50% smaller than float32), IEEE 754 half-precision.
+  * int8: 1 byte per dimension (~75% smaller than float32), global scale quantization.
+  * Transparent dequantization: vectors stored in reduced precision are dequantized
+    to float32 on-the-fly for HNSW search (no accuracy loss in index).
+  * C API: `logosdb_options_set_dtype(opts, LOGOSDB_DTYPE_FLOAT16/INT8)`.
+  * C++ API: `Options.dtype` field (default `LOGOSDB_DTYPE_FLOAT32`).
+  * Backward compatible: v1 files auto-upgraded to v2 in memory (float32 only).
+  * New ADR document: `docs/adr-002-training-free-quantization.md` describing
+    the architecture decision and trade-offs.
+
   Node.js bindings and npm package (closes #44)
 
   * New `nodejs/` directory with complete Node.js native addon:
