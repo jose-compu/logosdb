@@ -1,7 +1,7 @@
 logosdb change log
 ==================
 
-0.7.0  (TBD)
+0.7.1  (TBD)
 -------------------
 
   Reduced-precision vector storage: float16 and int8 (closes #25, #26)
