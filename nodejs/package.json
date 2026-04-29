@@ -1,0 +1,53 @@
+{
+  "name": "logosdb",
+  "version": "0.6.0",
+  "description": "Fast semantic vector database (HNSW + mmap) - Node.js bindings",
+  "main": "lib/index.js",
+  "types": "types/index.d.ts",
+  "scripts": {
+    "install": "prebuild-install || node-gyp rebuild",
+    "build": "node-gyp rebuild",
+    "test": "mocha test/test.js",
+    "prebuild": "prebuild --all --strip",
+    "prebuild-upload": "prebuild --upload-all"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jose-compu/logosdb.git"
+  },
+  "keywords": [
+    "vector-database",
+    "hnsw",
+    "embeddings",
+    "semantic-search",
+    "nearest-neighbor",
+    "native-addon"
+  ],
+  "author": "Jose",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jose-compu/logosdb/issues"
+  },
+  "homepage": "https://github.com/jose-compu/logosdb#readme",
+  "dependencies": {
+    "node-addon-api": "^7.0.0",
+    "prebuild-install": "^7.1.1"
+  },
+  "devDependencies": {
+    "mocha": "^10.2.0",
+    "prebuild": "^12.1.0"
+  },
+  "gypfile": true,
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

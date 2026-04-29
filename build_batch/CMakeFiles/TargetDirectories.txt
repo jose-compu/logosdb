@@ -1,0 +1,7 @@
+/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build_batch/CMakeFiles/logosdb.dir
+/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build_batch/CMakeFiles/logosdb-cli.dir
+/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build_batch/CMakeFiles/logosdb-bench.dir
+/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build_batch/CMakeFiles/logosdb-test.dir
+/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build_batch/CMakeFiles/test.dir
+/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build_batch/CMakeFiles/edit_cache.dir
+/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build_batch/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,23 @@
+Start testing: Apr 20 17:49 CEST
+----------------------------------------------------------
+1/1 Testing: logosdb_basic
+1/1 Test: logosdb_basic
+Command: "/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build_wal/logosdb-test"
+Directory: /Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build_wal
+"logosdb_basic" start time: Apr 20 17:49 CEST
+Output:
+----------------------------------------------------------
+logosdb basic tests
+===================
+
+
+139/139 tests passed.
+<end of output>
+Test time =   0.51 sec
+----------------------------------------------------------
+Test Passed.
+"logosdb_basic" end time: Apr 20 17:49 CEST
+"logosdb_basic" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Apr 20 17:49 CEST

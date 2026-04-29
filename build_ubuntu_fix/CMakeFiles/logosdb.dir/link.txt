@@ -1,0 +1,2 @@
+/usr/bin/ar qc liblogosdb.a CMakeFiles/logosdb.dir/src/logosdb.cpp.o CMakeFiles/logosdb.dir/src/storage.cpp.o CMakeFiles/logosdb.dir/src/metadata.cpp.o CMakeFiles/logosdb.dir/src/hnsw_index.cpp.o CMakeFiles/logosdb.dir/src/wal.cpp.o CMakeFiles/logosdb.dir/src/platform.cpp.o
+/usr/bin/ranlib liblogosdb.a
