@@ -27,6 +27,28 @@ logosdb change log
   * New optional extra: `pip install 'logosdb[mistral]'`.
   * Added Python tests in `tests/python/test_mistral.py` (network-free via mock).
 
+  OpenAI embeddings integration (closes #48)
+
+  * New `python/logosdb/openai.py` with `OpenAIVectorStore`.
+  * Supports `text-embedding-3-small`, `text-embedding-3-large`, and `text-embedding-ada-002`.
+  * Automatic embedding requests to OpenAI API and direct LogosDB persistence.
+  * New optional extra: `pip install 'logosdb[openai]'`.
+  * Added tests in `tests/python/test_openai.py` (network-free via mock).
+
+  Anthropic Claude embedding integration (closes #59)
+
+  * New `python/logosdb/anthropic.py` with `AnthropicVectorStore` (experimental).
+  * Uses Claude messages API with constrained JSON output for vector extraction.
+  * New optional extra: `pip install 'logosdb[anthropic]'`.
+  * Added tests in `tests/python/test_anthropic.py` (network-free via mock).
+
+  Hugging Face local embeddings integration (closes #50)
+
+  * New `python/logosdb/huggingface.py` with `HuggingFaceVectorStore`.
+  * Local embedding computation via `sentence-transformers` (CPU/GPU).
+  * New optional extra: `pip install 'logosdb[huggingface]'`.
+  * Added tests in `tests/python/test_huggingface.py` (network-free via mock).
+
   Node.js bindings and npm package (closes #44)
 
   * New `nodejs/` directory with complete Node.js native addon:

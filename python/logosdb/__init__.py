@@ -60,3 +60,33 @@ except ImportError:
 
 if MISTRAL_AVAILABLE:
     __all__.extend(["MistralVectorStore", "MistralEmbeddingProvider"])
+
+# OpenAI integration is available as optional import
+try:
+    from .openai import OpenAIVectorStore
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
+if OPENAI_AVAILABLE:
+    __all__.append("OpenAIVectorStore")
+
+# Anthropic integration is available as optional import
+try:
+    from .anthropic import AnthropicVectorStore
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+
+if ANTHROPIC_AVAILABLE:
+    __all__.append("AnthropicVectorStore")
+
+# Hugging Face integration is available as optional import
+try:
+    from .huggingface import HuggingFaceVectorStore
+    HUGGINGFACE_AVAILABLE = True
+except ImportError:
+    HUGGINGFACE_AVAILABLE = False
+
+if HUGGINGFACE_AVAILABLE:
+    __all__.append("HuggingFaceVectorStore")
