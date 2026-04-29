@@ -64,7 +64,7 @@ bool WriteAheadLog::open(const std::string & path, std::string & err) {
         // Existing file: validate header and count pending entries
         uint32_t header[2];
 #ifdef _WIN32
-        if (_lseek(fd_, 0, SEEK_SET) != 0 ||
+        if (_lseeki64(fd_, 0, SEEK_SET) != 0 ||
             _read(fd_, header, sizeof(header)) != sizeof(header)) {
 #else
         if (::pread(fd_, header, sizeof(header), 0) != sizeof(header)) {
@@ -131,7 +131,7 @@ int64_t WriteAheadLog::append_pending(const float * vec, int dim,
 
     // Get current file position (where we'll write this entry)
 #ifdef _WIN32
-    int64_t offset = _lseek(fd_, 0, SEEK_END);
+    int64_t offset = _lseeki64(fd_, 0, SEEK_END);
 #else
     off_t offset = ::lseek(fd_, 0, SEEK_END);
 #endif
@@ -255,7 +255,7 @@ bool WriteAheadLog::write_state_at(int64_t offset, WALState state, std::string &
     uint8_t state_byte = static_cast<uint8_t>(state);
 #ifdef _WIN32
     // Windows: seek + write (no pwrite)
-    if (_lseek(fd_, (long)offset, SEEK_SET) != offset ||
+    if (_lseeki64(fd_, offset, SEEK_SET) != offset ||
         _write(fd_, &state_byte, 1) != 1) {
 #else
     if (::pwrite(fd_, &state_byte, 1, offset) != 1) {
@@ -271,7 +271,7 @@ bool WriteAheadLog::read_entry_at(int64_t offset, WALEntry & entry, std::string 
 
 #ifdef _WIN32
     // Windows: seek to offset before reading
-    if (_lseek(fd_, (long)offset, SEEK_SET) != offset) {
+    if (_lseeki64(fd_, offset, SEEK_SET) != offset) {
         return false;  // EOF or error
     }
 #endif
@@ -402,12 +402,13 @@ int WriteAheadLog::replay_pending(
     while (true) {
         // Peek at next entry state
         uint8_t state_byte;
+        int64_t r = 0;
 #ifdef _WIN32
-        ssize_t r = _lseek(fd_, (long)offset, SEEK_SET);
+        r = _lseeki64(fd_, offset, SEEK_SET);
         if (r != offset) break;
         r = _read(fd_, &state_byte, 1);
 #else
-        ssize_t r = ::pread(fd_, &state_byte, 1, offset);
+        r = static_cast<int64_t>(::pread(fd_, &state_byte, 1, offset));
 #endif
         if (r == 0) break;  // EOF
         if (r < 0) {
