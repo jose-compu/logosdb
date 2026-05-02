@@ -32,15 +32,46 @@ LOGOSDB_PATH=./.logosdb
 MISTRAL_API_KEY=your_key_here
 ```
 
-## Slash command usage (inside Vibe)
+## Slash commands (inside Vibe)
+
+Three focused slash commands are available once this skill is enabled:
+
+| Command | Example |
+|---|---|
+| `/ldb-index` | `/ldb-index ./src --namespace=backend` |
+| `/ldb-search` | `/ldb-search "JWT validation" --namespace=backend` |
+| `/ldb-forget` | `/ldb-forget --namespace=backend --id=42` |
+
+### Example session
 
 ```
-/logosdb-memory index ./src --namespace code
-/logosdb-memory search "where is JWT validated" --namespace code --top-k 5
-/logosdb-memory forget --namespace code --query "old feature"
-/logosdb-memory info
-/logosdb-memory list
+$ cd myproject && vibe
+
+> /ldb-index ./src --namespace=backend
+Indexed 42 files into 'backend' collection
+
+> Find where we handle JWT validation
+Searching... Found 3 matches:
+  1. src/auth/jwt.ts (score: 0.94)
+  2. src/middleware/auth.ts (score: 0.87)
+  3. src/utils/token.ts (score: 0.72)
+
+> Show me the first one
+[Vibe displays src/auth/jwt.ts with explanation]
+
+> /ldb-search "retry logic" --namespace=backend --top-k=3
+Searching... Found 3 matches:
+  1. src/utils/retry.ts (score: 0.91)
+  2. src/api/client.ts (score: 0.83)
+  3. src/jobs/queue.ts (score: 0.77)
+
+> /ldb-forget --namespace=backend --id=42
+Deleted 1 entry from 'backend' namespace.
 ```
+
+Natural-language queries (`> Find where we...`) also work without a slash command
+— Vibe calls `logosdb-vibe search` automatically when it understands you are
+asking about the indexed codebase.
 
 ## Standalone CLI
 
