@@ -110,3 +110,13 @@ except ImportError:
 
 if MEM0_AVAILABLE:
     __all__.append("Mem0VectorStore")
+
+# Mistral Vibe memory adapter is available as optional import
+try:
+    from .vibe import VibeMemory
+    VIBE_AVAILABLE = True
+except ImportError:
+    VIBE_AVAILABLE = False
+
+if VIBE_AVAILABLE:
+    __all__.append("VibeMemory")
