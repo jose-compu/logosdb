@@ -37,6 +37,8 @@ mistral = ["requests>=2.31", "numpy>=1.21"]
 openai = ["requests>=2.31", "numpy>=1.21"]
 anthropic = ["requests>=2.31", "numpy>=1.21"]
 huggingface = ["sentence-transformers>=2.2", "numpy>=1.21"]
+cohere = ["requests>=2.31", "numpy>=1.21"]
+mem0 = ["mem0ai>=0.1", "numpy>=1.21"]
 
 [project.urls]
 Homepage = "https://github.com/jose-compu/logosdb"
