@@ -1,6 +1,6 @@
 {
   "name": "logosdb-mcp-server",
-  "version": "0.7.1",
+  "version": "0.7.3",
   "description": "MCP server exposing LogosDB semantic search to Claude Code and other MCP clients",
   "main": "dist/index.js",
   "readme": "README.md",
