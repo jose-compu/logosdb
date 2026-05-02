@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import json
 import re
-import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -27,6 +26,10 @@ import pytest
 
 _DIM = 8  # small dimension to keep tests fast
 
+# Target to patch: _request_embeddings lives on MistralVectorStore.
+# Patching here avoids importing `requests` entirely.
+_EMBED_TARGET = "logosdb.mistral.MistralVectorStore._request_embeddings"
+
 
 def _fake_embedding(text: str, dim: int = _DIM) -> list[float]:
     """Deterministic fake embedding based on text hash."""
@@ -36,39 +39,9 @@ def _fake_embedding(text: str, dim: int = _DIM) -> list[float]:
     return v.tolist()
 
 
-def _mock_mistral_post(url: str, **kwargs: Any) -> MagicMock:
-    """Fake requests.post that intercepts the Mistral embeddings call."""
-    body = kwargs.get("json", {})
-    inputs = body.get("input", [])
-    embeddings = [{"embedding": _fake_embedding(t, _DIM)} for t in inputs]
-    resp = MagicMock()
-    resp.status_code = 200
-    resp.json.return_value = {"data": embeddings}
-    resp.raise_for_status = lambda: None
-    return resp
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-@pytest.fixture()
-def mem(tmp_path: Path):
-    """VibeMemory instance with a temp root and mocked Mistral calls."""
-    with patch("requests.post", side_effect=_mock_mistral_post):
-        from logosdb.vibe import VibeMemory
-
-        # Patch _DIM into the store so LogosDB uses dim=8
-        with patch("logosdb.mistral.MistralVectorStore.__init__", wraps=_patched_init):
-            yield VibeMemory(uri=str(tmp_path / "logosdb"), api_key="fake-key", dim=_DIM)
-
-
-def _patched_init(self: Any, uri: str, **kwargs: Any) -> None:
-    """Wrap MistralVectorStore.__init__ to force dim=_DIM."""
-    from logosdb.mistral import MistralVectorStore
-
-    kwargs["dim"] = _DIM
-    MistralVectorStore.__init__.__wrapped__(self, uri=uri, **kwargs)  # type: ignore[attr-defined]
+def _mock_request_embeddings(self: Any, texts: Any) -> list[list[float]]:
+    """Replaces MistralVectorStore._request_embeddings — no HTTP, no requests."""
+    return [_fake_embedding(str(t), _DIM) for t in texts]
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +105,7 @@ class TestVibeMemory:
         src = tmp_path / "hello.py"
         src.write_text("def hello():\n    return 'world'\n")
 
-        with patch("requests.post", side_effect=_mock_mistral_post):
+        with patch(_EMBED_TARGET, _mock_request_embeddings):
             from logosdb.vibe import VibeMemory
 
             mem = VibeMemory(uri=str(tmp_path / "db"), api_key="fake", dim=_DIM)
@@ -149,7 +122,7 @@ class TestVibeMemory:
         (src / "b.py").write_text("def b(): pass")
         (src / "ignore.bin").write_bytes(b"\x00\x01")
 
-        with patch("requests.post", side_effect=_mock_mistral_post):
+        with patch(_EMBED_TARGET, _mock_request_embeddings):
             from logosdb.vibe import VibeMemory
 
             mem = VibeMemory(uri=str(tmp_path / "db"), api_key="fake", dim=_DIM)
@@ -161,7 +134,7 @@ class TestVibeMemory:
         src = tmp_path / "auth.py"
         src.write_text("def validate_jwt(token):\n    # JWT validation logic\n    pass\n")
 
-        with patch("requests.post", side_effect=_mock_mistral_post):
+        with patch(_EMBED_TARGET, _mock_request_embeddings):
             from logosdb.vibe import VibeMemory
 
             mem = VibeMemory(uri=str(tmp_path / "db"), api_key="fake", dim=_DIM)
@@ -176,7 +149,7 @@ class TestVibeMemory:
             assert "text" in r
 
     def test_search_empty_namespace_returns_empty(self, tmp_path: Path) -> None:
-        with patch("requests.post", side_effect=_mock_mistral_post):
+        with patch(_EMBED_TARGET, _mock_request_embeddings):
             from logosdb.vibe import VibeMemory
 
             mem = VibeMemory(uri=str(tmp_path / "db"), api_key="fake", dim=_DIM)
@@ -188,7 +161,7 @@ class TestVibeMemory:
         src = tmp_path / "x.py"
         src.write_text("x = 1\n")
 
-        with patch("requests.post", side_effect=_mock_mistral_post):
+        with patch(_EMBED_TARGET, _mock_request_embeddings):
             from logosdb.vibe import VibeMemory
 
             mem = VibeMemory(uri=str(tmp_path / "db"), api_key="fake", dim=_DIM)
@@ -205,7 +178,7 @@ class TestVibeMemory:
         src = tmp_path / "y.py"
         src.write_text("y = 2\n")
 
-        with patch("requests.post", side_effect=_mock_mistral_post):
+        with patch(_EMBED_TARGET, _mock_request_embeddings):
             from logosdb.vibe import VibeMemory
 
             mem = VibeMemory(uri=str(tmp_path / "db"), api_key="fake", dim=_DIM)
@@ -214,7 +187,7 @@ class TestVibeMemory:
             assert outcome["forgotten"] >= 1
 
     def test_forget_requires_id_or_query(self, tmp_path: Path) -> None:
-        with patch("requests.post", side_effect=_mock_mistral_post):
+        with patch(_EMBED_TARGET, _mock_request_embeddings):
             from logosdb.vibe import VibeMemory
 
             mem = VibeMemory(uri=str(tmp_path / "db"), api_key="fake", dim=_DIM)
@@ -225,7 +198,7 @@ class TestVibeMemory:
         src = tmp_path / "z.py"
         src.write_text("z = 3\n")
 
-        with patch("requests.post", side_effect=_mock_mistral_post):
+        with patch(_EMBED_TARGET, _mock_request_embeddings):
             from logosdb.vibe import VibeMemory
 
             mem = VibeMemory(uri=str(tmp_path / "db"), api_key="fake", dim=_DIM)
@@ -239,7 +212,7 @@ class TestVibeMemory:
         src = tmp_path / "f.py"
         src.write_text("pass\n")
 
-        with patch("requests.post", side_effect=_mock_mistral_post):
+        with patch(_EMBED_TARGET, _mock_request_embeddings):
             from logosdb.vibe import VibeMemory
 
             mem = VibeMemory(uri=str(tmp_path / "db"), api_key="fake", dim=_DIM)
@@ -266,7 +239,7 @@ class TestVibeCli:
         src = tmp_path / "cli_test.py"
         src.write_text("def cli_function(): pass\n")
 
-        with patch("requests.post", side_effect=_mock_mistral_post), \
+        with patch(_EMBED_TARGET, _mock_request_embeddings), \
              patch.dict("os.environ", {
                  "LOGOSDB_PATH": str(tmp_path / "db"),
                  "MISTRAL_API_KEY": "fake",
