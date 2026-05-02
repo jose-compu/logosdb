@@ -103,7 +103,8 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'logosdb_info',
-    description: 'Return statistics for a namespace: total entries, live entries, vector dimension.',
+    description:
+      'Return statistics for a namespace: total entries, live entries, vector dimension.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -128,10 +129,7 @@ const TOOLS: Tool[] = [
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
-const server = new Server(
-  { name: 'logosdb', version: '0.7.1' },
-  { capabilities: { tools: {} } },
-);
+const server = new Server({ name: 'logosdb', version: '0.7.1' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 

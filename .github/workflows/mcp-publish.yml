@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  typecheck:
+  lint:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -24,9 +24,13 @@ jobs:
         run: npm install --ignore-scripts
       - name: Type-check
         run: npx tsc --noEmit
+      - name: Lint
+        run: npm run lint
+      - name: Format check
+        run: npm run format:check
 
   publish-npm:
-    needs: typecheck
+    needs: lint
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/mcp-v')
     defaults:

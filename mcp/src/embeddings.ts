@@ -32,7 +32,11 @@ export function resolveConfig(): EmbeddingConfig {
   return { provider: 'openai', dim: 1536, model: 'text-embedding-3-small', apiKey };
 }
 
-async function fetchJson(url: string, body: unknown, headers: Record<string, string>): Promise<unknown> {
+async function fetchJson(
+  url: string,
+  body: unknown,
+  headers: Record<string, string>,
+): Promise<unknown> {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
