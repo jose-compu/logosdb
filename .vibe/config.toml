@@ -1,0 +1,45 @@
+# .vibe/config.toml — LogosDB integration for Mistral Vibe
+#
+# Option A (recommended): MCP server — reuses the same logosdb-mcp-server
+# as Claude Code. All 6 tools (logosdb_index, logosdb_index_file,
+# logosdb_search, logosdb_list, logosdb_info, logosdb_delete) are exposed.
+#
+# Option B: Use the Python VibeMemory class directly via bash tool or a
+# custom skill (see .vibe/skills/logosdb-memory/SKILL.md).
+
+# ── MCP server (Option A) ────────────────────────────────────────────────────
+
+[[mcp_servers]]
+name       = "logosdb"
+transport  = "stdio"
+command    = "npx"
+args       = ["-y", "logosdb-mcp-server"]
+env        = { LOGOSDB_PATH = "./.logosdb", EMBEDDING_PROVIDER = "voyage", VOYAGE_API_KEY = "" }
+
+# Replace VOYAGE_API_KEY with your key, or switch to OpenAI:
+#   env = { LOGOSDB_PATH = "./.logosdb", EMBEDDING_PROVIDER = "openai", OPENAI_API_KEY = "" }
+
+# ── Tool permissions ─────────────────────────────────────────────────────────
+
+[tools.logosdb_search]
+permission = "always"
+
+[tools.logosdb_list]
+permission = "always"
+
+[tools.logosdb_info]
+permission = "always"
+
+[tools.logosdb_index]
+permission = "ask"
+
+[tools.logosdb_index_file]
+permission = "ask"
+
+[tools.logosdb_delete]
+permission = "ask"
+
+# ── Skills ───────────────────────────────────────────────────────────────────
+
+# Enables the logosdb-memory slash command and Python API documentation.
+enabled_skills = ["logosdb-memory"]
