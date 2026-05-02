@@ -1,0 +1,48 @@
+name: Publish MCP server to npm
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mcp/**'
+    tags:
+      - 'mcp-v*'
+  workflow_dispatch:
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install deps (skip native build)
+        run: npm install --ignore-scripts
+      - name: Type-check
+        run: npx tsc --noEmit
+
+  publish-npm:
+    needs: typecheck
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/mcp-v')
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install deps (skip native build)
+        run: npm install --ignore-scripts
+      - name: Build
+        run: npm run build
+      - name: Publish
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
