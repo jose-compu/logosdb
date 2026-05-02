@@ -1,4 +1,4 @@
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/f42e2b3e-4500-47d1-aaf8-12aaea5a47bf" />
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/9e8fe391-6272-44d4-abb7-276757b63e39" />
 
 [![CI](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml)
 [![Python](https://github.com/jose-compu/logosdb/actions/workflows/python.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/python.yml)
