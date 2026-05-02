@@ -29,6 +29,85 @@ import { chunk } from './chunker.js';
 const LOGOSDB_PATH = process.env.LOGOSDB_PATH ?? path.join(process.cwd(), '.logosdb');
 const CHUNK_SIZE = parseInt(process.env.LOGOSDB_CHUNK_SIZE ?? '800', 10);
 
+// File extensions treated as indexable text
+const INDEXABLE_EXTENSIONS = new Set([
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.py',
+  '.go',
+  '.rs',
+  '.java',
+  '.c',
+  '.cpp',
+  '.h',
+  '.hpp',
+  '.cs',
+  '.rb',
+  '.php',
+  '.swift',
+  '.kt',
+  '.scala',
+  '.sh',
+  '.bash',
+  '.zsh',
+  '.fish',
+  '.md',
+  '.rst',
+  '.txt',
+  '.toml',
+  '.yaml',
+  '.yml',
+  '.json',
+  '.sql',
+  '.graphql',
+  '.proto',
+  '.env.example',
+  '.cfg',
+  '.ini',
+]);
+
+// Directories to skip when walking
+const SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.venv',
+  '__pycache__',
+  '.next',
+  'dist',
+  'build',
+  'out',
+  'coverage',
+  '.turbo',
+]);
+
+function collectFiles(root: string): string[] {
+  const results: string[] = [];
+  function walk(dir: string) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') && entry.isDirectory()) continue;
+      if (SKIP_DIRS.has(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile() && INDEXABLE_EXTENSIONS.has(path.extname(entry.name))) {
+        results.push(full);
+      }
+    }
+  }
+  walk(root);
+  return results;
+}
+
 let embCfg: EmbeddingConfig;
 try {
   embCfg = resolveConfig();
@@ -67,12 +146,16 @@ const TOOLS: Tool[] = [
   {
     name: 'logosdb_index_file',
     description:
-      'Read a file from disk, chunk it, embed each chunk, and store all chunks in a namespace. ' +
+      'Read a file OR directory from disk, chunk each file, embed the chunks, and store them in a namespace. ' +
+      'When given a directory it walks recursively, skipping hidden paths and node_modules. ' +
       'Supports any UTF-8 text file (source code, markdown, plain text).',
     inputSchema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Absolute or relative path to the file' },
+        path: {
+          type: 'string',
+          description: 'Absolute or relative path to a file or directory',
+        },
         namespace: { type: 'string', description: 'Collection name' },
         chunk_size: {
           type: 'number',
@@ -158,44 +241,59 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // ── logosdb_index_file ─────────────────────────────────────────────────
       case 'logosdb_index_file': {
-        const filePath = String(args.path ?? '');
+        const inputPath = String(args.path ?? '');
         const namespace = String(args.namespace ?? '');
         const chunkSize = typeof args.chunk_size === 'number' ? args.chunk_size : CHUNK_SIZE;
 
-        if (!filePath) throw new Error('"path" is required');
+        if (!inputPath) throw new Error('"path" is required');
         if (!namespace) throw new Error('"namespace" is required');
-
-        const absPath = path.resolve(filePath);
-        let content: string;
-        try {
-          content = fs.readFileSync(absPath, 'utf-8');
-        } catch {
-          throw new Error(`Cannot read file: ${absPath}`);
-        }
-
-        const chunks = chunk(content, chunkSize);
-        const texts = chunks.map((c) => c.text);
 
         ensureApiKey();
 
-        // Embed in batches of 96 (OpenAI limit per request)
+        const absPath = path.resolve(inputPath);
+        const stat = fs.statSync(absPath);
+        const filesToIndex = stat.isDirectory() ? collectFiles(absPath) : [absPath];
+
+        if (filesToIndex.length === 0) {
+          return ok({ indexed: 0, files: 0, namespace, path: absPath });
+        }
+
         const BATCH = 96;
-        const allVecs: number[][] = [];
-        for (let i = 0; i < texts.length; i += BATCH) {
-          const batch = texts.slice(i, i + BATCH);
-          const vecs = await embedBatch(batch, embCfg);
-          allVecs.push(...vecs);
-        }
-
-        const db = store.open(namespace, allVecs[0].length);
         const ts = new Date().toISOString();
-        const ids: number[] = [];
-        for (let i = 0; i < texts.length; i++) {
-          const label = `[file:${absPath}][chunk:${i}/${texts.length}] ${texts[i]}`;
-          ids.push(db.put(allVecs[i], label, ts));
+        let totalChunks = 0;
+        let firstVecLen = embCfg.dim;
+        let db: ReturnType<typeof store.open> | null = null;
+
+        for (const filePath of filesToIndex) {
+          let content: string;
+          try {
+            content = fs.readFileSync(filePath, 'utf-8');
+          } catch {
+            continue; // skip unreadable files
+          }
+
+          const fileChunks = chunk(content, chunkSize);
+          const texts = fileChunks.map((c) => c.text);
+
+          const allVecs: number[][] = [];
+          for (let i = 0; i < texts.length; i += BATCH) {
+            const batch = texts.slice(i, i + BATCH);
+            const vecs = await embedBatch(batch, embCfg);
+            allVecs.push(...vecs);
+          }
+
+          if (allVecs.length === 0) continue;
+          firstVecLen = allVecs[0].length;
+          if (!db) db = store.open(namespace, firstVecLen);
+
+          for (let i = 0; i < texts.length; i++) {
+            const label = `[file:${filePath}][chunk:${i}/${texts.length}] ${texts[i]}`;
+            db.put(allVecs[i], label, ts);
+          }
+          totalChunks += texts.length;
         }
 
-        return ok({ indexed: chunks.length, namespace, file: absPath });
+        return ok({ indexed: totalChunks, files: filesToIndex.length, namespace, path: absPath });
       }
 
       // ── logosdb_search ─────────────────────────────────────────────────────
