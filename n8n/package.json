@@ -1,0 +1,59 @@
+{
+  "name": "n8n-nodes-logosdb",
+  "version": "0.7.1",
+  "description": "n8n node for LogosDB semantic vector database — insert, search, delete, info",
+  "keywords": [
+    "n8n-community-node-package",
+    "logosdb",
+    "vector-database",
+    "semantic-search",
+    "embeddings",
+    "rag"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/jose-compu/logosdb",
+  "author": "Jose",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jose-compu/logosdb.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jose-compu/logosdb/issues"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && npm run copy-icons",
+    "copy-icons": "cp -r src/icons dist/ 2>/dev/null || true",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write src/",
+    "format:check": "prettier --check src/",
+    "prepublishOnly": "npm run build"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/LogosDbApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/LogosDb/LogosDb.node.js"
+    ]
+  },
+  "dependencies": {
+    "logosdb": "^0.7.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0",
+    "n8n-workflow": "*",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "prettier": "^3.2.0",
+    "eslint-config-prettier": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

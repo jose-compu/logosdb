@@ -90,3 +90,23 @@ except ImportError:
 
 if HUGGINGFACE_AVAILABLE:
     __all__.append("HuggingFaceVectorStore")
+
+# Cohere integration is available as optional import
+try:
+    from .cohere import CohereVectorStore
+    COHERE_AVAILABLE = True
+except ImportError:
+    COHERE_AVAILABLE = False
+
+if COHERE_AVAILABLE:
+    __all__.append("CohereVectorStore")
+
+# mem0 integration is available as optional import
+try:
+    from .mem0 import LogosDBVectorStore as Mem0VectorStore
+    MEM0_AVAILABLE = True
+except ImportError:
+    MEM0_AVAILABLE = False
+
+if MEM0_AVAILABLE:
+    __all__.append("Mem0VectorStore")
