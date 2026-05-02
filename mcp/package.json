@@ -1,0 +1,56 @@
+{
+  "name": "logosdb-mcp-server",
+  "version": "0.7.1",
+  "description": "MCP server exposing LogosDB semantic search to Claude Code and other MCP clients",
+  "main": "dist/index.js",
+  "readme": "README.md",
+  "bin": {
+    "logosdb-mcp-server": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write src/",
+    "format:check": "prettier --check src/",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jose-compu/logosdb.git"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "logosdb",
+    "vector-database",
+    "semantic-search",
+    "claude-code",
+    "embeddings",
+    "rag"
+  ],
+  "author": "Jose",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jose-compu/logosdb/issues"
+  },
+  "homepage": "https://github.com/jose-compu/logosdb#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "logosdb": "^0.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.1",
+    "@typescript-eslint/parser": "^8.59.1",
+    "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.3",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

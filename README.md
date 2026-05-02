@@ -22,6 +22,7 @@ Authors: Jose ([@jose-compu](https://github.com/jose-compu))
   * Crash recovery: HNSW index is automatically backfilled from the append-only vector store on open.
   * Scales to millions of vectors.
   * **Framework integrations**: LangChain and LlamaIndex VectorStore adapters.
+  * **MCP server**: first-class [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) integration via `logosdb-mcp-server`.
 
 # Documentation
 
@@ -406,6 +407,87 @@ logosdb-cli info /tmp/mydb
 logosdb-cli search /tmp/mydb --query-file q.bin --top-k 5
 ```
 
+# Node.js
+
+## MCP Server — Claude Code integration
+
+`logosdb-mcp-server` is a [Model Context Protocol](https://modelcontextprotocol.io/) server that
+exposes LogosDB to **Claude Code** (and any other MCP client) over stdio.  It lets Claude index
+files, persist knowledge across sessions, and do semantic search without leaving the conversation.
+
+### Quick start
+
+**1. Add to `.claude/mcp.json`** in your project (or to `~/.claude.json` for global use):
+
+```json
+{
+  "mcpServers": {
+    "logosdb": {
+      "command": "npx",
+      "args": ["-y", "logosdb-mcp-server"],
+      "env": {
+        "LOGOSDB_PATH": "./.logosdb",
+        "OPENAI_API_KEY": "<your-openai-api-key>"
+      }
+    }
+  }
+}
+```
+
+**2. Start Claude Code** — the server is launched automatically on first tool call.
+
+**3. Use it in conversation:**
+
+```
+> Index the src/ directory into a "code" namespace
+> Find where JWT tokens are validated
+> Remember that we decided to use UUIDs for all primary keys
+```
+
+### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOGOSDB_PATH` | `./.logosdb` | Root directory for all namespace databases |
+| `EMBEDDING_PROVIDER` | `openai` | `openai` or `voyage` |
+| `OPENAI_API_KEY` | — | Required when provider is `openai` |
+| `VOYAGE_API_KEY` | — | Required when provider is `voyage` |
+| `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk for file indexing |
+
+Voyage AI (`voyage-3`, dim=1024) is Anthropic's recommended embedding model.  To use it:
+
+```json
+"env": {
+  "LOGOSDB_PATH": "./.logosdb",
+  "EMBEDDING_PROVIDER": "voyage",
+  "VOYAGE_API_KEY": "<your-voyage-api-key>"
+}
+```
+
+### Available tools
+
+| Tool | Description |
+|---|---|
+| `logosdb_index` | Embed and store a text snippet in a namespace |
+| `logosdb_index_file` | Chunk, embed, and store an entire file |
+| `logosdb_search` | Semantic search across a namespace |
+| `logosdb_list` | List all namespaces |
+| `logosdb_info` | Stats for a namespace (count, dimension, path) |
+| `logosdb_delete` | Delete an entry by row ID |
+
+### Installing locally (without npx)
+
+```bash
+npm install -g logosdb-mcp-server
+```
+
+Then replace the `command`/`args` in `mcp.json` with:
+
+```json
+"command": "logosdb-mcp-server",
+"args": []
+```
+
 # Performance
 
 Here is a performance report from the included `logosdb-bench` program. The results are somewhat noisy, but should be enough to get a ballpark performance estimate.
@@ -476,6 +558,8 @@ LogosDB uses the same HNSW implementation as ChromaDB (hnswlib) but eliminates P
     examples/python/              Python usage examples
     pyproject.toml                Python build/config (scikit-build-core)
     third_party/hnswlib/          Vendored hnswlib (header-only)
+    mcp/                          MCP server (logosdb-mcp-server npm package)
+    .claude/mcp.json              Example Claude Code MCP configuration
     CHANGELOG                     Release history
     LICENSE                       MIT license text
 
