@@ -40,6 +40,71 @@ For Voyage AI embeddings (Anthropic-recommended, dim=1024):
 }
 ```
 
+## Slash commands
+
+Three custom slash commands are included in `.claude/commands/` and are available as soon as you open Claude Code in this project:
+
+| Command | Example |
+|---|---|
+| `/index` | `/index ./src --namespace=backend` |
+| `/search` | `/search "JWT validation" --namespace=backend` |
+| `/forget` | `/forget --namespace=backend --id=42` |
+
+## Example session
+
+Once configured, start Claude Code in your project:
+
+```
+$ cd myproject && claude
+
+> /index ./src --namespace=backend
+Indexed 42 files into 'backend' collection
+
+> Find where we handle JWT validation
+Searching... Found 3 matches:
+  1. src/auth/jwt.ts (score: 0.94)
+  2. src/middleware/auth.ts (score: 0.87)
+  3. src/utils/token.ts (score: 0.72)
+
+> Show me the first one
+[Claude displays src/auth/jwt.ts with explanation]
+
+---
+
+> Index the src/ directory so you can search it semantically
+
+● logosdb_index_file({ path: "./src/auth/jwt.ts", namespace: "code" })
+  ✓ { indexed: 4, namespace: "code", file: "./src/auth/jwt.ts" }
+● logosdb_index_file({ path: "./src/middleware/auth.ts", namespace: "code" })
+  ✓ { indexed: 2, namespace: "code", file: "./src/middleware/auth.ts" }
+  … (42 files indexed)
+
+I've indexed the src/ directory into the "code" namespace — 42 files, 187 chunks.
+
+> Find where we validate JWT tokens
+
+● logosdb_search({ query: "JWT token validation", namespace: "code", top_k: 5 })
+  ✓ {
+      results: [
+        { score: 0.9431, file: "src/auth/jwt.ts",         text: "export function verifyToken(token) {…" },
+        { score: 0.8712, file: "src/middleware/auth.ts",   text: "const decoded = jwt.verify(req.headers…" },
+        { score: 0.8204, file: "src/utils/token.ts",       text: "function decodePayload(token: string)…"  },
+      ]
+    }
+
+The JWT validation logic lives in three places:
+1. **src/auth/jwt.ts** — `verifyToken()` is the main entry point (score 0.94)
+2. **src/middleware/auth.ts** — Express middleware that calls `verifyToken` on every request
+3. **src/utils/token.ts** — low-level payload decoder used by both
+
+> Remember that we decided to use RS256 instead of HS256 going forward
+
+● logosdb_index({ text: "Decision: use RS256 (asymmetric) instead of HS256 for JWT signing. Decided 2026-05-02.", namespace: "decisions" })
+  ✓ { id: 0, indexed: true, namespace: "decisions" }
+
+Noted. I'll keep that in the "decisions" namespace for future sessions.
+```
+
 ## Environment variables
 
 | Variable | Default | Description |
