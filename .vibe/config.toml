@@ -42,4 +42,4 @@ permission = "ask"
 # ── Skills ───────────────────────────────────────────────────────────────────
 
 # Enables the logosdb-memory slash command and Python API documentation.
-enabled_skills = ["logosdb-memory"]
+enabled_skills = ["logosdb-memory", "ldb-index", "ldb-search", "ldb-forget"]
