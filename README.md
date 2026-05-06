@@ -237,35 +237,34 @@ pip install .
 Usage:
 
 ```python
-import numpy as np
 import logosdb
+from sentence_transformers import SentenceTransformer
 
-db = logosdb.DB("/tmp/mydb", dim=128)
+# Local Hugging Face embeddings model (runs on your machine)
+model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+dim = model.get_sentence_embedding_dimension()
 
-v = np.random.randn(128).astype(np.float32)
-v /= np.linalg.norm(v)  # Required for default inner-product distance
-# Or use logosdb.DIST_COSINE for automatic normalization
+# Use cosine distance so LogosDB auto-normalizes vectors
+db = logosdb.DB("/tmp/agent_memory", dim=dim, distance=logosdb.DIST_COSINE)
 
-rid = db.put(v, text="hello", timestamp="2025-06-25T10:00:00Z")
-# rid is the row id for this vector (often 0 for the first insert).
-hits = db.search(v, top_k=5)
-print(hits[0].text, hits[0].score)
+# Three learnings captured by an AI agent
+learnings = [
+    ("Retrying API calls with exponential backoff reduced transient failures by 42%.", "2026-05-06T09:00:00Z"),
+    ("Splitting long tasks into smaller batches improved throughput and lowered memory spikes.", "2026-05-06T09:05:00Z"),
+    ("Adding idempotency keys prevented duplicate writes during network retries.", "2026-05-06T09:10:00Z"),
+]
 
-# Replace an existing row: first arg is that row's id (must still be "live").
-# update() tombstones the old row and appends a new one; it returns the NEW id.
-v2 = np.random.randn(128).astype(np.float32)
-v2 /= np.linalg.norm(v2)
-new_id = db.update(rid, v2, text="replaced")
+for text, ts in learnings:
+    emb = model.encode(text).astype("float32")
+    db.put(emb, text=text, timestamp=ts)
 
-# Tombstone a row by id (excluded from search). count() includes deleted rows;
-# count_live() does not.
-db.delete(new_id)
+# Ask a natural-language question
+question = "How can we avoid duplicate writes when retries happen?"
+q_emb = model.encode(question).astype("float32")
 
-# After a delete, that id cannot be updated again — insert a fresh row with put().
-# zero-copy bulk view over mmap-backed storage (shape: (count, dim), read-only)
-vectors = db.raw_vectors()
-
-print(db.count(), db.count_live(), db.dim)
+hits = db.search(q_emb, top_k=3)
+for h in hits:
+    print(f"{h.score:.4f}  {h.text}")
 ```
 
 ## Python: Using cosine distance (no manual normalization needed)
