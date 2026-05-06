@@ -4,7 +4,14 @@
  *
  * Environment variables:
  *   LOGOSDB_PATH          Base directory for all namespaces  (default: ./.logosdb)
- *   EMBEDDING_PROVIDER    "openai" (default) | "voyage"
+ *   EMBEDDING_PROVIDER    Default: local Transformers.js (see below). Opt-in cloud: openai | voyage.
+ *                           Local aliases: transformers | local | auto (same as default).
+ *                           Local HTTP: ollama
+ *   TRANSFORMERS_MODEL    HF id for Transformers.js (default: Xenova/all-MiniLM-L6-v2)
+ *   TRANSFORMERS_EMBEDDING_DIM / EMBEDDING_DIM — vector size (default 384 for MiniLM)
+ *   OLLAMA_HOST           Base URL when EMBEDDING_PROVIDER=ollama (default http://127.0.0.1:11434)
+ *   OLLAMA_EMBED_MODEL    Ollama embedding model (default nomic-embed-text)
+ *   OLLAMA_EMBEDDING_DIM  Default 768 for nomic — must match actual model output
  *   OPENAI_API_KEY        Required when EMBEDDING_PROVIDER=openai
  *   VOYAGE_API_KEY        Required when EMBEDDING_PROVIDER=voyage
  *   LOGOSDB_CHUNK_SIZE    Target characters per chunk for file indexing (default: 800)
@@ -114,7 +121,11 @@ try {
 } catch (err) {
   process.stderr.write(`[logosdb-mcp] WARNING: ${(err as Error).message}\n`);
   // Allow server to start so list/info tools still work; embed calls will throw at call time.
-  embCfg = { provider: 'openai', dim: 1536, model: 'text-embedding-3-small', apiKey: '' };
+  embCfg = {
+    provider: 'transformers',
+    dim: 384,
+    model: process.env.TRANSFORMERS_MODEL ?? 'Xenova/all-MiniLM-L6-v2',
+  };
 }
 
 const store = new NamespaceStore(LOGOSDB_PATH);
@@ -230,7 +241,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!text) throw new Error('"text" is required');
         if (!namespace) throw new Error('"namespace" is required');
 
-        ensureApiKey();
+        ensureEmbeddingsConfigured();
         const vec = await embed(text, embCfg);
         const db = store.open(namespace, vec.length);
         const stored = metadata ? `${text}\n[${metadata}]` : text;
@@ -248,7 +259,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!inputPath) throw new Error('"path" is required');
         if (!namespace) throw new Error('"namespace" is required');
 
-        ensureApiKey();
+        ensureEmbeddingsConfigured();
 
         const absPath = path.resolve(inputPath);
         const stat = fs.statSync(absPath);
@@ -305,7 +316,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!query) throw new Error('"query" is required');
         if (!namespace) throw new Error('"namespace" is required');
 
-        ensureApiKey();
+        ensureEmbeddingsConfigured();
         const vec = await embed(query, embCfg);
 
         let db;
@@ -388,11 +399,13 @@ function ok(data: unknown) {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
 }
 
-function ensureApiKey() {
-  if (!embCfg.apiKey) {
-    throw new Error(
-      'No embedding API key configured. Set OPENAI_API_KEY (or VOYAGE_API_KEY with EMBEDDING_PROVIDER=voyage).',
-    );
+function ensureEmbeddingsConfigured() {
+  if (embCfg.provider === 'openai' || embCfg.provider === 'voyage') {
+    if (!embCfg.apiKey) {
+      throw new Error(
+        'No embedding API key configured. Set OPENAI_API_KEY (or VOYAGE_API_KEY with EMBEDDING_PROVIDER=voyage).',
+      );
+    }
   }
 }
 

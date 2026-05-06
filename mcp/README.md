@@ -1,7 +1,7 @@
 # logosdb-mcp-server
 
 MCP server that exposes [LogosDB](https://github.com/jose-compu/logosdb) semantic search to
-**Claude Code** and any other [Model Context Protocol](https://modelcontextprotocol.io/) client.
+**Claude Code**, **Google Antigravity**, and any other [Model Context Protocol](https://modelcontextprotocol.io/) client.
 
 ## Install
 
@@ -13,6 +13,10 @@ Or run without installing via `npx -y logosdb-mcp-server`.
 
 ## Configure
 
+### Default: local embeddings (Transformers.js)
+
+If you omit `EMBEDDING_PROVIDER`, the server uses **[Transformers.js](https://github.com/xenova/transformers.js)** (`@xenova/transformers`) with a small on-device model. **No API keys.** The first run may download weights (cache under the standard Transformers.js cache directory).
+
 Add to `.claude/mcp.json` in your project (or `~/.claude.json` for global use):
 
 ```json
@@ -22,15 +26,50 @@ Add to `.claude/mcp.json` in your project (or `~/.claude.json` for global use):
       "command": "npx",
       "args": ["-y", "logosdb-mcp-server"],
       "env": {
-        "LOGOSDB_PATH": "./.logosdb",
-        "OPENAI_API_KEY": "<your-openai-api-key>"
+        "LOGOSDB_PATH": "./.logosdb"
       }
     }
   }
 }
 ```
 
-For Voyage AI embeddings (Anthropic-recommended, dim=1024):
+Default model: `Xenova/all-MiniLM-L6-v2` (384 dimensions). Override:
+
+```json
+"env": {
+  "LOGOSDB_PATH": "./.logosdb",
+  "TRANSFORMERS_MODEL": "Xenova/all-MiniLM-L6-v2",
+  "TRANSFORMERS_EMBEDDING_DIM": "384"
+}
+```
+
+If you switch models, set `TRANSFORMERS_EMBEDDING_DIM` / `EMBEDDING_DIM` to the **exact** output size of that model.
+
+### Local HTTP: Ollama
+
+Run [Ollama](https://ollama.com) with an embedding model (e.g. `nomic-embed-text`), then:
+
+```json
+"env": {
+  "LOGOSDB_PATH": "./.logosdb",
+  "EMBEDDING_PROVIDER": "ollama",
+  "OLLAMA_HOST": "http://127.0.0.1:11434",
+  "OLLAMA_EMBED_MODEL": "nomic-embed-text",
+  "OLLAMA_EMBEDDING_DIM": "768"
+}
+```
+
+### Cloud (opt-in): OpenAI
+
+```json
+"env": {
+  "LOGOSDB_PATH": "./.logosdb",
+  "EMBEDDING_PROVIDER": "openai",
+  "OPENAI_API_KEY": "<your-openai-api-key>"
+}
+```
+
+### Cloud (opt-in): Voyage AI (dim=1024)
 
 ```json
 "env": {
@@ -39,6 +78,69 @@ For Voyage AI embeddings (Anthropic-recommended, dim=1024):
   "VOYAGE_API_KEY": "<your-voyage-api-key>"
 }
 ```
+
+## Google Antigravity
+
+[Google Antigravity](https://codelabs.developers.google.com/google-workspace-mcp-antigravity) is an agentic IDE stack that can load **MCP servers** over **stdio** — the same pattern as Claude Code. **`logosdb-mcp-server`** is published as [`logosdb-mcp-server`](https://www.npmjs.com/package/logosdb-mcp-server) on npm and speaks standard MCP tools (`logosdb_index`, `logosdb_index_file`, `logosdb_search`, `logosdb_list`, `logosdb_info`, `logosdb_delete`). See the [MCP specification](https://modelcontextprotocol.io).
+
+### Where to configure
+
+Exact menu labels change between Antigravity builds. In general:
+
+1. Open the **Agent** (or AI) panel.
+2. Use **Manage MCP servers**, **MCP settings**, or **View raw config** (wording may differ).
+3. Add a stdio server whose **command** is `npx` and **args** include `-y` and `logosdb-mcp-server`, with **environment variables** for `LOGOSDB_PATH` and embedding options.
+
+If Antigravity exposes a raw JSON file (`mcpServers` or project-level MCP config), use the same JSON shape as below. Confirm the file path in your Antigravity version if the agent cannot start the server.
+
+**Requirements:** [Node.js](https://nodejs.org/) on your `PATH` (for `npx`) and a writable `LOGOSDB_PATH` directory.
+
+### Recommended: local embeddings (no API keys)
+
+Matches the default elsewhere in this README — no `OPENAI_API_KEY` required:
+
+```json
+{
+  "mcpServers": {
+    "logosdb": {
+      "command": "npx",
+      "args": ["-y", "logosdb-mcp-server"],
+      "env": {
+        "LOGOSDB_PATH": "./.logosdb"
+      }
+    }
+  }
+}
+```
+
+### Optional: cloud embeddings
+
+**OpenAI:**
+
+```json
+{
+  "mcpServers": {
+    "logosdb": {
+      "command": "npx",
+      "args": ["-y", "logosdb-mcp-server"],
+      "env": {
+        "LOGOSDB_PATH": "./.logosdb",
+        "EMBEDDING_PROVIDER": "openai",
+        "OPENAI_API_KEY": "<your-openai-api-key>"
+      }
+    }
+  }
+}
+```
+
+**Voyage AI** (`EMBEDDING_PROVIDER=voyage`, `VOYAGE_API_KEY`): see the [Configure](#configure) section above.
+
+**Ollama** (local HTTP): set `EMBEDDING_PROVIDER=ollama` and the `OLLAMA_*` variables from [Local HTTP: Ollama](#local-http-ollama).
+
+### Further reading
+
+- Google codelab — [Google Workspace MCP servers in Antigravity](https://codelabs.developers.google.com/google-workspace-mcp-antigravity)
+- Community walkthrough — [How to use MCP servers in Antigravity](https://antigravity.codes/blog/antigravity-mcp-tutorial)
 
 ## Slash commands
 
@@ -110,10 +212,18 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 | Variable | Default | Description |
 |---|---|---|
 | `LOGOSDB_PATH` | `./.logosdb` | Root directory for all namespace databases |
-| `EMBEDDING_PROVIDER` | `openai` | `openai` or `voyage` |
-| `OPENAI_API_KEY` | — | Required when provider is `openai` |
-| `VOYAGE_API_KEY` | — | Required when provider is `voyage` |
+| `EMBEDDING_PROVIDER` | *(unset → local)* | `transformers` / `local` / `auto` (default), `ollama`, `openai`, `voyage` |
+| `TRANSFORMERS_MODEL` | `Xenova/all-MiniLM-L6-v2` | Hugging Face id for Transformers.js |
+| `TRANSFORMERS_EMBEDDING_DIM` | `384` | Must match model output (or set `EMBEDDING_DIM`) |
+| `EMBEDDING_DIM` | — | Optional global override for expected vector length |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | When `EMBEDDING_PROVIDER=ollama` |
+| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Ollama embedding model name |
+| `OLLAMA_EMBEDDING_DIM` | `768` | Must match the model’s embedding size |
+| `OPENAI_API_KEY` | — | Required when `EMBEDDING_PROVIDER=openai` |
+| `VOYAGE_API_KEY` | — | Required when `EMBEDDING_PROVIDER=voyage` |
 | `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk when indexing files |
+
+**Important:** Use one embedding backend consistently for a given namespace on disk. Mixing dimensions or models on the same `LOGOSDB_PATH` namespace will produce invalid search results.
 
 ## Tools
 

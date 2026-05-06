@@ -426,13 +426,16 @@ files, persist knowledge across sessions, and do semantic search without leaving
       "command": "npx",
       "args": ["-y", "logosdb-mcp-server"],
       "env": {
-        "LOGOSDB_PATH": "./.logosdb",
-        "OPENAI_API_KEY": "<your-openai-api-key>"
+        "LOGOSDB_PATH": "./.logosdb"
       }
     }
   }
 }
 ```
+
+By default the MCP server uses **local Transformers.js** embeddings (no API keys). Add `EMBEDDING_PROVIDER` / keys only if you want cloud or [Ollama](https://ollama.com) — see `mcp/README.md`.
+
+**Google Antigravity:** same stdio + `npx` setup; step-by-step is in [`mcp/README.md` — Google Antigravity](mcp/README.md#google-antigravity).
 
 **2. Start Claude Code** — the server is launched automatically on first tool call.
 
@@ -449,12 +452,14 @@ files, persist knowledge across sessions, and do semantic search without leaving
 | Variable | Default | Description |
 |---|---|---|
 | `LOGOSDB_PATH` | `./.logosdb` | Root directory for all namespace databases |
-| `EMBEDDING_PROVIDER` | `openai` | `openai` or `voyage` |
-| `OPENAI_API_KEY` | — | Required when provider is `openai` |
-| `VOYAGE_API_KEY` | — | Required when provider is `voyage` |
+| `EMBEDDING_PROVIDER` | *(local)* | Omit for Transformers.js on-device; or `ollama`, `openai`, `voyage` |
+| `TRANSFORMERS_MODEL` | `Xenova/all-MiniLM-L6-v2` | Local embedding model (bundled MCP path) |
+| `OLLAMA_*` | — | See `mcp/README.md` when using Ollama |
+| `OPENAI_API_KEY` | — | Required when `EMBEDDING_PROVIDER=openai` |
+| `VOYAGE_API_KEY` | — | Required when `EMBEDDING_PROVIDER=voyage` |
 | `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk for file indexing |
 
-Voyage AI (`voyage-3`, dim=1024) is Anthropic's recommended embedding model.  To use it:
+Voyage AI (`voyage-3`, dim=1024) is Anthropic's recommended cloud embedding model:
 
 ```json
 "env": {
