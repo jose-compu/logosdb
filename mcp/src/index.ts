@@ -223,7 +223,7 @@ const TOOLS: Tool[] = [
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
-const server = new Server({ name: 'logosdb', version: '0.7.3' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'logosdb', version: '0.7.4' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
