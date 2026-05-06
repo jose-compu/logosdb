@@ -40,6 +40,10 @@ huggingface = ["sentence-transformers>=2.2", "numpy>=1.21"]
 cohere = ["requests>=2.31", "numpy>=1.21"]
 mem0 = ["mem0ai>=0.1", "numpy>=1.21"]
 vibe = ["requests>=2.31", "numpy>=1.21"]
+cognee = ["numpy>=1.21"]
+superlinked = ["numpy>=1.21"]
+camel = ["numpy>=1.21"]
+crewai = ["numpy>=1.21"]
 
 [project.scripts]
 logosdb-vibe = "logosdb._vibe_cli:main"

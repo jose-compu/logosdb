@@ -120,3 +120,43 @@ except ImportError:
 
 if VIBE_AVAILABLE:
     __all__.append("VibeMemory")
+
+# Cognee integration
+try:
+    from .cognee import LogosDBVectorStore as CogneeVectorStore
+    COGNEE_AVAILABLE = True
+except ImportError:
+    COGNEE_AVAILABLE = False
+
+if COGNEE_AVAILABLE:
+    __all__.append("CogneeVectorStore")
+
+# Superlinked integration
+try:
+    from .superlinked import LogosDBVectorIndex as SuperlinkedVectorIndex
+    SUPERLINKED_AVAILABLE = True
+except ImportError:
+    SUPERLINKED_AVAILABLE = False
+
+if SUPERLINKED_AVAILABLE:
+    __all__.append("SuperlinkedVectorIndex")
+
+# CAMEL-AI integration
+try:
+    from .camel import LogosDBVectorMemory
+    CAMEL_AVAILABLE = True
+except ImportError:
+    CAMEL_AVAILABLE = False
+
+if CAMEL_AVAILABLE:
+    __all__.append("LogosDBVectorMemory")
+
+# CrewAI integration
+try:
+    from .crewai import LogosDBKnowledgeSource
+    CREWAI_AVAILABLE = True
+except ImportError:
+    CREWAI_AVAILABLE = False
+
+if CREWAI_AVAILABLE:
+    __all__.append("LogosDBKnowledgeSource")
