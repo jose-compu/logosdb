@@ -45,6 +45,8 @@ for (const hit of hits) {
 db.close();
 ```
 
+The Node binding only stores vectors; it does **not** embed text. For **local embeddings** in your own app, use `@xenova/transformers`, call OpenAI/Voyage, etc., and pass `float` arrays whose length matches `dim`. The **`logosdb-mcp-server`** package bundles Transformers.js as the default embedding backend — see [`mcp/README.md`](../mcp/README.md).
+
 ## API
 
 ### `new DB(path, options)`
