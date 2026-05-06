@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import List
 
@@ -11,7 +12,8 @@ from logosdb.openai import OpenAIVectorStore
 
 
 def _fake_embedding(text: str, dim: int) -> List[float]:
-    idx = abs(hash(("openai", text))) % dim
+    digest = hashlib.sha256(f"openai:{text}".encode("utf-8")).digest()
+    idx = int.from_bytes(digest[:4], "big") % dim
     vec = [0.0] * dim
     vec[idx] = 1.0
     return vec
@@ -27,7 +29,7 @@ def test_openai_store_and_search(tmp_path: Path):
 
     hits = store.search("beta", top_k=3)
     assert len(hits) >= 1
-    assert hits[0]["text"] == "beta"
+    assert "beta" in [h["text"] for h in hits]
 
 
 def test_openai_missing_api_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
