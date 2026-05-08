@@ -78,3 +78,36 @@ jobs:
         run: |
           rm -rf /tmp/ci-smoke-db
           ./logosdb-cli info /tmp/ci-smoke-db --dim 16
+
+  # Formatting and linting check (Linux only, single config)
+  format-check:
+    name: Formatting / Linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install clang-format and clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-format clang-tidy
+
+      - name: Check clang-format version
+        run: clang-format --version
+
+      - name: Run clang-format check
+        run: |
+          find src include tests tools \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) | \
+            grep -v 'doctest.h' | \
+            xargs clang-format --dry-run -Werror
+
+      - name: Run clang-tidy check (optional, report only)
+        run: |
+          mkdir -p build
+          cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          find src -name '*.cpp' | \
+            xargs clang-tidy -p build --warnings-as-errors='' 2>&1 || true
+        continue-on-error: true

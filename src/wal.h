@@ -5,8 +5,10 @@
 #include <string>
 #include <vector>
 
-namespace logosdb {
-namespace internal {
+namespace logosdb
+{
+namespace internal
+{
 
 // Write-Ahead Log for atomic Put operations.
 //
@@ -30,13 +32,15 @@ namespace internal {
 //   [timestamp (ts_len bytes)]
 //   [expected_id uint64 (8 bytes)]
 
-enum class WALState : uint8_t {
+enum class WALState : uint8_t
+{
     PENDING = 0,
     COMMITTED = 1,
     ABORTED = 2
 };
 
-struct WALEntry {
+struct WALEntry
+{
     WALState state = WALState::PENDING;
     uint32_t dim = 0;
     std::vector<float> vector;
@@ -45,49 +49,51 @@ struct WALEntry {
     uint64_t expected_id = 0;  // Expected row id (for validation)
 };
 
-class WriteAheadLog {
-public:
+class WriteAheadLog
+{
+  public:
     WriteAheadLog() = default;
     ~WriteAheadLog();
 
-    WriteAheadLog(const WriteAheadLog &) = delete;
-    WriteAheadLog & operator=(const WriteAheadLog &) = delete;
+    WriteAheadLog(const WriteAheadLog&) = delete;
+    WriteAheadLog& operator=(const WriteAheadLog&) = delete;
 
     // Open or create WAL file at the given path.
-    bool open(const std::string & path, std::string & err);
+    bool open(const std::string& path, std::string& err);
     void close();
 
     // Append a new pending entry. Returns the entry offset in the file
     // (needed to mark committed later), or -1 on error.
-    int64_t append_pending(const float * vec, int dim,
-                           const char * text, const char * timestamp,
+    int64_t append_pending(const float* vec,
+                           int dim,
+                           const char* text,
+                           const char* timestamp,
                            uint64_t expected_id,
-                           std::string & err);
+                           std::string& err);
 
     // Mark an entry as committed by its offset.
-    bool mark_committed(int64_t offset, std::string & err);
+    bool mark_committed(int64_t offset, std::string& err);
 
     // Replay all pending entries, calling the provided function for each.
     // Entries are marked committed after successful replay.
     // Returns number of entries replayed, or -1 on error.
-    int replay_pending(
-        std::function<bool(const WALEntry &, std::string &)> replay_fn,
-        std::string & err);
+    int replay_pending(std::function<bool(const WALEntry&, std::string&)> replay_fn,
+                       std::string& err);
 
     // Sync WAL to disk.
-    bool sync(std::string & err);
+    bool sync(std::string& err);
 
     // Get count of pending entries (for debugging/metrics).
     size_t pending_count() const { return pending_count_; }
 
-private:
-    bool read_entry_at(int64_t offset, WALEntry & entry, std::string & err);
-    bool write_state_at(int64_t offset, WALState state, std::string & err);
+  private:
+    bool read_entry_at(int64_t offset, WALEntry& entry, std::string& err);
+    bool write_state_at(int64_t offset, WALState state, std::string& err);
 
     std::string path_;
     int fd_ = -1;
     size_t pending_count_ = 0;
 };
 
-} // namespace internal
-} // namespace logosdb
+}  // namespace internal
+}  // namespace logosdb

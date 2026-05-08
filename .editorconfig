@@ -1,0 +1,57 @@
+# LogosDB EditorConfig
+# EditorConfig helps maintain consistent coding styles across editors
+# http://editorconfig.org
+
+# Top-most EditorConfig file
+root = true
+
+# All files
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# C/C++ files
+[*.{h,hpp,c,cpp}]
+indent_style = space
+indent_size = 4
+tab_width = 4
+max_line_length = 100
+
+# CMake files
+[{CMakeLists.txt,*.cmake}]
+indent_style = space
+indent_size = 4
+
+# Python files
+[*.py]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+
+# YAML files (GitHub Actions, etc.)
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# JSON files
+[*.json]
+indent_style = space
+indent_size = 2
+
+# Markdown files
+[*.md]
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = true
+max_line_length = 120
+
+# Shell scripts
+[*.sh]
+indent_style = space
+indent_size = 2
+
+# Makefiles
+[{Makefile,*.mk}]
+indent_style = tab

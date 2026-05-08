@@ -67,7 +67,10 @@ We follow these conventions:
 - **Python**: PEP 8 with 4-space indentation
 - **Filenames**: `snake_case.cpp`, `snake_case.h`
 
-See [Issue #12](https://github.com/jose-compu/logosdb/issues/12) for ongoing work on automated formatting (clang-format).
+**Formatting tools available:**
+- Run `clang-format -i src/yourfile.cpp` to auto-format C/C++ code
+- Run `clang-tidy src/yourfile.cpp` to check for common issues
+- CI enforces formatting via `clang-format --dry-run -Werror`
 
 ### Style Guidelines
 

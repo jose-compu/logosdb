@@ -1,0 +1,78 @@
+---
+# LogosDB C/C++ formatting style
+# Based on LLVM style with adjustments for existing codebase conventions
+
+Language: Cpp
+BasedOnStyle: LLVM
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+
+# Braces (Allman style - braces on their own line)
+BreakBeforeBraces: Allman
+
+# Line length
+ColumnLimit: 100
+
+# Alignment
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignEscapedNewlines: Left
+AlignOperands: true
+AlignTrailingComments: true
+
+# Function declarations/definitions
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortLambdasOnASingleLine: true
+AlwaysBreakAfterReturnType: None
+AlwaysBreakBeforeMultilineStrings: false
+
+# Parameters and arguments
+BinPackArguments: false
+BinPackParameters: false
+PackConstructorInitializers: Never
+
+# Constructor initializers
+BreakConstructorInitializers: BeforeColon
+
+# Control statements
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+
+# Namespaces
+NamespaceIndentation: None
+FixNamespaceComments: true
+
+# Includes
+IncludeBlocks: Regroup
+SortIncludes: true
+IncludeCategories:
+  - Regex:           '^<logosdb/'
+    Priority:        2
+  - Regex:           '^<.*\.h>'
+    Priority:        3
+  - Regex:           '^<.*'
+    Priority:        4
+  - Regex:           '.*'
+    Priority:        1
+
+# Pointer alignment
+PointerAlignment: Left
+
+# Other
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+ReflowComments: true
+SortUsingDeclarations: true
+SpaceAfterCStyleCast: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 2
+SpacesInAngles: false
+SpacesInCStyleCastParentheses: false
+SpacesInContainerLiterals: false
+SpacesInParentheses: false
