@@ -9,6 +9,8 @@ LogosDB is a fast semantic vector database written in C/C++ that provides approx
 
 Authors: Jose ([@jose-compu](https://github.com/jose-compu))
 
+**Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, style guide, and PR workflow.
+
 # Features
 
   * Vectors and metadata are stored as flat binary files, memory-mapped for zero-copy reads.
@@ -569,6 +571,15 @@ LogosDB uses the same HNSW implementation as ChromaDB (hnswlib) but eliminates P
     .claude/mcp.json              Example Claude Code MCP configuration
     CHANGELOG                     Release history
     LICENSE                       MIT license text
+
+# Contributing
+
+We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Building from source
+- Running tests and benchmarks
+- Code style and PR workflow
+
+Please review our [Code of Conduct](CODE_OF_CONDUCT.md) and [Security Policy](SECURITY.md).
 
 # License
 
