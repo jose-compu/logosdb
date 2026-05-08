@@ -100,7 +100,8 @@ jobs:
 
       - name: Run clang-format check
         run: |
-          find src include tests tools -name '*.cpp' -o -name '*.h' -o -name '*.hpp' | \
+          find src include tests tools \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) | \
+            grep -v 'doctest.h' | \
             xargs clang-format --dry-run -Werror
 
       - name: Run clang-tidy check (optional, report only)
