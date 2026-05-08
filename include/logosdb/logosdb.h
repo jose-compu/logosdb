@@ -6,8 +6,8 @@
 
 #define LOGOSDB_VERSION_MAJOR 0
 #define LOGOSDB_VERSION_MINOR 7
-#define LOGOSDB_VERSION_PATCH 5
-#define LOGOSDB_VERSION_STRING "0.7.5"
+#define LOGOSDB_VERSION_PATCH 6
+#define LOGOSDB_VERSION_STRING "0.7.6"
 
 /* Distance metrics for vector similarity search */
 #define LOGOSDB_DIST_IP 0     /* Inner product (default, requires L2-normalized vectors) */

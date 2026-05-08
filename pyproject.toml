@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "logosdb"
-version = "0.7.5"
+version = "0.7.6"
 description = "Fast semantic vector database (HNSW + mmap) with Python bindings"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -83,8 +83,8 @@ skip = [
     "cp3??t-*",
 ]
 build-verbosity = 1
-test-requires = "pytest"
-test-command = "pytest {project}/tests/python -v"
+test-requires = "pytest numpy"
+test-command = "python -m pytest {project}/tests/python/test_smoke.py -v"
 
 # Linux: do not set archs here. Listing both x86_64 and aarch64 would make
 # cibuildwheel try to run the x86_64 manylinux Docker image on ARM runners
