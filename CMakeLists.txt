@@ -49,11 +49,14 @@ if(LOGOSDB_BUILD_TOOLS)
 endif()
 
 if(LOGOSDB_BUILD_TESTS)
-    add_executable(logosdb-test tests/test_basic.cpp)
+    # Single-header doctest is vendored in tests/
+    add_executable(logosdb-test tests/test_doctest.cpp)
+    target_include_directories(logosdb-test PRIVATE tests)
     target_link_libraries(logosdb-test PRIVATE logosdb)
 
     enable_testing()
-    add_test(NAME logosdb_basic COMMAND logosdb-test)
+    # Run all test suites; doctest provides filtering via --test-case="*pattern*"
+    add_test(NAME logosdb_doctest COMMAND logosdb-test)
 endif()
 
 if(LOGOSDB_BUILD_PYTHON)

@@ -61,9 +61,17 @@ jobs:
       - name: List built targets
         run: ls -la build
 
-      - name: Run tests
+      - name: Run tests (CTest)
         working-directory: build
         run: ctest --output-on-failure --build-config ${{ matrix.build_type }}
+
+      - name: Run tests (verbose)
+        working-directory: build
+        run: ./logosdb-test
+
+      - name: List test suites
+        working-directory: build
+        run: ./logosdb-test --list-test-suites
 
       - name: Smoke-test CLI
         working-directory: build
