@@ -49,6 +49,70 @@ Guide to header files:
   * For inner-product distance (`LOGOSDB_DIST_IP`, the default), vectors must be L2-normalized before insertion. Use `LOGOSDB_DIST_COSINE` for automatic normalization.
   * Embedding generation is external — the caller provides pre-computed float vectors.
 
+# Roadmap
+
+Work is tracked in [open issues](https://github.com/jose-compu/logosdb/issues?q=is%3Aissue+is%3Aopen). Version bumps follow [Semantic Versioning](https://semver.org/) with these project conventions while the library is **pre-1.0** (`0.x.y`):
+
+| Bump | When |
+|------|------|
+| **Patch** (`0.x.Z`) | Bug fixes, security fixes, documentation, CI/build-only changes, and internal tooling that does **not** alter the supported contract of the public C API in [`include/logosdb/logosdb.h`](include/logosdb/logosdb.h) or the stable surface of language bindings. |
+| **Minor** (`0.Y.z`) | Backward-compatible additions: new functions or options, new storage or index behaviors behind explicit settings, new integrations, new platforms, and additive file-format upgrades with automatic or guided migration. |
+| **Major `1.0.0`** | First **stable** release: a documented compatibility promise for the public C API and for on-disk formats (including upgrade paths). Intended when the **Path to 1.0.0** criteria (below) are satisfied so downstream authors can depend on semver semantics without surprise breakage across patch/minor lines. |
+
+Target versions and issue assignment match **[GitHub milestones](https://github.com/jose-compu/logosdb/milestones)** (each open roadmap issue has exactly one milestone).
+
+## Milestones → issues
+
+### [0.7.7](https://github.com/jose-compu/logosdb/milestone/7) — patch (`0.x.Z`)
+
+  * [#74](https://github.com/jose-compu/logosdb/issues/74) — security: harden encoding and injection surfaces across MCP, CLI, and integrations
+  * [#9](https://github.com/jose-compu/logosdb/issues/9) — Sanitizer builds (ASan/UBSan/TSan) and a libFuzzer target
+
+### [0.8.0](https://github.com/jose-compu/logosdb/milestone/5) — minor — operations and durability
+
+  * [#88](https://github.com/jose-compu/logosdb/issues/88) — DB doctor/upgrade: compatibility checks and guided migrations
+  * [#83](https://github.com/jose-compu/logosdb/issues/83) — Snapshots and backup: consistent point-in-time export/restore
+  * [#82](https://github.com/jose-compu/logosdb/issues/82) — Metrics and observability: expose query/ingest/index health counters
+  * [#81](https://github.com/jose-compu/logosdb/issues/81) — Compaction/vacuum: reclaim space from tombstones and fragmented files
+
+### [0.9.0](https://github.com/jose-compu/logosdb/milestone/8) — minor — throughput and scale
+
+  * [#87](https://github.com/jose-compu/logosdb/issues/87) — Streaming import/export for very large corpora
+  * [#80](https://github.com/jose-compu/logosdb/issues/80) — Batch ingest v2: high-throughput put_batch with WAL-aware commit
+
+### [0.10.0](https://github.com/jose-compu/logosdb/milestone/9) — minor — search and metadata
+
+  * [#85](https://github.com/jose-compu/logosdb/issues/85) — Hybrid retrieval mode: ANN score + lexical score fusion
+  * [#84](https://github.com/jose-compu/logosdb/issues/84) — Filter API v2: structured metadata predicates beyond timestamp range
+
+### [0.11.0](https://github.com/jose-compu/logosdb/milestone/10) — minor — multi-tenancy and tooling
+
+  * [#86](https://github.com/jose-compu/logosdb/issues/86) — Multi-tenant namespaces: quota and isolation within one DB root
+  * [#89](https://github.com/jose-compu/logosdb/issues/89) — Recall benchmarking utility for HNSW tuning
+
+### [0.12.0](https://github.com/jose-compu/logosdb/milestone/11) — minor — integrations
+
+  * [#78](https://github.com/jose-compu/logosdb/issues/78) — Feature: Codex plugin marketplace integration for LogosDB
+
+### [0.13.0](https://github.com/jose-compu/logosdb/milestone/12) — minor — platform
+
+  * [#10](https://github.com/jose-compu/logosdb/issues/10) — Windows support: abstract POSIX file I/O behind a portable layer
+
+### [1.0.0](https://github.com/jose-compu/logosdb/milestone/13) — stable release tag
+
+No roadmap issues are assigned only to this milestone: it marks publishing **`1.0.0`** once the criteria below are satisfied; implementation work stays on the milestones above until shipped.
+
+## Path to 1.0.0
+
+`1.0.0` is **not** a single mega-release of every open issue; it is the milestone where the project commits to stable semver for the public API and supported persistence story. Practically, **1.0.0** is targeted when:
+
+  * The public C API in `include/logosdb/logosdb.h` is treated as stable: breaking changes only in future major versions, with migration notes.
+  * On-disk layout and version negotiation are documented, with doctor/upgrade guidance ([#88](https://github.com/jose-compu/logosdb/issues/88)) and a credible backup/restore path ([#83](https://github.com/jose-compu/logosdb/issues/83)).
+  * The security baseline in [#74](https://github.com/jose-compu/logosdb/issues/74) is addressed for MCP, CLI, and bundled integrations.
+  * Tier-1 platforms for the release are explicit (first-class Windows ([#10](https://github.com/jose-compu/logosdb/issues/10)) or a documented Unix-only 1.0, decided at release time).
+
+Features such as hybrid retrieval ([#85](https://github.com/jose-compu/logosdb/issues/85)), filter predicates ([#84](https://github.com/jose-compu/logosdb/issues/84)), or multi-tenant namespaces ([#86](https://github.com/jose-compu/logosdb/issues/86)) can ship in **0.x** minors as they land; they do not all block **1.0.0** unless adopted into the stable API surface.
+
 # Getting the Source
 
 ```bash
