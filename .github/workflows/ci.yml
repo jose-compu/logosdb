@@ -79,6 +79,35 @@ jobs:
           rm -rf /tmp/ci-smoke-db
           ./logosdb-cli info /tmp/ci-smoke-db --dim 16
 
+  # libFuzzer smoke (short run)
+  fuzz-smoke-jsonl:
+    name: Fuzz smoke (JSONL parse harness)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Clang + Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build clang
+
+      - name: Configure and build fuzzer
+        run: |
+          cmake -S . -B build-fuzz -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DLOGOSDB_BUILD_FUZZ=ON \
+            -DLOGOSDB_BUILD_TOOLS=OFF \
+            -DLOGOSDB_BUILD_TESTS=OFF
+          cmake --build build-fuzz --parallel
+
+      - name: Run fuzzer (bounded)
+        working-directory: build-fuzz
+        run: ./logosdb-fuzz-jsonl -max_total_time=20 -print_final_stats=1
+
   # Formatting and linting check (Linux only, single config)
   format-check:
     name: Formatting / Linting

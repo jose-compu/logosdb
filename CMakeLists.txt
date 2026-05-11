@@ -59,6 +59,21 @@ if(LOGOSDB_BUILD_TESTS)
     add_test(NAME logosdb_doctest COMMAND logosdb-test)
 endif()
 
+option(LOGOSDB_BUILD_FUZZ "Build libFuzzer harness for JSON metadata parsing (Clang, Linux)" OFF)
+if(LOGOSDB_BUILD_FUZZ)
+    if(APPLE)
+        message(
+            WARNING
+                "LOGOSDB_BUILD_FUZZ skipped: Apple Clang does not ship libFuzzer here. Use Linux + Clang (see CI)."
+        )
+    else()
+        add_executable(logosdb-fuzz-jsonl tools/fuzz_jsonl_metadata.cpp)
+        target_link_libraries(logosdb-fuzz-jsonl PRIVATE nlohmann_json)
+        target_compile_options(logosdb-fuzz-jsonl PRIVATE -fsanitize=fuzzer-no-link,address -O1 -g)
+        target_link_options(logosdb-fuzz-jsonl PRIVATE -fsanitize=fuzzer,address)
+    endif()
+endif()
+
 if(LOGOSDB_BUILD_PYTHON)
     # Discover Python and pybind11. When built by scikit-build-core,
     # pybind11 is provided via the build isolation environment.

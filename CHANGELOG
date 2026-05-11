@@ -11,6 +11,28 @@ logosdb change log
   * README: Claude Code slash-commands table and `.claude/commands/` in repository contents (closes #95).
   * `.claude/commands/search.md` and `forget.md` updated for the new tool parameters.
 
+0.7.7  (2026-05-11)
+-------------------
+
+  Security hardening for MCP server and CLI (progress on #74)
+
+  * MCP: confine `logosdb_index_file` to `process.cwd()` or `LOGOSDB_INDEX_ROOT` after
+    `realpath` resolution; reject symlink escapes; cap file size and text/metadata lengths;
+    reject disallowed C0 control characters; clamp `chunk_size` and `top_k`.
+  * MCP: HTTP embedding providers use `fetch` with `AbortSignal` timeout (default 120s,
+    override with `EMBEDDING_FETCH_TIMEOUT_MS`, max 600s).
+  * CLI: `--text` metadata validated for length, NUL, and C0 controls before `put`.
+
+  Tooling / CI (progress on #9)
+
+  * CMake option `LOGOSDB_BUILD_FUZZ`: `logosdb-fuzz-jsonl` libFuzzer harness over JSON parse
+    (enabled on non-Apple targets; Apple Clang lacks the fuzzer runtime).
+  * GitHub Actions: short libFuzzer smoke job for `logosdb-fuzz-jsonl` (Clang on Linux). Full-tree
+    ASan/UBSan CI was dropped: vendored hnswlib remains instrumented when included from our TUs,
+    so sanitizer ignorelists do not suppress its reports.
+
+  **npm:** publish the `logosdb` native package before `logosdb-mcp-server` so installs can resolve the new patch.
+
 0.7.6  (TBD)
 -------------------
 

@@ -30,90 +30,20 @@ import * as path from 'path';
 import { resolveConfig, embed, embedBatch, type EmbeddingConfig } from './embeddings.js';
 import { NamespaceStore } from './store.js';
 import { chunk } from './chunker.js';
+import {
+  clampChunkSize,
+  clampTopK,
+  collectFilesSafe,
+  readFileBoundedUtf8,
+  resolveIndexablePath,
+  validateMetadata,
+  validateUserText,
+} from './security.js';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 const LOGOSDB_PATH = process.env.LOGOSDB_PATH ?? path.join(process.cwd(), '.logosdb');
-const CHUNK_SIZE = parseInt(process.env.LOGOSDB_CHUNK_SIZE ?? '800', 10);
-
-// File extensions treated as indexable text
-const INDEXABLE_EXTENSIONS = new Set([
-  '.ts',
-  '.tsx',
-  '.js',
-  '.jsx',
-  '.mjs',
-  '.cjs',
-  '.py',
-  '.go',
-  '.rs',
-  '.java',
-  '.c',
-  '.cpp',
-  '.h',
-  '.hpp',
-  '.cs',
-  '.rb',
-  '.php',
-  '.swift',
-  '.kt',
-  '.scala',
-  '.sh',
-  '.bash',
-  '.zsh',
-  '.fish',
-  '.md',
-  '.rst',
-  '.txt',
-  '.toml',
-  '.yaml',
-  '.yml',
-  '.json',
-  '.sql',
-  '.graphql',
-  '.proto',
-  '.env.example',
-  '.cfg',
-  '.ini',
-]);
-
-// Directories to skip when walking
-const SKIP_DIRS = new Set([
-  'node_modules',
-  '.git',
-  '.venv',
-  '__pycache__',
-  '.next',
-  'dist',
-  'build',
-  'out',
-  'coverage',
-  '.turbo',
-]);
-
-function collectFiles(root: string): string[] {
-  const results: string[] = [];
-  function walk(dir: string) {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.name.startsWith('.') && entry.isDirectory()) continue;
-      if (SKIP_DIRS.has(entry.name)) continue;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(full);
-      } else if (entry.isFile() && INDEXABLE_EXTENSIONS.has(path.extname(entry.name))) {
-        results.push(full);
-      }
-    }
-  }
-  walk(root);
-  return results;
-}
+const CHUNK_SIZE = clampChunkSize(parseInt(process.env.LOGOSDB_CHUNK_SIZE ?? '800', 10), 800);
 
 let embCfg: EmbeddingConfig;
 try {
@@ -262,11 +192,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       // ── logosdb_index ──────────────────────────────────────────────────────
       case 'logosdb_index': {
-        const text = String(args.text ?? '');
+        const rawText = String(args.text ?? '');
+        if (!rawText) throw new Error('"text" is required');
+        const text = validateUserText(rawText, 'text');
         const namespace = String(args.namespace ?? '');
-        const metadata = args.metadata ? String(args.metadata) : undefined;
+        const metadata = validateMetadata(args.metadata ? String(args.metadata) : undefined);
 
-        if (!text) throw new Error('"text" is required');
         if (!namespace) throw new Error('"namespace" is required');
 
         ensureEmbeddingsConfigured();
@@ -282,16 +213,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'logosdb_index_file': {
         const inputPath = String(args.path ?? '');
         const namespace = String(args.namespace ?? '');
-        const chunkSize = typeof args.chunk_size === 'number' ? args.chunk_size : CHUNK_SIZE;
+        const chunkSize = clampChunkSize(
+          typeof args.chunk_size === 'number' ? args.chunk_size : CHUNK_SIZE,
+          CHUNK_SIZE,
+        );
 
         if (!inputPath) throw new Error('"path" is required');
         if (!namespace) throw new Error('"namespace" is required');
 
         ensureEmbeddingsConfigured();
 
-        const absPath = path.resolve(inputPath);
+        const absPath = resolveIndexablePath(inputPath);
         const stat = fs.statSync(absPath);
-        const filesToIndex = stat.isDirectory() ? collectFiles(absPath) : [absPath];
+        const filesToIndex = stat.isDirectory() ? collectFilesSafe(absPath) : [absPath];
 
         if (filesToIndex.length === 0) {
           return ok({ indexed: 0, files: 0, namespace, path: absPath });
@@ -306,7 +240,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         for (const filePath of filesToIndex) {
           let content: string;
           try {
-            content = fs.readFileSync(filePath, 'utf-8');
+            content = readFileBoundedUtf8(filePath);
           } catch {
             continue; // skip unreadable files
           }
@@ -337,9 +271,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // ── logosdb_search ─────────────────────────────────────────────────────
       case 'logosdb_search': {
-        const query = String(args.query ?? '');
+        const rawQuery = String(args.query ?? '');
+        if (!rawQuery) throw new Error('"query" is required');
+        const query = validateUserText(rawQuery, 'query');
         const namespace = String(args.namespace ?? '');
-        const topK = typeof args.top_k === 'number' ? args.top_k : 5;
+        const topK = clampTopK(typeof args.top_k === 'number' ? args.top_k : 5);
         const tsFromRaw = args.ts_from != null ? String(args.ts_from).trim() : '';
         const tsToRaw = args.ts_to != null ? String(args.ts_to).trim() : '';
         const tsFrom = tsFromRaw || undefined;
@@ -351,7 +287,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             : topK * 10;
         if (candidateK < topK) candidateK = topK * 10;
 
-        if (!query) throw new Error('"query" is required');
         if (!namespace) throw new Error('"namespace" is required');
 
         ensureEmbeddingsConfigured();
