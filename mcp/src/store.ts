@@ -21,6 +21,10 @@ export interface SearchHit {
 interface LogosDB {
   put(embedding: number[], text?: string, timestamp?: string): number;
   search(queryEmbedding: number[], topK?: number): SearchHit[];
+  searchTsRange(
+    queryEmbedding: number[],
+    options?: { topK?: number; tsFrom?: string; tsTo?: string; candidateK?: number },
+  ): SearchHit[];
   delete(id: number): void;
   count(): number;
   countLive(): number;

@@ -235,10 +235,12 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 |---|---|---|
 | `logosdb_index` | `text`, `namespace`, `metadata?` | Embed and store a text snippet |
 | `logosdb_index_file` | `path`, `namespace`, `chunk_size?` | Chunk, embed, and store a file |
-| `logosdb_search` | `query`, `namespace`, `top_k?` | Semantic search |
+| `logosdb_search` | `query`, `namespace`, `top_k?`, `ts_from?`, `ts_to?`, `candidate_k?` | Semantic search; optional inclusive ISO 8601 time window (maps to `search_ts_range`) |
 | `logosdb_list` | — | List all namespaces |
 | `logosdb_info` | `namespace` | Stats: count, live count, dimension |
-| `logosdb_delete` | `namespace`, `id` | Delete an entry by row ID |
+| `logosdb_delete` | `namespace`, `id?` **or** `query?`, `search_top_k?`, `match_rank?` | Delete by row id, or embed `query` and delete the `match_rank` hit (default 0) among `search_top_k` neighbors |
+
+Timestamp-filtered search matches the core library: when `ts_from` and/or `ts_to` are set, results are drawn from that window; `candidate_k` defaults to `10 × top_k` if omitted.
 
 ## Development
 

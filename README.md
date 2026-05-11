@@ -68,6 +68,12 @@ Target versions and issue assignment match **[GitHub milestones](https://github.
   * [#74](https://github.com/jose-compu/logosdb/issues/74) — security: harden encoding and injection surfaces across MCP, CLI, and integrations
   * [#9](https://github.com/jose-compu/logosdb/issues/9) — Sanitizer builds (ASan/UBSan/TSan) and a libFuzzer target
 
+### [0.7.8](https://github.com/jose-compu/logosdb/milestone/14) — patch (`0.x.Z`)
+
+  * [#94](https://github.com/jose-compu/logosdb/issues/94) — feat(mcp): expose timestamp-range search (`search_ts_range` / `from_ts`, `to_ts`)
+  * [#95](https://github.com/jose-compu/logosdb/issues/95) — docs: document Claude Code slash commands (/index, /search, /forget) in main README
+  * [#96](https://github.com/jose-compu/logosdb/issues/96) — feat(mcp) or docs: semantic delete / forget-by-query vs ID-only `logosdb_delete`
+
 ### [0.8.0](https://github.com/jose-compu/logosdb/milestone/5) — minor — operations and durability
 
   * [#88](https://github.com/jose-compu/logosdb/issues/88) — DB doctor/upgrade: compatibility checks and guided migrations
@@ -515,6 +521,16 @@ By default the MCP server uses **local Transformers.js** embeddings (no API keys
 > Remember that we decided to use UUIDs for all primary keys
 ```
 
+### Claude Code slash commands
+
+This repo ships **project slash commands** under [.claude/commands/](.claude/commands/) (in addition to [`.claude/mcp.json`](.claude/mcp.json) for the MCP server):
+
+| Command | Role |
+|---------|------|
+| `/index` | Index paths or text into a namespace (`commands/index.md`) |
+| `/search` | Semantic search; optional ISO `ts_from` / `ts_to` on the MCP tool (`commands/search.md`) |
+| `/forget` | Delete by row `id` **or** by natural-language `query` (`commands/forget.md`) |
+
 ### Environment variables
 
 | Variable | Default | Description |
@@ -543,10 +559,10 @@ Voyage AI (`voyage-3`, dim=1024) is Anthropic's recommended cloud embedding mode
 |---|---|
 | `logosdb_index` | Embed and store a text snippet in a namespace |
 | `logosdb_index_file` | Chunk, embed, and store an entire file |
-| `logosdb_search` | Semantic search across a namespace |
+| `logosdb_search` | Semantic search; optional `ts_from` / `ts_to` (ISO 8601) for timestamp-window filter |
 | `logosdb_list` | List all namespaces |
 | `logosdb_info` | Stats for a namespace (count, dimension, path) |
-| `logosdb_delete` | Delete an entry by row ID |
+| `logosdb_delete` | Delete by row `id`, or by natural-language `query` (`search_top_k`, `match_rank`) |
 
 ### Installing locally (without npx)
 
@@ -633,6 +649,7 @@ LogosDB uses the same HNSW implementation as ChromaDB (hnswlib) but eliminates P
     third_party/hnswlib/          Vendored hnswlib (header-only)
     mcp/                          MCP server (logosdb-mcp-server npm package)
     .claude/mcp.json              Example Claude Code MCP configuration
+    .claude/commands/             Slash command prompts (/index, /search, /forget)
     CHANGELOG                     Release history
     LICENSE                       MIT license text
 

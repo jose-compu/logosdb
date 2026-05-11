@@ -83,6 +83,8 @@ jobs:
   fuzz-smoke-jsonl:
     name: Fuzz smoke (JSONL parse harness)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
