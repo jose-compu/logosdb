@@ -1,26 +1,39 @@
 /**
  * Namespace registry — one LogosDB instance per namespace, all rooted at LOGOSDB_PATH.
+ *
+ * Native `logosdb` is loaded lazily so the MCP process can complete initialize + tools/list
+ * even when prebuilds are missing (clear error on first tool call instead of "0 tools").
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-let logosdbNative: {
-  DB: new (p: string, opts?: { dim?: number; maxElements?: number; distance?: number }) => LogosDB;
-  DIST_COSINE: number;
-};
-try {
-  logosdbNative = require('logosdb') as typeof logosdbNative;
-} catch (err) {
-  const msg = err instanceof Error ? err.message : String(err);
-  process.stderr.write(
-    `[logosdb-mcp] Native dependency "logosdb" failed to load (${msg}). ` +
-      'Install logosdb@^0.7.10 (N-API prebuilds; from source needs C++17). See nodejs/README.md.\n',
-  );
-  throw err;
+type LogosDBCtor = new (
+  p: string,
+  opts?: { dim?: number; maxElements?: number; distance?: number },
+) => LogosDB;
+
+let nativeCache: { DB: LogosDBCtor; DIST_COSINE: number } | null = null;
+let nativeLoadError: Error | null = null;
+
+function getNative(): { DB: LogosDBCtor; DIST_COSINE: number } {
+  if (nativeLoadError) throw nativeLoadError;
+  if (nativeCache) return nativeCache;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('logosdb') as { DB: LogosDBCtor; DIST_COSINE: number };
+    nativeCache = { DB: mod.DB, DIST_COSINE: mod.DIST_COSINE };
+    return nativeCache;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    nativeLoadError = err instanceof Error ? err : new Error(msg);
+    process.stderr.write(
+      `[logosdb-mcp] Native dependency "logosdb" failed to load (${msg}). ` +
+        'Install logosdb@^0.7.10 (N-API prebuilds for this OS/arch; from source needs C++17). See nodejs/README.md.\n',
+    );
+    throw nativeLoadError;
+  }
 }
-const { DB, DIST_COSINE } = logosdbNative;
 
 export interface SearchHit {
   id: number;
@@ -63,6 +76,7 @@ export class NamespaceStore {
   open(namespace: string, dim: number): LogosDB {
     if (this.dbs.has(namespace)) return this.dbs.get(namespace)!;
 
+    const { DB, DIST_COSINE } = getNative();
     const p = this.nsPath(namespace);
     fs.mkdirSync(p, { recursive: true });
 

@@ -1,6 +1,14 @@
 logosdb change log
 ==================
 
+0.7.12  (2026-05-11)
+--------------------
+
+  * **`logosdb-mcp-server`:** load the native **`logosdb`** addon **lazily** (on first DB open) instead
+    of at module import time. If prebuilds are missing, the MCP server still completes handshake and
+    **`tools/list`** returns tools; the first mutating call surfaces the native load error instead of
+    the client showing **“0 tools”** after a crashed subprocess.
+
 0.7.11  (2026-05-11)
 --------------------
 
