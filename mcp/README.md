@@ -80,7 +80,7 @@ In your **project root**, create `.claude/mcp.json` (or merge into **`~/.claude.
 
 | Issue | Action |
 |-------|--------|
-| Native `logosdb` fails (`Could not locate the bindings file`, install exits 1) | Use **`logosdb` ≥ 0.7.10** (N-API prebuild downloader + vendored C++ fallback). From a terminal: `npm view logosdb version` then reinstall; if prebuilds are missing, ensure Python + C++17 toolchain so `node-gyp rebuild` can run. |
+| Native `logosdb` fails (`Could not locate the bindings file`, install exits 1) | Use **`logosdb` ≥ 0.7.11** (N-API prebuild downloader + vendored C++ fallback). From a terminal: `npm view logosdb version` then reinstall; if prebuilds are missing, ensure Python + C++17 toolchain so `node-gyp rebuild` can run. |
 | `npx` cannot download or run the package | Check network, Node version, and corporate proxy; try `npm install logosdb-mcp-server` + `node ./node_modules/logosdb-mcp-server/dist/index.js` in `args` via `node` command. |
 | Wrong embedding size / garbage search | Use one backend and dimension per namespace; use a fresh `LOGOSDB_PATH` or new namespace when changing models ([Environment variables](#environment-variables)). |
 | Path rejected on index | Stay inside cwd or set `LOGOSDB_INDEX_ROOT` to an absolute allowed directory. |
@@ -321,7 +321,7 @@ Timestamp-filtered search matches the core library: when `ts_from` and/or `ts_to
 ```bash
 npm install --ignore-scripts   # skip native addon build (use linked logosdb or published wheel)
 npm run build                  # tsc → dist/
-npm test                       # path / control-character regression tests (no DB required)
+npm test                       # unit tests + MCP stdio smoke (initialize + tools/list; catches startup crashes)
 npm start                      # run server directly
 ```
 

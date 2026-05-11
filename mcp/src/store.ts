@@ -29,7 +29,7 @@ function getNative(): { DB: LogosDBCtor; DIST_COSINE: number } {
     nativeLoadError = err instanceof Error ? err : new Error(msg);
     process.stderr.write(
       `[logosdb-mcp] Native dependency "logosdb" failed to load (${msg}). ` +
-        'Install logosdb@^0.7.10 (N-API prebuilds for this OS/arch; from source needs C++17). See nodejs/README.md.\n',
+        'Install logosdb@^0.7.11 (N-API prebuilds for this OS/arch; from source needs C++17). See nodejs/README.md.\n',
     );
     throw nativeLoadError;
   }

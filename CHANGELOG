@@ -1,6 +1,13 @@
 logosdb change log
 ==================
 
+0.7.13  (2026-05-11)
+--------------------
+
+  * **`logosdb-mcp-server` 0.7.13:** version bump; depend on **`logosdb` ^0.7.11**.
+  * **npm `logosdb` (nodejs/) 0.7.11:** version bump from 0.7.10.
+  * **Core / packaging alignment:** **`LOGOSDB_VERSION_STRING`**, **CMake**, **Python `pyproject.toml`**, and **n8n** package metadata set to **0.7.11** to match the npm native release train.
+
 0.7.12  (2026-05-11)
 --------------------
 
@@ -8,6 +15,8 @@ logosdb change log
     of at module import time. If prebuilds are missing, the MCP server still completes handshake and
     **`tools/list`** returns tools; the first mutating call surfaces the native load error instead of
     the client showing **“0 tools”** after a crashed subprocess.
+  * **`npm test`** (MCP workspace) runs **`scripts/mcp-stdio-smoke.mjs`**: **`initialize`** + **`tools/list`**
+    over stdio (same framing as the SDK / Claude Code) so a startup crash cannot ship unnoticed.
 
 0.7.11  (2026-05-11)
 --------------------
