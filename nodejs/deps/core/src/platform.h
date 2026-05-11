@@ -1,0 +1,94 @@
+#pragma once
+
+// Platform abstraction layer for cross-platform compatibility
+// Handles differences between POSIX (Linux/macOS) and Windows
+
+#ifdef _WIN32
+#define LOGOSDB_WINDOWS
+#define NOMINMAX
+#include <direct.h>
+#include <io.h>
+#include <windows.h>
+#else
+#define LOGOSDB_POSIX
+#include <string.h>  // For strdup
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
+#include <cstddef>
+#include <cstdint>
+#include <string>
+
+namespace logosdb
+{
+namespace internal
+{
+namespace platform
+{
+
+// Memory-mapped file abstraction
+struct MappedFile
+{
+#ifdef LOGOSDB_WINDOWS
+    HANDLE file_handle = INVALID_HANDLE_VALUE;
+    HANDLE map_handle = INVALID_HANDLE_VALUE;
+#else
+    int fd = -1;
+#endif
+    uint8_t* data = nullptr;
+    size_t size = 0;
+};
+
+// File operations
+bool file_exists(const std::string& path);
+bool file_truncate(int fd, size_t size);
+int file_sync(int fd);
+
+// Memory mapping
+bool mmap_open(const std::string& path, size_t& out_size, MappedFile& out_map, std::string& err);
+bool mmap_resize(MappedFile& map, size_t new_size, std::string& err);
+void mmap_close(MappedFile& map);
+
+// Reservation mapping (for avoiding remap on append)
+bool mmap_reserve(const std::string& path,
+                  size_t reserve_size,
+                  MappedFile& out_map,
+                  std::string& err);
+size_t mmap_commit(MappedFile& map, size_t file_size);  // Returns actual committed size
+
+// String utilities
+char* string_duplicate(const char* str);
+
+// Platform-specific wrapper macros
+#ifdef _WIN32
+inline bool file_truncate(int fd, size_t size)
+{
+    return _chsize_s(fd, size) == 0;
+}
+inline int file_sync(int fd)
+{
+    return _commit(fd);
+}
+inline char* string_duplicate(const char* str)
+{
+    return _strdup(str);
+}
+#else
+inline bool file_truncate(int fd, size_t size)
+{
+    return ftruncate(fd, size) == 0;
+}
+inline int file_sync(int fd)
+{
+    return fsync(fd);
+}
+inline char* string_duplicate(const char* str)
+{
+    return strdup(str);
+}
+#endif
+
+}  // namespace platform
+}  // namespace internal
+}  // namespace logosdb

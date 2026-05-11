@@ -80,6 +80,7 @@ In your **project root**, create `.claude/mcp.json` (or merge into **`~/.claude.
 
 | Issue | Action |
 |-------|--------|
+| Native `logosdb` fails (`Could not locate the bindings file`, install exits 1) | Use **`logosdb` ≥ 0.7.10** (N-API prebuild downloader + vendored C++ fallback). From a terminal: `npm view logosdb version` then reinstall; if prebuilds are missing, ensure Python + C++17 toolchain so `node-gyp rebuild` can run. |
 | `npx` cannot download or run the package | Check network, Node version, and corporate proxy; try `npm install logosdb-mcp-server` + `node ./node_modules/logosdb-mcp-server/dist/index.js` in `args` via `node` command. |
 | Wrong embedding size / garbage search | Use one backend and dimension per namespace; use a fresh `LOGOSDB_PATH` or new namespace when changing models ([Environment variables](#environment-variables)). |
 | Path rejected on index | Stay inside cwd or set `LOGOSDB_INDEX_ROOT` to an absolute allowed directory. |
@@ -307,7 +308,7 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 | Tool | Inputs | Description |
 |---|---|---|
 | `logosdb_index` | `text`, `namespace`, `metadata?` | Embed and store a text snippet |
-| `logosdb_index_file` | `path`, `namespace`, `chunk_size?` | Chunk, embed, and store a file |
+| `logosdb_index_file` | `path`, `namespace`, `chunk_size?`, `incremental?` | Chunk, embed, and store a file or tree; **`incremental: true`** skips unchanged files, replaces chunks for changed files, and prunes removed files under a directory (state in `LOGOSDB_PATH/_logosdb_mcp_manifests/`) |
 | `logosdb_search` | `query`, `namespace`, `top_k?`, `ts_from?`, `ts_to?`, `candidate_k?` | Semantic search; optional inclusive ISO 8601 time window (maps to `search_ts_range`) |
 | `logosdb_list` | — | List all namespaces |
 | `logosdb_info` | `namespace` | Stats: count, live count, dimension |

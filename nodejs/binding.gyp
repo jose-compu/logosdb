@@ -7,18 +7,18 @@
       "target_name": "logosdb",
       "sources": [
         "src/node_logosdb.cpp",
-        "../src/logosdb.cpp",
-        "../src/storage.cpp",
-        "../src/metadata.cpp",
-        "../src/hnsw_index.cpp",
-        "../src/wal.cpp",
-        "../src/platform.cpp"
+        "deps/core/src/logosdb.cpp",
+        "deps/core/src/storage.cpp",
+        "deps/core/src/metadata.cpp",
+        "deps/core/src/hnsw_index.cpp",
+        "deps/core/src/wal.cpp",
+        "deps/core/src/platform.cpp"
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",
-        "../include",
-        "../src",
-        "../third_party"
+        "deps/core/include",
+        "deps/core/src",
+        "deps/core/third_party"
       ],
       "cflags!": ["-fno-exceptions"],
       "cflags_cc!": ["-fno-exceptions"],

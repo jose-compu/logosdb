@@ -1,0 +1,570 @@
+#include "wal.h"
+
+#include <fcntl.h>
+#include <sys/stat.h>
+
+#include <cerrno>
+#include <cstring>
+
+// For pread/pwrite on older POSIX systems
+#ifndef _WIN32
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <unistd.h>
+#endif
+
+#ifdef _WIN32
+#include <io.h>
+#endif
+
+namespace logosdb
+{
+namespace internal
+{
+
+static constexpr uint32_t WAL_MAGIC = 0x57474F4C;  // "LOGW" in little-endian
+static constexpr uint32_t WAL_VERSION = 1;
+
+WriteAheadLog::~WriteAheadLog()
+{
+    close();
+}
+
+bool WriteAheadLog::open(const std::string& path, std::string& err)
+{
+    close();
+    path_ = path;
+
+#ifdef _WIN32
+    int flags = O_RDWR | O_CREAT | O_BINARY;
+#else
+    int flags = O_RDWR | O_CREAT;
+#endif
+    fd_ = ::open(path.c_str(), flags, 0644);
+    if (fd_ < 0)
+    {
+        err = std::string("wal open: ") + strerror(errno);
+        return false;
+    }
+
+    struct stat st;
+    if (fstat(fd_, &st) != 0)
+    {
+        err = std::string("wal fstat: ") + strerror(errno);
+        close();
+        return false;
+    }
+
+    if (st.st_size == 0)
+    {
+        // New file: write header
+        uint32_t header[2] = {WAL_MAGIC, WAL_VERSION};
+#ifdef _WIN32
+        if (_write(fd_, header, sizeof(header)) != sizeof(header))
+        {
+#else
+        if (::write(fd_, header, sizeof(header)) != sizeof(header))
+        {
+#endif
+            err = std::string("wal write header: ") + strerror(errno);
+            close();
+            return false;
+        }
+        pending_count_ = 0;
+    }
+    else
+    {
+        // Existing file: validate header and count pending entries
+        uint32_t header[2];
+#ifdef _WIN32
+        if (_lseeki64(fd_, 0, SEEK_SET) != 0 ||
+            _read(fd_, header, sizeof(header)) != sizeof(header))
+        {
+#else
+        if (::pread(fd_, header, sizeof(header), 0) != sizeof(header))
+        {
+#endif
+            err = std::string("wal read header: ") + strerror(errno);
+            close();
+            return false;
+        }
+        if (header[0] != WAL_MAGIC)
+        {
+            err = "wal: bad magic";
+            close();
+            return false;
+        }
+        if (header[1] != WAL_VERSION)
+        {
+            err = "wal: version mismatch";
+            close();
+            return false;
+        }
+
+        // Scan for pending entries
+        int64_t offset = sizeof(header);
+        WALEntry entry;
+        while (true)
+        {
+            if (!read_entry_at(offset, entry, err))
+            {
+                if (err.empty())
+                    break;  // EOF
+                close();
+                return false;
+            }
+            if (entry.state == WALState::PENDING)
+            {
+                ++pending_count_;
+            }
+            // Calculate next entry offset
+            offset += 1;                                        // state byte
+            offset += 4;                                        // dim
+            offset += 4 + entry.vector.size() * sizeof(float);  // vector len + data
+            offset += 4 + entry.text.size();                    // text len + data
+            offset += 4 + entry.timestamp.size();               // ts len + data
+            offset += 8;                                        // expected_id
+        }
+        err.clear();
+    }
+
+    return true;
+}
+
+void WriteAheadLog::close()
+{
+    if (fd_ >= 0)
+    {
+#ifdef _WIN32
+        _close(fd_);
+#else
+        ::close(fd_);
+#endif
+        fd_ = -1;
+    }
+    path_.clear();
+    pending_count_ = 0;
+}
+
+int64_t WriteAheadLog::append_pending(const float* vec,
+                                      int dim,
+                                      const char* text,
+                                      const char* timestamp,
+                                      uint64_t expected_id,
+                                      std::string& err)
+{
+    if (fd_ < 0)
+    {
+        err = "wal not open";
+        return -1;
+    }
+
+    // Get current file position (where we'll write this entry)
+#ifdef _WIN32
+    int64_t offset = _lseeki64(fd_, 0, SEEK_END);
+#else
+    off_t offset = ::lseek(fd_, 0, SEEK_END);
+#endif
+    if (offset < 0)
+    {
+        err = std::string("wal lseek: ") + strerror(errno);
+        return -1;
+    }
+
+    // Write state (PENDING)
+    uint8_t state = static_cast<uint8_t>(WALState::PENDING);
+#ifdef _WIN32
+    if (_write(fd_, &state, 1) != 1)
+    {
+#else
+    if (::write(fd_, &state, 1) != 1)
+    {
+#endif
+        err = std::string("wal write state: ") + strerror(errno);
+        return -1;
+    }
+
+    // Write dim
+    uint32_t dim_u32 = static_cast<uint32_t>(dim);
+#ifdef _WIN32
+    if (_write(fd_, &dim_u32, 4) != 4)
+    {
+#else
+    if (::write(fd_, &dim_u32, 4) != 4)
+    {
+#endif
+        err = std::string("wal write dim: ") + strerror(errno);
+        return -1;
+    }
+
+    // Write vector length and data
+    uint32_t vec_bytes = dim * sizeof(float);
+#ifdef _WIN32
+    if (_write(fd_, &vec_bytes, 4) != 4)
+    {
+        err = std::string("wal write vec len: ") + strerror(errno);
+        return -1;
+    }
+    if (vec_bytes > 0 && _write(fd_, vec, vec_bytes) != vec_bytes)
+    {
+#else
+    if (::write(fd_, &vec_bytes, 4) != 4)
+    {
+        err = std::string("wal write vec len: ") + strerror(errno);
+        return -1;
+    }
+    if (vec_bytes > 0 && ::write(fd_, vec, vec_bytes) != vec_bytes)
+    {
+#endif
+        err = std::string("wal write vec data: ") + strerror(errno);
+        return -1;
+    }
+
+    // Write text
+    std::string t = text ? text : "";
+    uint32_t text_len = static_cast<uint32_t>(t.size());
+#ifdef _WIN32
+    if (_write(fd_, &text_len, 4) != 4)
+    {
+        err = std::string("wal write text len: ") + strerror(errno);
+        return -1;
+    }
+    if (text_len > 0 && _write(fd_, t.data(), text_len) != text_len)
+    {
+#else
+    if (::write(fd_, &text_len, 4) != 4)
+    {
+        err = std::string("wal write text len: ") + strerror(errno);
+        return -1;
+    }
+    if (text_len > 0 && ::write(fd_, t.data(), text_len) != text_len)
+    {
+#endif
+        err = std::string("wal write text: ") + strerror(errno);
+        return -1;
+    }
+
+    // Write timestamp
+    std::string ts = timestamp ? timestamp : "";
+    uint32_t ts_len = static_cast<uint32_t>(ts.size());
+#ifdef _WIN32
+    if (_write(fd_, &ts_len, 4) != 4)
+    {
+        err = std::string("wal write ts len: ") + strerror(errno);
+        return -1;
+    }
+    if (ts_len > 0 && _write(fd_, ts.data(), ts_len) != ts_len)
+    {
+#else
+    if (::write(fd_, &ts_len, 4) != 4)
+    {
+        err = std::string("wal write ts len: ") + strerror(errno);
+        return -1;
+    }
+    if (ts_len > 0 && ::write(fd_, ts.data(), ts_len) != ts_len)
+    {
+#endif
+        err = std::string("wal write ts: ") + strerror(errno);
+        return -1;
+    }
+
+    // Write expected_id
+#ifdef _WIN32
+    if (_write(fd_, &expected_id, 8) != 8)
+    {
+#else
+    if (::write(fd_, &expected_id, 8) != 8)
+    {
+#endif
+        err = std::string("wal write expected_id: ") + strerror(errno);
+        return -1;
+    }
+
+    // Sync to ensure WAL entry is durable before we modify stores
+    if (!sync(err))
+    {
+        return -1;
+    }
+
+    ++pending_count_;
+    return offset;
+}
+
+bool WriteAheadLog::mark_committed(int64_t offset, std::string& err)
+{
+    if (fd_ < 0)
+    {
+        err = "wal not open";
+        return false;
+    }
+
+    if (!write_state_at(offset, WALState::COMMITTED, err))
+    {
+        return false;
+    }
+
+    if (pending_count_ > 0)
+        --pending_count_;
+    return sync(err);
+}
+
+bool WriteAheadLog::write_state_at(int64_t offset, WALState state, std::string& err)
+{
+    uint8_t state_byte = static_cast<uint8_t>(state);
+#ifdef _WIN32
+    // Windows: seek + write (no pwrite)
+    if (_lseeki64(fd_, offset, SEEK_SET) != offset || _write(fd_, &state_byte, 1) != 1)
+    {
+#else
+    if (::pwrite(fd_, &state_byte, 1, offset) != 1)
+    {
+#endif
+        err = std::string("wal pwrite state: ") + strerror(errno);
+        return false;
+    }
+    return true;
+}
+
+bool WriteAheadLog::read_entry_at(int64_t offset, WALEntry& entry, std::string& err)
+{
+    err.clear();
+
+#ifdef _WIN32
+    // Windows: seek to offset before reading
+    if (_lseeki64(fd_, offset, SEEK_SET) != offset)
+    {
+        return false;  // EOF or error
+    }
+#endif
+
+    // Read state
+    uint8_t state_byte;
+#ifdef _WIN32
+    if (_read(fd_, &state_byte, 1) != 1)
+    {
+        return false;  // EOF or error
+    }
+#else
+    if (::pread(fd_, &state_byte, 1, offset) != 1)
+    {
+        return false;  // EOF or error
+    }
+#endif
+    entry.state = static_cast<WALState>(state_byte);
+    offset += 1;
+
+    // Read dim
+    uint32_t dim;
+#ifdef _WIN32
+    if (_read(fd_, &dim, 4) != 4)
+    {
+#else
+    if (::pread(fd_, &dim, 4, offset) != 4)
+    {
+#endif
+        err = "wal: truncated entry (dim)";
+        return false;
+    }
+    entry.dim = dim;
+    offset += 4;
+
+    // Read vector
+    uint32_t vec_bytes;
+#ifdef _WIN32
+    if (_read(fd_, &vec_bytes, 4) != 4)
+    {
+#else
+    if (::pread(fd_, &vec_bytes, 4, offset) != 4)
+    {
+#endif
+        err = "wal: truncated entry (vec len)";
+        return false;
+    }
+    offset += 4;
+    if (vec_bytes > 0)
+    {
+        entry.vector.resize(vec_bytes / sizeof(float));
+#ifdef _WIN32
+        if (_read(fd_, entry.vector.data(), vec_bytes) != vec_bytes)
+        {
+#else
+        if (::pread(fd_, entry.vector.data(), vec_bytes, offset) != vec_bytes)
+        {
+#endif
+            err = "wal: truncated entry (vec data)";
+            return false;
+        }
+    }
+    else
+    {
+        entry.vector.clear();
+    }
+    offset += vec_bytes;
+
+    // Read text
+    uint32_t text_len;
+#ifdef _WIN32
+    if (_read(fd_, &text_len, 4) != 4)
+    {
+#else
+    if (::pread(fd_, &text_len, 4, offset) != 4)
+    {
+#endif
+        err = "wal: truncated entry (text len)";
+        return false;
+    }
+    offset += 4;
+    entry.text.resize(text_len);
+    if (text_len > 0)
+    {
+#ifdef _WIN32
+        if (_read(fd_, &entry.text[0], text_len) != text_len)
+        {
+#else
+        if (::pread(fd_, &entry.text[0], text_len, offset) != text_len)
+        {
+#endif
+            err = "wal: truncated entry (text data)";
+            return false;
+        }
+    }
+    offset += text_len;
+
+    // Read timestamp
+    uint32_t ts_len;
+#ifdef _WIN32
+    if (_read(fd_, &ts_len, 4) != 4)
+    {
+#else
+    if (::pread(fd_, &ts_len, 4, offset) != 4)
+    {
+#endif
+        err = "wal: truncated entry (ts len)";
+        return false;
+    }
+    offset += 4;
+    entry.timestamp.resize(ts_len);
+    if (ts_len > 0)
+    {
+#ifdef _WIN32
+        if (_read(fd_, &entry.timestamp[0], ts_len) != ts_len)
+        {
+#else
+        if (::pread(fd_, &entry.timestamp[0], ts_len, offset) != ts_len)
+        {
+#endif
+            err = "wal: truncated entry (ts data)";
+            return false;
+        }
+    }
+    offset += ts_len;
+
+    // Read expected_id
+#ifdef _WIN32
+    if (_read(fd_, &entry.expected_id, 8) != 8)
+    {
+#else
+    if (::pread(fd_, &entry.expected_id, 8, offset) != 8)
+    {
+#endif
+        err = "wal: truncated entry (expected_id)";
+        return false;
+    }
+
+    return true;
+}
+
+int WriteAheadLog::replay_pending(std::function<bool(const WALEntry&, std::string&)> replay_fn,
+                                  std::string& err)
+{
+    if (fd_ < 0)
+    {
+        err = "wal not open";
+        return -1;
+    }
+
+    int64_t offset = 8;  // Skip header (magic + version)
+    int replayed = 0;
+    WALEntry entry;
+
+    while (true)
+    {
+        // Peek at next entry state
+        uint8_t state_byte;
+        int64_t r = 0;
+#ifdef _WIN32
+        r = _lseeki64(fd_, offset, SEEK_SET);
+        if (r != offset)
+            break;
+        r = _read(fd_, &state_byte, 1);
+#else
+        r = static_cast<int64_t>(::pread(fd_, &state_byte, 1, offset));
+#endif
+        if (r == 0)
+            break;  // EOF
+        if (r < 0)
+        {
+            err = std::string("wal replay pread: ") + strerror(errno);
+            return -1;
+        }
+
+        // Read full entry
+        if (!read_entry_at(offset, entry, err))
+        {
+            if (err.empty())
+                break;
+            return -1;
+        }
+
+        // Only replay pending entries
+        if (entry.state == WALState::PENDING)
+        {
+            if (!replay_fn(entry, err))
+            {
+                return -1;
+            }
+            // Mark as committed after successful replay
+            if (!write_state_at(offset, WALState::COMMITTED, err))
+            {
+                return -1;
+            }
+            if (pending_count_ > 0)
+                --pending_count_;
+            ++replayed;
+        }
+
+        // Advance to next entry
+        offset += 1;                                        // state
+        offset += 4;                                        // dim
+        offset += 4 + entry.vector.size() * sizeof(float);  // vector
+        offset += 4 + entry.text.size();                    // text
+        offset += 4 + entry.timestamp.size();               // timestamp
+        offset += 8;                                        // expected_id
+    }
+
+    return replayed;
+}
+
+bool WriteAheadLog::sync(std::string& err)
+{
+    if (fd_ < 0)
+    {
+        err = "wal not open";
+        return false;
+    }
+#ifdef _WIN32
+    if (_commit(fd_) != 0)
+    {
+#else
+    if (::fsync(fd_) != 0)
+    {
+#endif
+        err = std::string("wal fsync: ") + strerror(errno);
+        return false;
+    }
+    return true;
+}
+
+}  // namespace internal
+}  // namespace logosdb

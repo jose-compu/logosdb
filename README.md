@@ -596,7 +596,7 @@ This repo ships **project slash commands** under [.claude/commands/](.claude/com
 
 | Command | Role |
 |---------|------|
-| `/index` | Index a **file or directory** into a namespace via `logosdb_index_file` (`commands/index.md`; arbitrary text uses the `logosdb_index` tool in chat) |
+| `/index` | Index a **file or directory** via `logosdb_index_file` with **`incremental: true`** (new/changed files only; `commands/index.md`) |
 | `/search` | Semantic search; optional ISO `ts_from` / `ts_to` on the MCP tool (`commands/search.md`) |
 | `/forget` | Delete by row `id` **or** by natural-language `query` (`commands/forget.md`) |
 
@@ -612,12 +612,12 @@ The **logosdb** MCP server is configured. Data lives on disk under `LOGOSDB_PATH
 **Namespaces:** Use separate namespaces for different concerns (e.g. `code` for `src/`, `docs` for `docs/`, `decisions` for short architectural notes). Search only the namespace that matches the user’s task.
 
 **When starting substantive work on this codebase:**
-1. If the user has not indexed recently and you need broad code context, call **`logosdb_index_file`** on the smallest useful path (e.g. `src/` or a package directory), not the whole monorepo unless asked.
+1. If the user has not indexed recently and you need broad code context, call **`logosdb_index_file`** with **`incremental: true`** on the smallest useful path (e.g. `src/` or a package directory), not the whole monorepo unless asked.
 2. Before answering “where is X implemented?” or similar, call **`logosdb_search`** with a tight natural-language `query`, `namespace` set appropriately, and `top_k` between **3** and **8**. Do not paste entire trees into the chat—retrieve, then read only the cited files.
 3. For “what did we decide recently?” style questions, use **`logosdb_search`** with optional **`ts_from` / `ts_to`** (ISO 8601 inclusive bounds) on the `decisions` or `docs` namespace when timestamps matter.
 4. When the user states a durable fact worth remembering (API contract, policy, workaround), call **`logosdb_index`** into the right namespace with concise text (timestamps are stored automatically; optional **`metadata`** can label the source).
 
-**After large refactors or dependency upgrades:** Re-run **`logosdb_index_file`** on affected paths so search stays aligned with the tree.
+**After large refactors or dependency upgrades:** Re-run **`logosdb_index_file`** with **`incremental: true`** on affected paths so search stays aligned without duplicating chunks for unchanged files.
 
 **Deletion:** Use **`logosdb_delete`** with **`id`** from a prior search hit, or with **`query`** + optional **`match_rank`** / **`search_top_k`** to remove a semantically matched row when the user asks to forget something.
 ````
@@ -649,7 +649,7 @@ Voyage AI (`voyage-3`, dim=1024) is Anthropic's recommended cloud embedding mode
 | Tool | Description |
 |---|---|
 | `logosdb_index` | Embed and store a text snippet in a namespace |
-| `logosdb_index_file` | Chunk, embed, and store an entire file |
+| `logosdb_index_file` | Chunk, embed, and store a file or tree; optional **`incremental: true`** (skip unchanged, replace changed, prune deleted under a directory) |
 | `logosdb_search` | Semantic search; optional `ts_from` / `ts_to` (ISO 8601) for timestamp-window filter |
 | `logosdb_list` | List all namespaces |
 | `logosdb_info` | Stats for a namespace (count, dimension, path) |
@@ -791,7 +791,7 @@ LogosDB uses the same HNSW implementation as ChromaDB (hnswlib) but eliminates P
     examples/python/              Python usage examples
     pyproject.toml                Python build/config (scikit-build-core)
     third_party/hnswlib/          Vendored hnswlib (header-only)
-    package.json / package-lock.json   Root npm workspace (builds MCP for Claude Code)
+    package.json / package-lock.json   Private npm workspace (MCP + `nodejs` logosdb); `npm install` at repo root only
     mcp/                          MCP server (logosdb-mcp-server npm package)
     .claude/mcp.json              Claude Code MCP config (local `node ./mcp/dist/index.js`)
     .claude/commands/             Slash command prompts (/index, /search, /forget)

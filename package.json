@@ -1,10 +1,12 @@
 {
-  "name": "logosdb",
+  "name": "logosdb-workspace",
   "private": true,
-  "description": "Optional Node workspace so `npm install` at the repo root builds logosdb-mcp-server for Claude Code (.claude/mcp.json).",
-  "workspaces": ["mcp"],
+  "description": "Private monorepo workspace (MCP under mcp/). Do not npm publish here — the npm package logosdb (native addon) is published from nodejs/.",
+  "workspaces": ["mcp", "nodejs"],
   "scripts": {
-    "mcp:build": "npm run build -w logosdb-mcp-server"
+    "mcp:build": "npm run build -w logosdb-mcp-server",
+    "npm:verify": "npm run vendor-core -w logosdb && npm run build -w logosdb && npm test -w logosdb && npm test -w logosdb-mcp-server",
+    "npm:pack": "npm pack -w logosdb --pack-destination /tmp && npm pack -w logosdb-mcp-server --pack-destination /tmp"
   },
   "engines": {
     "node": ">=18.0.0"
