@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "logosdb": {
-      "command": "npx",
-      "args": ["-y", "logosdb-mcp-server"],
+      "command": "node",
+      "args": ["./mcp/dist/index.js"],
       "env": {
         "LOGOSDB_PATH": "./.logosdb"
       }

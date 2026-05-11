@@ -11,6 +11,79 @@ npm install -g logosdb-mcp-server
 
 Or run without installing via `npx -y logosdb-mcp-server`.
 
+## Claude Code: complete recipe
+
+These steps assume your **Claude Code project root** is the directory where you want `./.logosdb` (or your chosen `LOGOSDB_PATH`) to live. The MCP child process **`cwd`** is normally that same folder, so relative paths in `.claude/mcp.json` resolve there.
+
+### 1. Prerequisites
+
+- **Node.js** 18+ (`node -v`), **`npm`**, and for the recipes below **`npx`** on `PATH`.
+- **Claude Code** installed and authenticated.
+- Add **`.logosdb`** (or whatever you set in `LOGOSDB_PATH`) to **`.gitignore`** if you do not want vector data in version control.
+
+### 2. Install the package (pick one)
+
+**Published server (typical):** no project `package.json` is required if Claude Code will run `npx` for you. Optional registry check:
+
+```bash
+npm view logosdb-mcp-server version
+```
+
+Alternatively add a dependency:
+
+```bash
+npm install logosdb-mcp-server
+```
+
+**Develop from a LogosDB git clone:** from the monorepo root run `npm install` so `mcp/dist/index.js` is built; then point `mcp.json` at that file with `node` (see the main [README — Claude Code recipe](https://github.com/jose-compu/logosdb/blob/main/README.md#claude-code-complete-recipe)).
+
+### 3. Create `.claude/mcp.json`
+
+In your **project root**, create `.claude/mcp.json` (or merge into **`~/.claude.json`** for all projects) with a `logosdb` entry.
+
+**Recommended (always run the published server):**
+
+```json
+{
+  "mcpServers": {
+    "logosdb": {
+      "command": "npx",
+      "args": ["-y", "logosdb-mcp-server"],
+      "env": {
+        "LOGOSDB_PATH": "./.logosdb"
+      }
+    }
+  }
+}
+```
+
+**Project-local install (pin a version in `package.json`):** same `mcpServers` block, or point `node` at `./node_modules/logosdb-mcp-server/dist/index.js` with empty `args` — see [Configure](#configure).
+
+**Optional env:** Ollama, OpenAI, Voyage, chunk size, and index root are in [Configure](#configure) and [Environment variables](#environment-variables).
+
+### 4. Path confinement for indexing
+
+`logosdb_index_file` only accepts paths under **`process.cwd()`** or **`LOGOSDB_INDEX_ROOT`**. Read [Path confinement (`logosdb_index_file`)](#path-confinement-logosdb_index_file) before indexing parent directories or using symlinks.
+
+### 5. Restart and verify
+
+- Restart **Claude Code** or reload MCP after editing JSON.
+- Ask the agent to run **`logosdb_list`**. If the server fails to spawn, run the same `command` + `args` in a shell from your project root and fix errors (missing Node, network for `npx`, etc.).
+
+### 6. Use it
+
+- Ask in natural language to index `src/` (or a file), search semantically, or store a short decision via **`logosdb_index`**.
+- **Slash commands:** copy [`.claude/commands/`](https://github.com/jose-compu/logosdb/tree/main/.claude/commands) from the LogosDB repo into your project for `/index`, `/search`, `/forget` (optional).
+- **Agent habits:** add a `CLAUDE.md` snippet so the agent indexes and searches without reminders — see the main [README — Agent instructions](https://github.com/jose-compu/logosdb/blob/main/README.md#agent-instructions-claudemd-and-similar).
+
+### 7. Troubleshooting
+
+| Issue | Action |
+|-------|--------|
+| `npx` cannot download or run the package | Check network, Node version, and corporate proxy; try `npm install logosdb-mcp-server` + `node ./node_modules/logosdb-mcp-server/dist/index.js` in `args` via `node` command. |
+| Wrong embedding size / garbage search | Use one backend and dimension per namespace; use a fresh `LOGOSDB_PATH` or new namespace when changing models ([Environment variables](#environment-variables)). |
+| Path rejected on index | Stay inside cwd or set `LOGOSDB_INDEX_ROOT` to an absolute allowed directory. |
+
 ## Configure
 
 ### Default: local embeddings (Transformers.js)

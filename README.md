@@ -66,7 +66,7 @@ Target versions and issue assignment match **[GitHub milestones](https://github.
 ### [0.7.7](https://github.com/jose-compu/logosdb/milestone/7) — patch (`0.x.Z`)
 
   * [#74](https://github.com/jose-compu/logosdb/issues/74) — security: harden encoding and injection surfaces across MCP, CLI, and integrations
-  * [#9](https://github.com/jose-compu/logosdb/issues/9) — Sanitizer builds (ASan/UBSan/TSan) and a libFuzzer target
+  * [#9](https://github.com/jose-compu/logosdb/issues/9) — libFuzzer JSON harness in CI; local ASan/UBSan builds possible; full-tree sanitizer CI not enabled (vendored hnswlib noise)
 
 ### [0.7.8](https://github.com/jose-compu/logosdb/milestone/14) — patch (`0.x.Z`)
 
@@ -489,9 +489,57 @@ logosdb-cli search /tmp/mydb --query-file q.bin --top-k 5
 exposes LogosDB to **Claude Code** (and any other MCP client) over stdio.  It lets Claude index
 files, persist knowledge across sessions, and do semantic search without leaving the conversation.
 
-### Quick start
+### Claude Code: complete recipe
 
-**1. Add to `.claude/mcp.json`** in your project (or to `~/.claude.json` for global use):
+Follow these steps in order. Claude Code spawns the MCP server with **working directory = your project root** (the folder you opened); paths in `mcp.json` and `LOGOSDB_PATH` are resolved relative to that cwd unless you use absolute paths.
+
+#### 1. Prerequisites
+
+- **Node.js** 18 or newer on your `PATH` (`node -v`, `npm -v`). For the published package you also need **`npx`**.
+- **Claude Code** installed and signed in ([overview](https://docs.anthropic.com/en/docs/claude-code/overview)).
+- Decide **where the DB lives**: `LOGOSDB_PATH` (default `./.logosdb`) is created under the project root; add the directory to `.gitignore` if you do not want it committed.
+
+#### 2. Install the server (pick one)
+
+**Option A — This repository (local `node`, no `npx`).** From the **repository root**:
+
+```bash
+npm install
+```
+
+That installs the `mcp` workspace and runs **`prepare`**, which compiles TypeScript to [`mcp/dist/index.js`](mcp/dist/index.js). After you change MCP sources, run `npm run mcp:build` at the root or `npm run build` inside `mcp/`.
+
+**Option B — Any other project (published [`logosdb-mcp-server`](https://www.npmjs.com/package/logosdb-mcp-server)).** In your app’s root:
+
+```bash
+npm install logosdb-mcp-server
+```
+
+You can still invoke it without a project dependency via `npx -y logosdb-mcp-server` (see Option C).
+
+#### 3. Register the MCP server in Claude Code
+
+Project-local config lives in **`.claude/mcp.json`** at the repository root. User-wide config is **`~/.claude.json`** (same `mcpServers` shape). Only one definition named `logosdb` is needed.
+
+**If you use Option A (this clone):** the repo already contains [`.claude/mcp.json`](.claude/mcp.json):
+
+```json
+{
+  "mcpServers": {
+    "logosdb": {
+      "command": "node",
+      "args": ["./mcp/dist/index.js"],
+      "env": {
+        "LOGOSDB_PATH": "./.logosdb"
+      }
+    }
+  }
+}
+```
+
+Open **this folder** as the Claude Code project so `./mcp/dist/index.js` resolves. If the client’s cwd is **not** the repo root, set `"args"` to an **absolute** path to `mcp/dist/index.js` (see [Installing locally — Option C](#installing-locally-without-npx)).
+
+**If you use Option B or prefer always-latest from npm (Option C):** create or merge `.claude/mcp.json`:
 
 ```json
 {
@@ -507,19 +555,40 @@ files, persist knowledge across sessions, and do semantic search without leaving
 }
 ```
 
-By default the MCP server uses **local Transformers.js** embeddings (no API keys). Add `EMBEDDING_PROVIDER` / keys only if you want cloud or [Ollama](https://ollama.com) — see `mcp/README.md`.
+Default embeddings are **local Transformers.js** (no API keys); first run may download model weights. Optional **Ollama / OpenAI / Voyage** env vars are documented in [`mcp/README.md`](mcp/README.md#configure).
 
-**Google Antigravity:** same stdio + `npx` setup; step-by-step is in [`mcp/README.md` — Google Antigravity](mcp/README.md#google-antigravity).
+#### 4. Path rules for `logosdb_index_file`
 
-**2. Start Claude Code** — the server is launched automatically on first tool call.
+The server only indexes files that resolve under **`process.cwd()`** or **`LOGOSDB_INDEX_ROOT`** (if set). Symlinks that escape those roots are rejected. Keep indexing paths inside the project you opened, or set `LOGOSDB_INDEX_ROOT` to an absolute allowed root (details in [`mcp/README.md` — Path confinement](mcp/README.md#path-confinement-logosdb_index_file)).
 
-**3. Use it in conversation:**
+#### 5. Reload Claude Code and verify
 
-```
-> Index the src/ directory into a "code" namespace
-> Find where JWT tokens are validated
-> Remember that we decided to use UUIDs for all primary keys
-```
+- **Restart** Claude Code or reload MCP configuration after editing `mcp.json`.
+- The **logosdb** server starts on **first tool use** (stdio).
+- Ask the agent to run **`logosdb_list`** (or check the MCP tools panel). You should see namespaces (possibly empty) rather than a spawn error.
+
+#### 6. Index, search, delete
+
+- **Natural language:** e.g. “Index `src/` into the `code` namespace”, “Search the codebase for JWT validation”.
+- **Slash commands (optional):** if `.claude/commands/` is present in the project (this repo ships them), use `/index`, `/search`, `/forget` — see the table below.
+- **Snippet memory:** the agent can call **`logosdb_index`** for short text; **`logosdb_index_file`** chunks files and directories.
+
+Use **one embedding backend consistently** per namespace on disk (do not change model dimension on existing data). See [Environment variables](#environment-variables) and [`mcp/README.md`](mcp/README.md).
+
+#### 7. Optional: agent instructions
+
+Copy the **`CLAUDE.md`** template block from [Agent instructions (`CLAUDE.md` and similar)](#agent-instructions-claudemd-and-similar) into your project so the agent indexes and searches without being reminded every session.
+
+#### 8. Troubleshooting
+
+| Symptom | What to try |
+|--------|----------------|
+| MCP fails to start / “Cannot find module” | From the same cwd Claude uses, run `node ./mcp/dist/index.js` (Option A) or `npx -y logosdb-mcp-server` (Option C) in a terminal; fix missing `npm install` or broken path. |
+| Relative `./mcp/dist/index.js` not found | Use an **absolute** `args` path to `index.js`, or open the correct folder as the project root. |
+| `logosdb_index_file` rejects a path | Path is outside cwd / `LOGOSDB_INDEX_ROOT`; use a path inside the project or set `LOGOSDB_INDEX_ROOT`. |
+| Search looks wrong after changing model | New embeddings must use a **fresh** `LOGOSDB_PATH` or new namespace; dimensions must match. |
+
+**Google Antigravity:** same stdio MCP pattern (`node` + local script, or `npx` + package). Step-by-step: [`mcp/README.md` — Google Antigravity](mcp/README.md#google-antigravity).
 
 ### Claude Code slash commands
 
@@ -527,9 +596,31 @@ This repo ships **project slash commands** under [.claude/commands/](.claude/com
 
 | Command | Role |
 |---------|------|
-| `/index` | Index paths or text into a namespace (`commands/index.md`) |
+| `/index` | Index a **file or directory** into a namespace via `logosdb_index_file` (`commands/index.md`; arbitrary text uses the `logosdb_index` tool in chat) |
 | `/search` | Semantic search; optional ISO `ts_from` / `ts_to` on the MCP tool (`commands/search.md`) |
 | `/forget` | Delete by row `id` **or** by natural-language `query` (`commands/forget.md`) |
+
+### Agent instructions (`CLAUDE.md` and similar)
+
+The MCP server does not index the repository by itself: **the agent must call the tools** (or you rely on slash commands / hooks). To make LogosDB feel automatic without typing `/index` every time, add a block like the following to your project’s **`CLAUDE.md`** (or any instructions file your agent reads on every session). Adjust namespaces and paths to your repo.
+
+````markdown
+## LogosDB (semantic memory via MCP)
+
+The **logosdb** MCP server is configured. Data lives on disk under `LOGOSDB_PATH` (see `.claude/mcp.json`); it **persists across sessions**.
+
+**Namespaces:** Use separate namespaces for different concerns (e.g. `code` for `src/`, `docs` for `docs/`, `decisions` for short architectural notes). Search only the namespace that matches the user’s task.
+
+**When starting substantive work on this codebase:**
+1. If the user has not indexed recently and you need broad code context, call **`logosdb_index_file`** on the smallest useful path (e.g. `src/` or a package directory), not the whole monorepo unless asked.
+2. Before answering “where is X implemented?” or similar, call **`logosdb_search`** with a tight natural-language `query`, `namespace` set appropriately, and `top_k` between **3** and **8**. Do not paste entire trees into the chat—retrieve, then read only the cited files.
+3. For “what did we decide recently?” style questions, use **`logosdb_search`** with optional **`ts_from` / `ts_to`** (ISO 8601 inclusive bounds) on the `decisions` or `docs` namespace when timestamps matter.
+4. When the user states a durable fact worth remembering (API contract, policy, workaround), call **`logosdb_index`** into the right namespace with concise text (timestamps are stored automatically; optional **`metadata`** can label the source).
+
+**After large refactors or dependency upgrades:** Re-run **`logosdb_index_file`** on affected paths so search stays aligned with the tree.
+
+**Deletion:** Use **`logosdb_delete`** with **`id`** from a prior search hit, or with **`query`** + optional **`match_rank`** / **`search_top_k`** to remove a semantically matched row when the user asks to forget something.
+````
 
 ### Environment variables
 
@@ -566,16 +657,67 @@ Voyage AI (`voyage-3`, dim=1024) is Anthropic's recommended cloud embedding mode
 
 ### Installing locally (without npx)
 
+**Option A — global CLI on your machine**
+
 ```bash
 npm install -g logosdb-mcp-server
 ```
 
-Then replace the `command`/`args` in `mcp.json` with:
+In `.claude/mcp.json`, point the server at the global binary:
 
 ```json
-"command": "logosdb-mcp-server",
-"args": []
+"logosdb": {
+  "command": "logosdb-mcp-server",
+  "args": [],
+  "env": { "LOGOSDB_PATH": "./.logosdb" }
+}
 ```
+
+Ensure the directory containing the global npm binaries is on your `PATH` when Claude Code spawns the process (same shell you use for `npm install -g`).
+
+**Option B — project-local `node_modules` (no global install)**
+
+From your app repo:
+
+```bash
+npm install logosdb-mcp-server
+```
+
+Then use `npx` so the binary resolves from `./node_modules`:
+
+```json
+"logosdb": {
+  "command": "npx",
+  "args": ["-y", "logosdb-mcp-server"],
+  "env": { "LOGOSDB_PATH": "./.logosdb" }
+}
+```
+
+Omit `-y` if you prefer a fixed local install only. You can also call the entry script explicitly:
+
+```json
+"command": "node",
+"args": ["./node_modules/logosdb-mcp-server/dist/index.js"],
+"env": { "LOGOSDB_PATH": "./.logosdb" }
+```
+
+**Option C — development build from a LogosDB clone**
+
+```bash
+cd mcp && npm install && npm run build
+```
+
+This repository’s checked-in [`.claude/mcp.json`](.claude/mcp.json) uses a **relative** path `./mcp/dist/index.js` after **`npm install` from the repo root** (workspace `prepare`). For **other** clients or if the process cwd is not the repo root, use an **absolute** path to `mcp/dist/index.js`:
+
+```json
+"logosdb": {
+  "command": "node",
+  "args": ["/absolute/path/to/logosdb/mcp/dist/index.js"],
+  "env": { "LOGOSDB_PATH": "./.logosdb" }
+}
+```
+
+The same `env` block (`LOGOSDB_PATH`, embedding variables) applies to every option. Restart Claude Code or reload MCP config after editing `.claude/mcp.json`.
 
 # Performance
 
@@ -584,6 +726,8 @@ Here is a performance report from the included `logosdb-bench` program. The resu
 ## Setup
 
 We use databases with 1K, 10K, and 100K vectors. Each vector has 2048 dimensions (matching typical LLM embedding sizes). Vectors are L2-normalized random unit vectors.
+
+*(Report below was produced with an older `logosdb-bench` binary labeled 0.5.0; scaling and relative HNSW vs brute-force behavior are still representative of current builds.)*
 
     LogosDB:    version 0.5.0
     CPU:        Apple M-series (ARM64)
@@ -647,8 +791,9 @@ LogosDB uses the same HNSW implementation as ChromaDB (hnswlib) but eliminates P
     examples/python/              Python usage examples
     pyproject.toml                Python build/config (scikit-build-core)
     third_party/hnswlib/          Vendored hnswlib (header-only)
+    package.json / package-lock.json   Root npm workspace (builds MCP for Claude Code)
     mcp/                          MCP server (logosdb-mcp-server npm package)
-    .claude/mcp.json              Example Claude Code MCP configuration
+    .claude/mcp.json              Claude Code MCP config (local `node ./mcp/dist/index.js`)
     .claude/commands/             Slash command prompts (/index, /search, /forget)
     CHANGELOG                     Release history
     LICENSE                       MIT license text

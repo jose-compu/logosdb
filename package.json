@@ -1,0 +1,12 @@
+{
+  "name": "logosdb",
+  "private": true,
+  "description": "Optional Node workspace so `npm install` at the repo root builds logosdb-mcp-server for Claude Code (.claude/mcp.json).",
+  "workspaces": ["mcp"],
+  "scripts": {
+    "mcp:build": "npm run build -w logosdb-mcp-server"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

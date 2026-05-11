@@ -10,6 +10,7 @@ Thank you for your interest in contributing to LogosDB. This document outlines t
 - C++17-capable compiler (GCC 9+, Clang 12+, Apple Clang 13+, MSVC 2019+)
 - Python 3.9+ (for Python bindings and tests)
 - Git with submodule support
+- Node.js 18+ (optional — only for building **logosdb-mcp-server** / Claude Code `.claude/mcp.json` in this repo)
 
 ### Building
 
@@ -27,6 +28,16 @@ cmake --build . --parallel
 cmake -DCMAKE_BUILD_TYPE=Release -G Ninja ..
 ninja
 ```
+
+### Claude Code (optional)
+
+This repo’s [`.claude/mcp.json`](.claude/mcp.json) points at **`./mcp/dist/index.js`**. From the repo root:
+
+```bash
+npm install
+```
+
+That builds the MCP server (`mcp` workspace `prepare` → `tsc`). Use `npm run mcp:build` after MCP TypeScript changes.
 
 Build targets:
 - `logosdb` — static library (`liblogosdb.a`)

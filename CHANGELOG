@@ -10,6 +10,8 @@ logosdb change log
     `search_top_k` and `match_rank` (closes #96).
   * README: Claude Code slash-commands table and `.claude/commands/` in repository contents (closes #95).
   * `.claude/commands/search.md` and `forget.md` updated for the new tool parameters.
+  * Root npm workspace (`package.json` / `package-lock.json`): `npm install` at repo root builds MCP;
+    `.claude/mcp.json` runs **`node ./mcp/dist/index.js`** for Claude Code in this clone.
 
 0.7.7  (2026-05-11)
 -------------------
