@@ -1,0 +1,2 @@
+logosdb_doctest 1 6.91884
+---

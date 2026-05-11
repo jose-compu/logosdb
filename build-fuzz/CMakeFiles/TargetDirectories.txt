@@ -1,0 +1,4 @@
+/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build-fuzz/CMakeFiles/logosdb.dir
+/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build-fuzz/CMakeFiles/logosdb-fuzz-jsonl.dir
+/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build-fuzz/CMakeFiles/edit_cache.dir
+/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb/build-fuzz/CMakeFiles/rebuild_cache.dir

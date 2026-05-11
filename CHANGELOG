@@ -1,6 +1,16 @@
 logosdb change log
 ==================
 
+0.7.8  (2026-05-11)
+-------------------
+
+  * MCP `logosdb_search`: optional `ts_from`, `ts_to`, and `candidate_k` for timestamp-window search
+    (wired to Node `searchTsRange`; closes #94).
+  * MCP `logosdb_delete`: delete by numeric `id` or by natural-language `query` with optional
+    `search_top_k` and `match_rank` (closes #96).
+  * README: Claude Code slash-commands table and `.claude/commands/` in repository contents (closes #95).
+  * `.claude/commands/search.md` and `forget.md` updated for the new tool parameters.
+
 0.7.6  (TBD)
 -------------------
 

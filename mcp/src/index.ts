@@ -179,13 +179,27 @@ const TOOLS: Tool[] = [
   {
     name: 'logosdb_search',
     description:
-      'Semantic search over a LogosDB namespace. Returns the most relevant stored texts ranked by similarity.',
+      'Semantic search over a LogosDB namespace. Returns the most relevant stored texts ranked by similarity. ' +
+      'Optional ISO 8601 bounds (`ts_from` / `ts_to`, inclusive) restrict candidates to a timestamp window (same semantics as the C `logosdb_search_ts_range` API).',
     inputSchema: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Natural-language search query' },
         namespace: { type: 'string', description: 'Collection name to search in' },
         top_k: { type: 'number', description: 'Number of results to return (default: 5)' },
+        ts_from: {
+          type: 'string',
+          description: 'Optional inclusive lower bound (ISO 8601). Omit with no `ts_to` for full-range search.',
+        },
+        ts_to: {
+          type: 'string',
+          description: 'Optional inclusive upper bound (ISO 8601). Omit with no `ts_from` for full-range search.',
+        },
+        candidate_k: {
+          type: 'number',
+          description:
+            'When using timestamp bounds: internal candidate pool size (default: 10 × top_k). Increase if recall within the window is poor.',
+        },
       },
       required: ['query', 'namespace'],
     },
@@ -209,21 +223,35 @@ const TOOLS: Tool[] = [
   },
   {
     name: 'logosdb_delete',
-    description: 'Delete a single entry from a namespace by its row ID (returned by index/search).',
+    description:
+      'Delete one entry from a namespace. Provide **either** numeric `id` (from index/search) **or** `query` to semantically match: ' +
+      'embed `query`, run similarity search, then delete the hit at `match_rank` (0-based, default 0). Use `search_top_k` to widen the pool (default 10, max 50).',
     inputSchema: {
       type: 'object',
       properties: {
         namespace: { type: 'string', description: 'Collection name' },
-        id: { type: 'number', description: 'Row ID to delete' },
+        id: { type: 'number', description: 'Row ID to delete (omit if using `query`)' },
+        query: {
+          type: 'string',
+          description: 'Natural-language query to locate a row to delete (omit if using `id`)',
+        },
+        search_top_k: {
+          type: 'number',
+          description: 'When using `query`: how many neighbors to consider (default 10, max 50)',
+        },
+        match_rank: {
+          type: 'number',
+          description: 'When using `query`: which hit to delete, 0 = best match (default 0)',
+        },
       },
-      required: ['namespace', 'id'],
+      required: ['namespace'],
     },
   },
 ];
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
-const server = new Server({ name: 'logosdb', version: '0.7.6' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'logosdb', version: '0.7.8' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
@@ -312,6 +340,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const query = String(args.query ?? '');
         const namespace = String(args.namespace ?? '');
         const topK = typeof args.top_k === 'number' ? args.top_k : 5;
+        const tsFromRaw = args.ts_from != null ? String(args.ts_from).trim() : '';
+        const tsToRaw = args.ts_to != null ? String(args.ts_to).trim() : '';
+        const tsFrom = tsFromRaw || undefined;
+        const tsTo = tsToRaw || undefined;
+        const useTsWindow = tsFrom !== undefined || tsTo !== undefined;
+        let candidateK =
+          typeof args.candidate_k === 'number' && Number.isFinite(args.candidate_k)
+            ? Math.trunc(args.candidate_k)
+            : topK * 10;
+        if (candidateK < topK) candidateK = topK * 10;
 
         if (!query) throw new Error('"query" is required');
         if (!namespace) throw new Error('"namespace" is required');
@@ -331,7 +369,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           db = store.open(namespace, vec.length);
         }
 
-        const hits = db.search(vec, topK);
+        const hits = useTsWindow
+          ? db.searchTsRange(vec, { topK, tsFrom, tsTo, candidateK })
+          : db.search(vec, topK);
         const results = hits.map((h) => ({
           id: h.id,
           score: Math.round(h.score * 10000) / 10000,
@@ -339,7 +379,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           timestamp: h.timestamp,
         }));
 
-        return ok({ results, namespace, query });
+        return ok({
+          results,
+          namespace,
+          query,
+          ts_from: tsFrom ?? null,
+          ts_to: tsTo ?? null,
+          timestamp_filter: useTsWindow,
+        });
       }
 
       // ── logosdb_list ───────────────────────────────────────────────────────
@@ -372,14 +419,76 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // ── logosdb_delete ─────────────────────────────────────────────────────
       case 'logosdb_delete': {
         const namespace = String(args.namespace ?? '');
-        const id = typeof args.id === 'number' ? args.id : parseInt(String(args.id), 10);
-
         if (!namespace) throw new Error('"namespace" is required');
-        if (isNaN(id)) throw new Error('"id" must be a number');
 
-        const db = store.get(namespace);
+        const rawQuery = args.query != null ? String(args.query).trim() : '';
+        const hasId = args.id !== undefined && args.id !== null;
+
+        if (rawQuery && hasId) {
+          throw new Error('Provide either `id` or `query`, not both');
+        }
+        if (!rawQuery && !hasId) {
+          throw new Error('Provide either `id` (row id) or `query` (semantic match)');
+        }
+
+        if (rawQuery) {
+          ensureEmbeddingsConfigured();
+          const searchTopK = (() => {
+            const n = typeof args.search_top_k === 'number' ? Math.trunc(args.search_top_k) : 10;
+            return Math.min(50, Math.max(1, n));
+          })();
+          const matchRank = (() => {
+            const n = typeof args.match_rank === 'number' ? Math.trunc(args.match_rank) : 0;
+            return Math.max(0, n);
+          })();
+
+          const vec = await embed(rawQuery, embCfg);
+          let db: ReturnType<typeof store.open>;
+          try {
+            db = store.get(namespace);
+            if (vec.length !== db.dim()) {
+              throw new Error(`Embedding dimension ${vec.length} does not match namespace dim ${db.dim()}`);
+            }
+          } catch {
+            const nsPath = path.join(LOGOSDB_PATH, namespace);
+            if (!fs.existsSync(nsPath)) {
+              throw new Error(`Namespace "${namespace}" does not exist.`);
+            }
+            db = store.open(namespace, vec.length);
+          }
+
+          const hits = db.search(vec, searchTopK);
+          if (hits.length === 0) {
+            throw new Error('No vectors matched the query; nothing to delete');
+          }
+          if (matchRank >= hits.length) {
+            throw new Error(
+              `match_rank ${matchRank} is out of range (only ${hits.length} hit(s); use 0..${hits.length - 1})`,
+            );
+          }
+          const target = hits[matchRank]!;
+          db.delete(target.id);
+          return ok({
+            deleted: true,
+            namespace,
+            id: target.id,
+            mode: 'semantic',
+            query: rawQuery,
+            match_rank: matchRank,
+            score: Math.round(target.score * 10000) / 10000,
+          });
+        }
+
+        let db: ReturnType<typeof store.open>;
+        try {
+          db = store.get(namespace);
+        } catch {
+          throw new Error(`Namespace "${namespace}" is not open. Index or search in it first (or use \`query\` delete).`);
+        }
+        const id = typeof args.id === 'number' ? args.id : parseInt(String(args.id), 10);
+        if (isNaN(id)) throw new Error('"id" must be a number');
         db.delete(id);
-        return ok({ deleted: true, namespace, id });
+        return ok({ deleted: true, namespace, id, mode: 'by_id' });
       }
 
       default:

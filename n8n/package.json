@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-logosdb",
-  "version": "0.7.6",
+  "version": "0.7.8",
   "description": "n8n node for LogosDB semantic vector database — insert, search, delete, info",
   "keywords": [
     "n8n-community-node-package",
