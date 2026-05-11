@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(logosdb VERSION 0.7.11 LANGUAGES CXX)
+project(logosdb VERSION 0.7.12 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

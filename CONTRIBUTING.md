@@ -70,7 +70,7 @@ npm publish -w logosdb --dry-run
 npm publish -w logosdb-mcp-server --dry-run
 ```
 
-**Order:** publish **`logosdb` first**, then **`logosdb-mcp-server`**, so the registry satisfies **`logosdb@^0.7.11`** for non-workspace installs.
+**Order:** publish **`logosdb` first**, then **`logosdb-mcp-server`**, so the registry satisfies **`logosdb@^0.7.12`** for non-workspace installs.
 
 ```bash
 cd nodejs && npm publish

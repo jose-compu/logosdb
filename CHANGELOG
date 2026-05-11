@@ -1,12 +1,20 @@
 logosdb change log
 ==================
 
+0.7.14  (2026-05-11)
+--------------------
+
+  * **`logosdb-mcp-server` 0.7.14:** version bump; depend on **`logosdb` ^0.7.12**.
+  * **npm `logosdb` (nodejs/) 0.7.12:** version bump from 0.7.11.
+  * **Core / packaging alignment:** **`LOGOSDB_VERSION_STRING`**, **CMake**, **Python `pyproject.toml`**, and **n8n** `package.json` **`version`** set to **0.7.12** to match the native release train.
+
 0.7.13  (2026-05-11)
 --------------------
 
   * **`logosdb-mcp-server` 0.7.13:** version bump; depend on **`logosdb` ^0.7.11**.
   * **npm `logosdb` (nodejs/) 0.7.11:** version bump from 0.7.10.
-  * **Core / packaging alignment:** **`LOGOSDB_VERSION_STRING`**, **CMake**, **Python `pyproject.toml`**, and **n8n** package metadata set to **0.7.11** to match the npm native release train.
+  * **Core / packaging alignment:** **`LOGOSDB_VERSION_STRING`**, **CMake**, **Python `pyproject.toml`**, and **n8n** `package.json` **`version`** set to **0.7.11** to match the npm native release train (**n8n** still lists **`logosdb` ^0.7.10** until **0.7.11** is on the registry).
+  * **nodejs `build` / `install` fallback:** **`node-gyp rebuild -j 1`** so parallel **make** does not race when creating nested **`Release/.deps/...`** paths (fixes intermittent **`metadata.o.d.raw`**: *No such file or directory* on Darwin).
 
 0.7.12  (2026-05-11)
 --------------------
