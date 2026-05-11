@@ -1,6 +1,8 @@
 # Build directories
 build/
 build_*/
+build-san/
+build-fuzz/
 cmake-build-*/
 
 # Node.js
