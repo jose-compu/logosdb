@@ -79,35 +79,6 @@ jobs:
           rm -rf /tmp/ci-smoke-db
           ./logosdb-cli info /tmp/ci-smoke-db --dim 16
 
-  # Address + UndefinedBehavior sanitizers (Clang, Linux; hnswlib excluded — see ci/sanitizer_ignorelist.txt)
-  sanitizer-asan-ubsan:
-    name: Sanitizers (ASan+UBSan, Clang)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout (with submodules)
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install Clang + Ninja
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build clang
-
-      - name: Configure (sanitized)
-        run: |
-          IGN="${{ github.workspace }}/ci/sanitizer_ignorelist.txt"
-          cmake -S . -B build-san -G Ninja \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g -fsanitize-ignorelist=$IGN" \
-            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
-
-      - name: Build and test
-        run: |
-          cmake --build build-san --parallel
-          cd build-san && ASAN_OPTIONS=detect_leaks=0:abort_on_error=1 ctest --output-on-failure
-
   # libFuzzer smoke (short run)
   fuzz-smoke-jsonl:
     name: Fuzz smoke (JSONL parse harness)

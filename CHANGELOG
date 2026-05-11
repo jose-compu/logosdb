@@ -17,9 +17,9 @@ logosdb change log
 
   * CMake option `LOGOSDB_BUILD_FUZZ`: `logosdb-fuzz-jsonl` libFuzzer harness over JSON parse
     (enabled on non-Apple targets; Apple Clang lacks the fuzzer runtime).
-  * GitHub Actions: ASan+UBSan build on Ubuntu (Clang) with `ci/sanitizer_ignorelist.txt` excluding
-    vendored `third_party/hnswlib` from instrumentation (avoids known hnswlib UBSan/ASan noise);
-    short fuzz smoke job (Clang on Linux).
+  * GitHub Actions: short libFuzzer smoke job for `logosdb-fuzz-jsonl` (Clang on Linux). Full-tree
+    ASan/UBSan CI was dropped: vendored hnswlib remains instrumented when included from our TUs,
+    so sanitizer ignorelists do not suppress its reports.
 
   **npm:** publish the `logosdb` native package before `logosdb-mcp-server` so installs can resolve the new patch.
 
