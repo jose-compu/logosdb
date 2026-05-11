@@ -12,6 +12,7 @@ nodejs/prebuilds/
 *.node
 
 # Python
+.venv-test/
 __pycache__/
 *.py[cod]
 *$py.class
