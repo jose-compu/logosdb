@@ -55,6 +55,9 @@ Security issues include but are not limited to:
   if you set it to an absolute directory). Symlink tricks that leave those roots are rejected.
 - **Sizes**: indexed text and search queries are capped; per-file read size is capped (see
   `mcp/src/security.ts`). Tune `LOGOSDB_CHUNK_SIZE` within the documented clamp range.
+- **Incremental file index** (`logosdb_index_file` with `incremental: true`): persists file path,
+  mtime, size, chunk size, and row ids under **`LOGOSDB_PATH/_logosdb_mcp_manifests/`** (JSON). Do
+  not point `LOGOSDB_PATH` at a world-writable directory if that leaks indexed paths across users.
 - **Cloud embeddings**: outbound requests use a wall-clock timeout (`EMBEDDING_FETCH_TIMEOUT_MS`,
   bounded). Prefer local embeddings when you do not want network calls.
 

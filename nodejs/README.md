@@ -16,7 +16,18 @@ Fast semantic vector database (HNSW + mmap) for Node.js. Zero-copy memory-mapped
 npm install logosdb
 ```
 
-Prebuilt binaries are provided for common platforms. If a prebuilt binary is not available, npm will compile from source (requires Python, C++ compiler, and CMake).
+Prebuilt binaries may be attached to GitHub releases as **N-API** tarballs (`napi-v8-*`). The install script runs **`prebuild-install`** from the maintained **`@mmomtchev/prebuild-install`** fork (not the deprecated `prebuild-install@7` package) with **`--runtime napi --target 8`**. If no binary matches, npm falls back to **`node-gyp rebuild`** using vendored C++ under **`deps/core/`** (requires Python + a C++17 toolchain; no CMake for this addon).
+
+## Publishing (maintainers)
+
+Run **`npm publish` from this directory** (`nodejs/` in the git repo), not from the repository root. The root `package.json` is a **private** workspace (`logosdb-workspace`) for the MCP subpackage; publishing there hits `EPRIVATE` and can pack the wrong tree.
+
+**`prepublishOnly`** runs **`npm run vendor-core`**, which refreshes **`deps/core/`** from the monorepo parent (`../include`, `../src`, `../third_party/...`) so the published tarball stays self-contained. Maintainer prebuild tarballs: **`npm run native:prebuild`** (not `prebuild` — that name is reserved as an npm lifecycle hook and would run before every `npm run build`).
+
+```bash
+cd nodejs
+npm publish
+```
 
 ## Quick Start
 
@@ -122,17 +133,18 @@ const db = new DB('/tmp/mydb', { dim: 384, distance: DIST_COSINE });
 const hits: SearchHit[] = db.search(embedding, 5);
 ```
 
-## Building from Source
+## Building from source
+
+From a **full monorepo** checkout, regenerate vendored core C++ (same step as publish):
 
 ```bash
-npm install --build-from-source
+cd nodejs
+npm run vendor-core
+npm install
+npm run build
 ```
 
-Requirements:
-- Python 3.x
-- C++17 compiler (GCC, Clang, MSVC)
-- CMake 3.15+
-- Node.js 16+
+Requirements: Python usable by **node-gyp** (often 3.10–3.13), C++17 (Clang/GCC/MSVC). The Node addon does **not** use CMake.
 
 ## License
 

@@ -6,10 +6,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { DB, DIST_COSINE } = require('logosdb') as {
+let logosdbNative: {
   DB: new (p: string, opts?: { dim?: number; maxElements?: number; distance?: number }) => LogosDB;
   DIST_COSINE: number;
 };
+try {
+  logosdbNative = require('logosdb') as typeof logosdbNative;
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  process.stderr.write(
+    `[logosdb-mcp] Native dependency "logosdb" failed to load (${msg}). ` +
+      'Install logosdb@^0.7.10 (N-API prebuilds; from source needs C++17). See nodejs/README.md.\n',
+  );
+  throw err;
+}
+const { DB, DIST_COSINE } = logosdbNative;
 
 export interface SearchHit {
   id: number;

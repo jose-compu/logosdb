@@ -9,6 +9,7 @@ cmake-build-*/
 node_modules/
 nodejs/build/
 nodejs/prebuilds/
+nodejs/*.tgz
 *.node
 
 # Python

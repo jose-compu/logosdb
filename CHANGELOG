@@ -1,6 +1,40 @@
 logosdb change log
 ==================
 
+0.7.11  (2026-05-11)
+--------------------
+
+  * **MCP `logosdb_index_file`:** optional **`incremental: true`** — index only new or changed files
+    (compare `mtimeMs`, size, and `chunk_size` to the last run); delete prior chunk row ids for
+    changed files before re-embedding; when the path is a **directory**, remove stored chunks for
+    files that no longer exist under that tree. State is kept under **`LOGOSDB_PATH/_logosdb_mcp_manifests/`**.
+  * **`.claude/commands/index.md`** (and plugin `/index` skill): pass **`incremental: true`** by default.
+
+0.7.10  (2026-05-11)
+--------------------
+
+  * **npm `logosdb`:** replace deprecated **`prebuild-install@7`** with the maintained fork
+    **`@mmomtchev/prebuild-install`** (same `prebuild-install` CLI; avoids npm’s deprecation warning).
+    **`install`** runs **`prebuild-install --runtime napi --target 8`** so N-API resolution does not
+    depend on fragile `npm_config_*` merges; **`package.json` `config`** still sets **`runtime` /
+    `target`** for tools that read it.
+  * **`logosdb-mcp-server` 0.7.10:** depend on **`logosdb` ^0.7.10**.
+  * **nodejs scripts:** rename **`prebuild`** → **`native:prebuild`** (and upload variant) so `npm run build` does not trigger npm’s automatic **`prebuild`** lifecycle hook.
+
+0.7.9  (2026-05-11)
+-------------------
+
+  * **npm `logosdb` (nodejs):** ship vendored C++ under `deps/core/` so `node-gyp rebuild` works
+    from the published tarball (no broken `../src` paths). `prepublishOnly` runs `vendor-core.mjs`.
+  * **`package.json`:** `"config": { "runtime": "napi" }` so `prebuild-install` requests
+    `napi-v8-*` assets instead of `node-v*` (fixes “No prebuilt binaries found” on Node 22 when
+    release tarballs exist).
+  * **`files`:** include `deps/`, `scripts/` in the npm pack.
+  * **Workspace:** root `package.json` adds `nodejs` next to `mcp` so local installs resolve the
+    native binding from the repo.
+  * **`logosdb-mcp-server` 0.7.9:** depend on `logosdb` ^0.7.9; clearer stderr when the native
+    module fails to load.
+
 0.7.8  (2026-05-11)
 -------------------
 

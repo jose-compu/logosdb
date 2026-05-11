@@ -39,6 +39,48 @@ npm install
 
 That builds the MCP server (`mcp` workspace `prepare` → `tsc`). Use `npm run mcp:build` after MCP TypeScript changes.
 
+The root workspace also lists **`nodejs`** so `logosdb-mcp-server` resolves the **`logosdb`** native package from this repo. After changing C++ under `src/` or `include/`, refresh the vendored copy and rebuild the addon:
+
+```bash
+npm run vendor-core -w logosdb
+npm run build -w logosdb
+```
+
+### Publishing npm packages (`logosdb` + `logosdb-mcp-server`, 0.7.x)
+
+Versions are **`nodejs/package.json`** (`logosdb`) and **`mcp/package.json`** (`logosdb-mcp-server`). Keep them aligned for coordinated releases; summarize user-facing changes in repo root **`CHANGELOG`**.
+
+From the **repository root**:
+
+```bash
+npm install
+npm run npm:verify
+```
+
+Optional tarball inspection (writes to **`/tmp`**):
+
+```bash
+npm run npm:pack
+```
+
+Dry-run publish (lists packed files; does not upload):
+
+```bash
+npm publish -w logosdb --dry-run
+npm publish -w logosdb-mcp-server --dry-run
+```
+
+**Order:** publish **`logosdb` first**, then **`logosdb-mcp-server`**, so the registry satisfies **`logosdb@^0.7.10`** for non-workspace installs.
+
+```bash
+cd nodejs && npm publish
+cd ../mcp && npm publish
+```
+
+Do **not** run **`npm publish`** from the repo root private workspace package.
+
+Optional: generate N-API binaries for GitHub releases from **`nodejs/`** with **`npm run native:prebuild`** / **`npm run native:prebuild-upload`** (requires a working **`prebuild`** / node-gyp toolchain).
+
 Build targets:
 - `logosdb` — static library (`liblogosdb.a`)
 - `logosdb-cli` — command-line tool

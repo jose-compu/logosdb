@@ -1,15 +1,21 @@
 {
   "name": "logosdb",
-  "version": "0.7.8",
+  "version": "0.7.10",
   "description": "Fast semantic vector database (HNSW + mmap) - Node.js bindings",
   "main": "lib/index.js",
   "types": "types/index.d.ts",
+  "config": {
+    "runtime": "napi",
+    "target": "8"
+  },
   "scripts": {
-    "install": "prebuild-install || node-gyp rebuild",
+    "vendor-core": "node ./scripts/vendor-core.mjs",
+    "prepublishOnly": "node ./scripts/vendor-core.mjs",
+    "install": "prebuild-install --runtime napi --target 8 || node-gyp rebuild",
     "build": "node-gyp rebuild",
     "test": "mocha test/test.js",
-    "prebuild": "prebuild --runtime napi --all --strip",
-    "prebuild-upload": "prebuild --runtime napi --all --strip --upload-all"
+    "native:prebuild": "prebuild --runtime napi --all --strip",
+    "native:prebuild-upload": "prebuild --runtime napi --all --strip --upload-all"
   },
   "repository": {
     "type": "git",
@@ -32,10 +38,11 @@
   "dependencies": {
     "bindings": "^1.5.0",
     "node-addon-api": "^7.0.0",
-    "prebuild-install": "^7.1.1"
+    "prebuild-install": "npm:@mmomtchev/prebuild-install@^1.0.2"
   },
   "devDependencies": {
     "mocha": "^10.2.0",
+    "node-gyp": "^11.2.0",
     "prebuild": "^12.1.0"
   },
   "binary": {
@@ -44,6 +51,15 @@
     ]
   },
   "gypfile": true,
+  "files": [
+    "binding.gyp",
+    "lib",
+    "src",
+    "types",
+    "test",
+    "deps",
+    "scripts"
+  ],
   "engines": {
     "node": ">=16.0.0"
   },

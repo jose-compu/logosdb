@@ -39,6 +39,14 @@ import {
   validateMetadata,
   validateUserText,
 } from './security.js';
+import {
+  loadManifest,
+  MANIFEST_VERSION,
+  manifestPath,
+  pruneRemovedPaths,
+  saveManifest,
+  type FileIndexManifest,
+} from './file-index-manifest.js';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -89,7 +97,8 @@ const TOOLS: Tool[] = [
     description:
       'Read a file OR directory from disk, chunk each file, embed the chunks, and store them in a namespace. ' +
       'When given a directory it walks recursively, skipping hidden paths and node_modules. ' +
-      'Supports any UTF-8 text file (source code, markdown, plain text).',
+      'Supports any UTF-8 text file (source code, markdown, plain text). ' +
+      'With incremental=true, skips files unchanged since last index (mtime+size+chunk_size), re-indexes modified files after deleting their previous chunk rows, and when indexing a directory removes DB rows for files that disappeared from disk.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -101,6 +110,11 @@ const TOOLS: Tool[] = [
         chunk_size: {
           type: 'number',
           description: `Target characters per chunk (default: ${CHUNK_SIZE})`,
+        },
+        incremental: {
+          type: 'boolean',
+          description:
+            'If true, only index new or changed files (vs last run in this namespace); delete old chunks for changed or removed files. Default false (full re-chunk of every file, may duplicate rows).',
         },
       },
       required: ['path', 'namespace'],
@@ -181,7 +195,7 @@ const TOOLS: Tool[] = [
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
-const server = new Server({ name: 'logosdb', version: '0.7.8' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'logosdb', version: '0.7.11' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
@@ -217,6 +231,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           typeof args.chunk_size === 'number' ? args.chunk_size : CHUNK_SIZE,
           CHUNK_SIZE,
         );
+        const incremental = Boolean(args.incremental);
 
         if (!inputPath) throw new Error('"path" is required');
         if (!namespace) throw new Error('"namespace" is required');
@@ -228,21 +243,81 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const filesToIndex = stat.isDirectory() ? collectFilesSafe(absPath) : [absPath];
 
         if (filesToIndex.length === 0) {
-          return ok({ indexed: 0, files: 0, namespace, path: absPath });
+          return ok({
+            indexed: 0,
+            files: 0,
+            namespace,
+            path: absPath,
+            incremental,
+            skipped_files: 0,
+            indexed_files: 0,
+            pruned_files: 0,
+          });
         }
+
+        const manFile = manifestPath(LOGOSDB_PATH, namespace);
+        const manifest: FileIndexManifest = incremental
+          ? loadManifest(manFile)
+          : { version: MANIFEST_VERSION, files: {} };
 
         const BATCH = 96;
         const ts = new Date().toISOString();
         let totalChunks = 0;
         let firstVecLen = embCfg.dim;
         let db: ReturnType<typeof store.open> | null = null;
+        let skippedFiles = 0;
+        let indexedFiles = 0;
+        let prunedFiles = 0;
+
+        const openDb = (dim: number) => {
+          if (!db) db = store.open(namespace, dim);
+          return db;
+        };
+
+        if (incremental && stat.isDirectory()) {
+          openDb(embCfg.dim);
+          prunedFiles = pruneRemovedPaths(absPath, new Set(filesToIndex), manifest, db!);
+        }
 
         for (const filePath of filesToIndex) {
+          let st: fs.Stats;
+          try {
+            st = fs.statSync(filePath);
+          } catch {
+            continue;
+          }
+          const mtimeMs = Math.trunc(st.mtimeMs);
+          const fileSize = st.size;
+
+          const prev = incremental ? manifest.files[filePath] : undefined;
+          if (
+            incremental &&
+            prev &&
+            prev.mtimeMs === mtimeMs &&
+            prev.size === fileSize &&
+            prev.chunkSize === chunkSize
+          ) {
+            skippedFiles++;
+            continue;
+          }
+
+          if (incremental && prev?.ids?.length) {
+            openDb(embCfg.dim);
+            for (const id of prev.ids) {
+              try {
+                db!.delete(id);
+              } catch {
+                /* row may already be deleted */
+              }
+            }
+            delete manifest.files[filePath];
+          }
+
           let content: string;
           try {
             content = readFileBoundedUtf8(filePath);
           } catch {
-            continue; // skip unreadable files
+            continue;
           }
 
           const fileChunks = chunk(content, chunkSize);
@@ -257,16 +332,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
           if (allVecs.length === 0) continue;
           firstVecLen = allVecs[0].length;
-          if (!db) db = store.open(namespace, firstVecLen);
+          openDb(firstVecLen);
 
+          const ids: number[] = [];
           for (let i = 0; i < texts.length; i++) {
             const label = `[file:${filePath}][chunk:${i}/${texts.length}] ${texts[i]}`;
-            db.put(allVecs[i], label, ts);
+            const id = db!.put(allVecs[i], label, ts);
+            ids.push(id);
           }
           totalChunks += texts.length;
+          indexedFiles++;
+
+          if (incremental) {
+            manifest.files[filePath] = { mtimeMs, size: fileSize, chunkSize, ids };
+          }
         }
 
-        return ok({ indexed: totalChunks, files: filesToIndex.length, namespace, path: absPath });
+        if (incremental) {
+          saveManifest(manFile, manifest);
+        }
+
+        return ok({
+          indexed: totalChunks,
+          files: filesToIndex.length,
+          namespace,
+          path: absPath,
+          incremental,
+          skipped_files: incremental ? skippedFiles : 0,
+          indexed_files: indexedFiles,
+          pruned_files: incremental ? prunedFiles : 0,
+        });
       }
 
       // ── logosdb_search ─────────────────────────────────────────────────────
