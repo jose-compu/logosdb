@@ -161,6 +161,36 @@ static std::vector<float> read_binary_vec(const char* path, int dim)
     return v;
 }
 
+/** Reject NUL and C0 controls (except TAB/LF/CR) in CLI text metadata; cap length. */
+static bool validate_cli_text_metadata(const char* label, const char* text)
+{
+    if (!text)
+        return true;
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(text);
+    size_t len = std::strlen(text);
+    const size_t kMax = 512u * 1024u;
+    if (len > kMax)
+    {
+        fprintf(stderr, "error: %s exceeds maximum length (%zu bytes)\n", label, kMax);
+        return false;
+    }
+    for (size_t i = 0; i < len; ++i)
+    {
+        unsigned char c = p[i];
+        if (c == 0)
+        {
+            fprintf(stderr, "error: %s contains NUL byte\n", label);
+            return false;
+        }
+        if (c < 32 && c != '\t' && c != '\n' && c != '\r')
+        {
+            fprintf(stderr, "error: %s contains disallowed control character\n", label);
+            return false;
+        }
+    }
+    return true;
+}
+
 static void print_version()
 {
     printf("logosdb-cli version %s\n", LOGOSDB_VERSION_STRING);
@@ -468,6 +498,11 @@ int main(int argc, char** argv)
         {
             fprintf(
                 stderr, "error: could not read embedding (expected %d floats)\n", logosdb_dim(db));
+            rc = 1;
+            goto done;
+        }
+        if (!validate_cli_text_metadata("--text", args.text))
+        {
             rc = 1;
             goto done;
         }

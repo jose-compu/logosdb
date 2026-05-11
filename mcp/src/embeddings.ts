@@ -145,17 +145,36 @@ async function fetchJson(
   body: unknown,
   headers: Record<string, string>,
 ): Promise<unknown> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(body),
-  });
+  const timeoutMs = (() => {
+    const raw = process.env.EMBEDDING_FETCH_TIMEOUT_MS;
+    if (raw === undefined || raw === '') return 120_000;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 600_000) : 120_000;
+  })();
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Embedding API error ${res.status}: ${text}`);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Embedding API error ${res.status}: ${text}`);
+    }
+    return res.json();
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error(`Embedding request timed out after ${timeoutMs}ms`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 export async function embed(text: string, cfg: EmbeddingConfig): Promise<number[]> {

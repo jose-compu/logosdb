@@ -49,6 +49,15 @@ Security issues include but are not limited to:
 - Validate inputs when embedding LogosDB in larger systems
 - Review MCP server configuration for your threat model
 
+### MCP server (`logosdb-mcp-server`)
+
+- **`logosdb_index_file`** only indexes paths under **`process.cwd()`** (or **`LOGOSDB_INDEX_ROOT`**
+  if you set it to an absolute directory). Symlink tricks that leave those roots are rejected.
+- **Sizes**: indexed text and search queries are capped; per-file read size is capped (see
+  `mcp/src/security.ts`). Tune `LOGOSDB_CHUNK_SIZE` within the documented clamp range.
+- **Cloud embeddings**: outbound requests use a wall-clock timeout (`EMBEDDING_FETCH_TIMEOUT_MS`,
+  bounded). Prefer local embeddings when you do not want network calls.
+
 ## Disclosure Policy
 
 We follow a coordinated disclosure approach:

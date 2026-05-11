@@ -45,6 +45,10 @@ Default model: `Xenova/all-MiniLM-L6-v2` (384 dimensions). Override:
 
 If you switch models, set `TRANSFORMERS_EMBEDDING_DIM` / `EMBEDDING_DIM` to the **exact** output size of that model.
 
+### Path confinement (`logosdb_index_file`)
+
+Indexing resolves paths with `realpath` and only allows files under **`process.cwd()`** or, if set, **`LOGOSDB_INDEX_ROOT`** (absolute directory). Symlinks that escape those roots are rejected. Optional: set **`EMBEDDING_FETCH_TIMEOUT_MS`** (milliseconds, capped at 600000) for Ollama/OpenAI/Voyage HTTP calls; default is 120000.
+
 ### Local HTTP: Ollama
 
 Run [Ollama](https://ollama.com) with an embedding model (e.g. `nomic-embed-text`), then:
@@ -239,8 +243,9 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 ## Development
 
 ```bash
-npm install --ignore-scripts   # skip native addon build
+npm install --ignore-scripts   # skip native addon build (use linked logosdb or published wheel)
 npm run build                  # tsc → dist/
+npm test                       # path / control-character regression tests (no DB required)
 npm start                      # run server directly
 ```
 
