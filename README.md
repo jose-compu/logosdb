@@ -63,12 +63,12 @@ Target versions and issue assignment match **[GitHub milestones](https://github.
 
 ## Milestones → issues
 
-### [0.7.7](https://github.com/jose-compu/logosdb/milestone/7) — patch (`0.x.Z`)
+### [0.7.7](https://github.com/jose-compu/logosdb/milestone/7) — patch (`0.x.Z`) **SHIPPED**
 
   * [#74](https://github.com/jose-compu/logosdb/issues/74) — security: harden encoding and injection surfaces across MCP, CLI, and integrations
   * [#9](https://github.com/jose-compu/logosdb/issues/9) — libFuzzer JSON harness in CI; local ASan/UBSan builds possible; full-tree sanitizer CI not enabled (vendored hnswlib noise)
 
-### [0.7.8](https://github.com/jose-compu/logosdb/milestone/14) — patch (`0.x.Z`)
+### [0.7.8](https://github.com/jose-compu/logosdb/milestone/14) — patch (`0.x.Z`) **SHIPPED**
 
   * [#94](https://github.com/jose-compu/logosdb/issues/94) — feat(mcp): expose timestamp-range search (`search_ts_range` / `from_ts`, `to_ts`)
   * [#95](https://github.com/jose-compu/logosdb/issues/95) — docs: document Claude Code slash commands (/index, /search, /forget) in main README
