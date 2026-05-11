@@ -1,0 +1,7 @@
+# hnswlib is vendored header-only code with memory layouts that trigger
+# UBSan (e.g. alignment) and ASan false positives in our configuration.
+# Our own sources under src/, tools/, tests/ remain fully instrumented.
+[address]
+src:.*/third_party/hnswlib/.*
+[undefined]
+src:.*/third_party/hnswlib/.*
