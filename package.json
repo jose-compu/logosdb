@@ -1,8 +1,8 @@
 {
   "name": "logosdb-workspace",
   "private": true,
-  "description": "Private monorepo workspace (MCP under mcp/). Do not npm publish here — the npm package logosdb (native addon) is published from nodejs/.",
-  "workspaces": ["mcp", "nodejs"],
+  "description": "Private monorepo workspace (MCP: mcp/, native addon: nodejs/, n8n node: n8n/). Publish `logosdb` from nodejs/ and `logosdb-mcp-server` from mcp/; use root `npm install` so n8n resolves `logosdb` from the workspace.",
+  "workspaces": ["mcp", "nodejs", "n8n"],
   "scripts": {
     "mcp:build": "npm run build -w logosdb-mcp-server",
     "npm:verify": "npm run vendor-core -w logosdb && npm run build -w logosdb && npm test -w logosdb && npm test -w logosdb-mcp-server",

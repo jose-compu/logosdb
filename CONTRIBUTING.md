@@ -46,7 +46,7 @@ npm run vendor-core -w logosdb
 npm run build -w logosdb
 ```
 
-### Publishing npm packages (`logosdb` + `logosdb-mcp-server`, 0.7.x)
+### Publishing npm packages (`logosdb`, `logosdb-mcp-server`, `n8n-nodes-logosdb`, 0.8.x)
 
 Versions are **`nodejs/package.json`** (`logosdb`) and **`mcp/package.json`** (`logosdb-mcp-server`). Keep them aligned for coordinated releases; summarize user-facing changes in repo root **`CHANGELOG`**.
 
@@ -54,6 +54,11 @@ From the **repository root**:
 
 ```bash
 npm install
+```
+
+The root **`package.json`** defines **`workspaces`** for **`mcp`**, **`nodejs`**, and **`n8n`**, so a single install wires **`logosdb-mcp-server`** and **`n8n-nodes-logosdb`** to the local **`logosdb`** package. Use **`npm run npm:verify`** from the repo root (not from **`n8n/`** alone).
+
+```bash
 npm run npm:verify
 ```
 
@@ -70,11 +75,12 @@ npm publish -w logosdb --dry-run
 npm publish -w logosdb-mcp-server --dry-run
 ```
 
-**Order:** publish **`logosdb` first**, then **`logosdb-mcp-server`**, so the registry satisfies **`logosdb@^0.7.11`** for non-workspace installs.
+**Order:** publish **`logosdb` first**, then **`logosdb-mcp-server`**, so the registry satisfies **`logosdb@^0.8.0`** for non-workspace installs.
 
 ```bash
 cd nodejs && npm publish
 cd ../mcp && npm publish
+cd ../n8n && npm publish
 ```
 
 Do **not** run **`npm publish`** from the repo root private workspace package.
@@ -121,9 +127,35 @@ We follow these conventions:
 - **Filenames**: `snake_case.cpp`, `snake_case.h`
 
 **Formatting tools available:**
-- Run `clang-format -i src/yourfile.cpp` to auto-format C/C++ code
+- Use **`clang-format` 18.x** (see **Before you push** below); run `clang-format -i src/yourfile.cpp` on individual files if you prefer
 - Run `clang-tidy src/yourfile.cpp` to check for common issues
-- CI enforces formatting via `clang-format --dry-run -Werror`
+- CI enforces formatting with **`clang-format-18 --dry-run -Werror`** (see **`.github/workflows/ci.yml`**)
+
+**Before you push:** CI runs **`clang-format-18`** (Ubuntu package). Apple’s default **`clang-format`** from Xcode is often a **newer** LLVM (e.g. 19–22) and formats the same files **differently**, which makes local “clean” runs still fail in GitHub Actions. Use **18.x** locally so output matches CI.
+
+**macOS (Homebrew):**
+
+```bash
+brew install llvm@18
+export PATH="/opt/homebrew/opt/llvm@18/bin:$PATH"   # Intel: /usr/local/opt/llvm@18/bin
+clang-format --version   # should report 18.x
+
+find src include tests tools \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) | \
+  grep -v 'doctest.h' | \
+  xargs clang-format --dry-run -Werror
+```
+
+Apply fixes in one pass (same `PATH`):
+
+```bash
+find src include tests tools \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) | \
+  grep -v 'doctest.h' | \
+  xargs clang-format -i
+```
+
+**Linux:** install **`clang-format-18`** from your distro (CI uses `apt install clang-format-18`) and use the same `find … | xargs clang-format-18 …` commands as in **`.github/workflows/ci.yml`**.
+
+Also run **`npm run lint`** / **`npm run format:check`** in **`mcp/`** and **`n8n/`** when you change those packages, and **`npm run npm:verify`** before a release that touches the Node addon or MCP.
 
 ### Style Guidelines
 
@@ -148,6 +180,7 @@ We follow these conventions:
 
 Before submitting:
 
+- [ ] C/C++ formatting passes (`clang-format-18 --dry-run -Werror` on Linux, or **`clang-format` 18.x** from Homebrew `llvm@18` on macOS — see **CONTRIBUTING**)
 - [ ] Tests added for new functionality
 - [ ] Existing tests pass (`ctest`, `pytest`)
 - [ ] Benchmarks run if performance-related

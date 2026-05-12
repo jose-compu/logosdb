@@ -1,6 +1,6 @@
 {
   "name": "logosdb",
-  "version": "0.7.11",
+  "version": "0.8.0",
   "description": "Fast semantic vector database (HNSW + mmap) - Node.js bindings",
   "main": "lib/index.js",
   "types": "types/index.d.ts",
@@ -11,8 +11,8 @@
   "scripts": {
     "vendor-core": "node ./scripts/vendor-core.mjs",
     "prepublishOnly": "node ./scripts/vendor-core.mjs",
-    "install": "prebuild-install --runtime napi --target 8 || node-gyp rebuild",
-    "build": "node-gyp rebuild",
+    "install": "prebuild-install --runtime napi --target 8 || node-gyp rebuild -j 1",
+    "build": "node-gyp rebuild -j 1",
     "test": "mocha test/test.js",
     "native:prebuild": "prebuild --runtime napi --all --strip",
     "native:prebuild-upload": "prebuild --runtime napi --all --strip --upload-all"

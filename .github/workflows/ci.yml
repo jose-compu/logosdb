@@ -67,7 +67,7 @@ jobs:
 
       - name: Run tests (verbose)
         working-directory: build
-        run: ./logosdb-test
+        run: ./logosdb-test --test-suite-exclude=stress
 
       - name: List test suites
         working-directory: build
@@ -121,19 +121,19 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install clang-format and clang-tidy
+      - name: Install clang-format 18 and clang-tidy
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang-format clang-tidy
+          sudo apt-get install -y --no-install-recommends clang-format-18 clang-tidy
 
       - name: Check clang-format version
-        run: clang-format --version
+        run: clang-format-18 --version
 
       - name: Run clang-format check
         run: |
           find src include tests tools \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) | \
             grep -v 'doctest.h' | \
-            xargs clang-format --dry-run -Werror
+            xargs clang-format-18 --dry-run -Werror
 
       - name: Run clang-tidy check (optional, report only)
         run: |

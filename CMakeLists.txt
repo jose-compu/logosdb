@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(logosdb VERSION 0.7.11 LANGUAGES CXX)
+project(logosdb VERSION 0.8.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -49,14 +49,16 @@ if(LOGOSDB_BUILD_TOOLS)
 endif()
 
 if(LOGOSDB_BUILD_TESTS)
+    find_package(Threads REQUIRED)
     # Single-header doctest is vendored in tests/
-    add_executable(logosdb-test tests/test_doctest.cpp)
+    # Stress suite ("stress") is excluded by default; run with:
+    #   ./logosdb-test --test-suite=stress
+    add_executable(logosdb-test tests/test_doctest.cpp tests/test_stress.cpp)
     target_include_directories(logosdb-test PRIVATE tests)
-    target_link_libraries(logosdb-test PRIVATE logosdb)
+    target_link_libraries(logosdb-test PRIVATE logosdb Threads::Threads)
 
     enable_testing()
-    # Run all test suites; doctest provides filtering via --test-case="*pattern*"
-    add_test(NAME logosdb_doctest COMMAND logosdb-test)
+    add_test(NAME logosdb_doctest COMMAND logosdb-test --test-suite-exclude=stress)
 endif()
 
 option(LOGOSDB_BUILD_FUZZ "Build libFuzzer harness for JSON metadata parsing (Clang, Linux)" OFF)

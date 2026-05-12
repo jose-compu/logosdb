@@ -36,6 +36,13 @@ PYBIND11_MODULE(_core, m) {
     m.attr("DIST_COSINE") = LOGOSDB_DIST_COSINE;
     m.attr("DIST_L2")     = LOGOSDB_DIST_L2;
 
+    m.def("compact",
+          [](const std::string& src, const std::string& dst) { logosdb::compact(src, dst); },
+          py::arg("src"),
+          py::arg("dst"),
+          "Copy live rows from src database directory into dst (drops tombstones; dst must be "
+          "empty).");
+
     // ── SearchHit ──────────────────────────────────────────────────
     py::class_<logosdb::SearchHit>(m, "SearchHit",
         "A single search result: id, score, and optional text/timestamp metadata.")
@@ -165,6 +172,39 @@ Returns:
         .def("count_live",
             &logosdb::DB::count_live,
             "Live row count (total minus tombstoned).")
+
+        .def("sync",
+            &logosdb::DB::sync,
+            "Flush WAL, persist HNSW index, and fsync vector + metadata stores.")
+
+        .def(
+            "stats",
+            [](const logosdb::DB& self) {
+                logosdb_stats_t s = self.get_stats();
+                py::dict d;
+                d["rows_total"] = s.rows_total;
+                d["rows_live"] = s.rows_live;
+                d["tombstones"] = s.tombstones;
+                d["index_elements"] = s.index_elements;
+                d["wal_pending"] = s.wal_pending;
+                d["distance_metric"] = s.distance_metric;
+                d["storage_dtype"] = s.storage_dtype;
+                d["put_success"] = s.put_success;
+                d["put_failed"] = s.put_failed;
+                d["put_batch_success"] = s.put_batch_success;
+                d["put_batch_failed"] = s.put_batch_failed;
+                d["search_success"] = s.search_success;
+                d["search_failed"] = s.search_failed;
+                d["search_ts_success"] = s.search_ts_success;
+                d["search_ts_failed"] = s.search_ts_failed;
+                d["delete_success"] = s.delete_success;
+                d["delete_failed"] = s.delete_failed;
+                d["update_success"] = s.update_success;
+                d["update_failed"] = s.update_failed;
+                d["sync_calls"] = s.sync_calls;
+                return d;
+            },
+            "Operation counters and store health fields.")
 
         .def_property_readonly("dim",
             &logosdb::DB::dim,

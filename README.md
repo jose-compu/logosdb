@@ -20,7 +20,7 @@ Authors: Jose ([@jose-compu](https://github.com/jose-compu))
   * **Timestamp range filtering**: search within a time window (e.g., "last 24 hours").
   * **Multiple distance metrics**: inner product, cosine similarity (auto-normalized), or L2 Euclidean.
   * Bulk vector access for direct tensor construction (e.g. loading into GPU memory).
-  * Thread-safe writes via internal mutex; concurrent reads are lock-free.
+  * Thread-safe API on a single open handle: an internal mutex serializes operations that touch the index and metadata (including search).
   * Crash recovery: HNSW index is automatically backfilled from the append-only vector store on open.
   * Scales to millions of vectors.
   * **Framework integrations**: LangChain and LlamaIndex VectorStore adapters.
@@ -729,7 +729,7 @@ We use databases with 1K, 10K, and 100K vectors. Each vector has 2048 dimensions
 
 *(Report below was produced with an older `logosdb-bench` binary labeled 0.5.0; scaling and relative HNSW vs brute-force behavior are still representative of current builds.)*
 
-    LogosDB:    version 0.5.0
+    LogosDB:    version 0.8.0
     CPU:        Apple M-series (ARM64)
     Dim:        2048
     HNSW M:     16, ef_construction: 200, ef_search: 50

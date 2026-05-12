@@ -6,6 +6,8 @@
 
 #include <logosdb/logosdb.h>
 
+#include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -26,6 +28,21 @@ struct logosdb_t
     WriteAheadLog wal;
     std::mutex mu;
     int dim = 0;
+    int distance = LOGOSDB_DIST_IP;
+    int dtype = LOGOSDB_DTYPE_FLOAT32;
+    std::atomic<uint64_t> st_put_ok{0};
+    std::atomic<uint64_t> st_put_fail{0};
+    std::atomic<uint64_t> st_put_batch_ok{0};
+    std::atomic<uint64_t> st_put_batch_fail{0};
+    std::atomic<uint64_t> st_search_ok{0};
+    std::atomic<uint64_t> st_search_fail{0};
+    std::atomic<uint64_t> st_search_ts_ok{0};
+    std::atomic<uint64_t> st_search_ts_fail{0};
+    std::atomic<uint64_t> st_delete_ok{0};
+    std::atomic<uint64_t> st_delete_fail{0};
+    std::atomic<uint64_t> st_update_ok{0};
+    std::atomic<uint64_t> st_update_fail{0};
+    std::atomic<uint64_t> st_sync{0};
 };
 
 struct logosdb_options_t
@@ -259,6 +276,9 @@ logosdb_t* logosdb_open(const char* path, const logosdb_options_t* opts, char** 
     if (backfilled)
         db->index.save(err);
 
+    db->distance = opts->distance;
+    db->dtype = (int)db->vectors.dtype();
+
     return db;
 }
 
@@ -275,6 +295,39 @@ void logosdb_close(logosdb_t* db)
     delete db;
 }
 
+int logosdb_sync(logosdb_t* db, char** errptr)
+{
+    if (!db)
+    {
+        set_err(errptr, "null db");
+        return -1;
+    }
+    std::lock_guard<std::mutex> lock(db->mu);
+    std::string err;
+    if (!db->wal.sync(err))
+    {
+        set_err(errptr, "wal sync: " + err);
+        return -1;
+    }
+    if (!db->index.save(err))
+    {
+        set_err(errptr, "index save: " + err);
+        return -1;
+    }
+    if (!db->vectors.sync(err))
+    {
+        set_err(errptr, "vectors sync: " + err);
+        return -1;
+    }
+    if (!db->meta.sync(err))
+    {
+        set_err(errptr, "meta sync: " + err);
+        return -1;
+    }
+    db->st_sync.fetch_add(1, std::memory_order_relaxed);
+    return 0;
+}
+
 /* ── Write ─────────────────────────────────────────────────────────── */
 
 uint64_t logosdb_put(logosdb_t* db,
@@ -287,11 +340,14 @@ uint64_t logosdb_put(logosdb_t* db,
     if (!db || !embedding)
     {
         set_err(errptr, "null db or embedding");
+        if (db)
+            db->st_put_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
     if (dim != db->dim)
     {
         set_err(errptr, "dimension mismatch");
+        db->st_put_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
 
@@ -306,6 +362,7 @@ uint64_t logosdb_put(logosdb_t* db,
     if (wal_offset < 0)
     {
         set_err(errptr, err);
+        db->st_put_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
 
@@ -314,6 +371,7 @@ uint64_t logosdb_put(logosdb_t* db,
     if (vid == UINT64_MAX)
     {
         set_err(errptr, err);
+        db->st_put_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
 
@@ -323,6 +381,7 @@ uint64_t logosdb_put(logosdb_t* db,
     {
         // Metadata write failed - entry remains in WAL for replay on recovery
         set_err(errptr, err);
+        db->st_put_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
 
@@ -331,6 +390,7 @@ uint64_t logosdb_put(logosdb_t* db,
     {
         // Index write failed - entry remains in WAL for replay on recovery
         set_err(errptr, err);
+        db->st_put_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
 
@@ -341,6 +401,7 @@ uint64_t logosdb_put(logosdb_t* db,
         // Log but don't fail the operation
     }
 
+    db->st_put_ok.fetch_add(1, std::memory_order_relaxed);
     return vid;
 }
 
@@ -356,6 +417,8 @@ int logosdb_put_batch(logosdb_t* db,
     if (!db || !embeddings || !out_ids)
     {
         set_err(errptr, "null db, embeddings, or out_ids");
+        if (db)
+            db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
         return -1;
     }
     if (n <= 0)
@@ -365,21 +428,19 @@ int logosdb_put_batch(logosdb_t* db,
     if (dim != db->dim)
     {
         set_err(errptr, "dimension mismatch");
+        db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
         return -1;
     }
 
     std::lock_guard<std::mutex> lock(db->mu);
     std::string err;
-    uint64_t start_id = db->vectors.n_rows();
-
-    // For batch operations, we write a single WAL entry for the entire batch
-    // to minimize WAL overhead. The entry contains the expected starting id.
 
     // Step 1: Batch write to vector storage (single ftruncate + pwrite)
     uint64_t vid = db->vectors.append_batch(embeddings, n, dim, err);
     if (vid == UINT64_MAX)
     {
         set_err(errptr, err);
+        db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
         return -1;
     }
 
@@ -388,6 +449,7 @@ int logosdb_put_batch(logosdb_t* db,
     if (mid == UINT64_MAX)
     {
         set_err(errptr, err);
+        db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
         return -1;
     }
 
@@ -399,6 +461,7 @@ int logosdb_put_batch(logosdb_t* db,
         if (!db->index.add(vid + i, vec, err))
         {
             set_err(errptr, err);
+            db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
             return -1;
         }
         vec = reinterpret_cast<const float*>(reinterpret_cast<const uint8_t*>(vec) + stride);
@@ -410,6 +473,7 @@ int logosdb_put_batch(logosdb_t* db,
         out_ids[i] = vid + i;
     }
 
+    db->st_put_batch_ok.fetch_add(1, std::memory_order_relaxed);
     return 0;
 }
 
@@ -429,11 +493,13 @@ int logosdb_delete(logosdb_t* db, uint64_t id, char** errptr)
     if (id >= db->vectors.n_rows())
     {
         set_err(errptr, "delete: id out of range");
+        db->st_delete_fail.fetch_add(1, std::memory_order_relaxed);
         return -1;
     }
     if (db->meta.is_deleted(id))
     {
         set_err(errptr, "delete: id already deleted");
+        db->st_delete_fail.fetch_add(1, std::memory_order_relaxed);
         return -1;
     }
 
@@ -442,6 +508,7 @@ int logosdb_delete(logosdb_t* db, uint64_t id, char** errptr)
     if (!db->index.mark_deleted(id, err))
     {
         set_err(errptr, err);
+        db->st_delete_fail.fetch_add(1, std::memory_order_relaxed);
         return -1;
     }
 
@@ -452,8 +519,10 @@ int logosdb_delete(logosdb_t* db, uint64_t id, char** errptr)
         std::string ignore;
         (void)ignore;
         set_err(errptr, err);
+        db->st_delete_fail.fetch_add(1, std::memory_order_relaxed);
         return -1;
     }
+    db->st_delete_ok.fetch_add(1, std::memory_order_relaxed);
     return 0;
 }
 
@@ -468,11 +537,14 @@ uint64_t logosdb_update(logosdb_t* db,
     if (!db || !embedding)
     {
         set_err(errptr, "null db or embedding");
+        if (db)
+            db->st_update_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
     if (dim != db->dim)
     {
         set_err(errptr, "dimension mismatch");
+        db->st_update_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
 
@@ -482,11 +554,13 @@ uint64_t logosdb_update(logosdb_t* db,
     if (id >= db->vectors.n_rows())
     {
         set_err(errptr, "update: id out of range");
+        db->st_update_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
     if (db->meta.is_deleted(id))
     {
         set_err(errptr, "update: id already deleted");
+        db->st_update_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
 
@@ -495,11 +569,13 @@ uint64_t logosdb_update(logosdb_t* db,
     if (!db->index.mark_deleted(id, err))
     {
         set_err(errptr, err);
+        db->st_update_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
     if (!db->meta.mark_deleted(id, err))
     {
         set_err(errptr, err);
+        db->st_update_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
 
@@ -507,6 +583,7 @@ uint64_t logosdb_update(logosdb_t* db,
     if (vid == UINT64_MAX)
     {
         set_err(errptr, err);
+        db->st_update_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
 
@@ -514,14 +591,17 @@ uint64_t logosdb_update(logosdb_t* db,
     if (mid == UINT64_MAX)
     {
         set_err(errptr, err);
+        db->st_update_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
 
     if (!db->index.add(vid, embedding, err))
     {
         set_err(errptr, err);
+        db->st_update_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
+    db->st_update_ok.fetch_add(1, std::memory_order_relaxed);
     return vid;
 }
 
@@ -533,24 +613,30 @@ logosdb_search(logosdb_t* db, const float* query, int dim, int top_k, char** err
     if (!db || !query)
     {
         set_err(errptr, "null db or query");
+        if (db)
+            db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
     if (dim != db->dim)
     {
         set_err(errptr, "dimension mismatch in search");
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
     if (top_k <= 0)
     {
         set_err(errptr, "top_k must be > 0");
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
 
+    std::lock_guard<std::mutex> lock(db->mu);
     std::string err;
     auto raw = db->index.search(query, top_k, err);
     if (!err.empty())
     {
         set_err(errptr, err);
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
 
@@ -569,6 +655,7 @@ logosdb_search(logosdb_t* db, const float* query, int dim, int top_k, char** err
         }
         r->hits.push_back(std::move(h));
     }
+    db->st_search_ok.fetch_add(1, std::memory_order_relaxed);
     return r;
 }
 
@@ -584,16 +671,20 @@ logosdb_search_result_t* logosdb_search_ts_range(logosdb_t* db,
     if (!db || !query)
     {
         set_err(errptr, "null db or query");
+        if (db)
+            db->st_search_ts_fail.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
     if (dim != db->dim)
     {
         set_err(errptr, "dimension mismatch in search");
+        db->st_search_ts_fail.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
     if (top_k <= 0)
     {
         set_err(errptr, "top_k must be > 0");
+        db->st_search_ts_fail.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
     if (candidate_k < top_k)
@@ -601,12 +692,14 @@ logosdb_search_result_t* logosdb_search_ts_range(logosdb_t* db,
         candidate_k = top_k;  // Ensure we fetch at least top_k candidates
     }
 
+    std::lock_guard<std::mutex> lock(db->mu);
     std::string err;
     // Fetch more candidates than needed to allow for filtering
     auto raw = db->index.search(query, candidate_k, err);
     if (!err.empty())
     {
         set_err(errptr, err);
+        db->st_search_ts_fail.fetch_add(1, std::memory_order_relaxed);
         return nullptr;
     }
 
@@ -645,6 +738,7 @@ logosdb_search_result_t* logosdb_search_ts_range(logosdb_t* db,
         r->hits.push_back(std::move(h));
     }
 
+    db->st_search_ts_ok.fetch_add(1, std::memory_order_relaxed);
     return r;
 }
 
@@ -701,6 +795,222 @@ size_t logosdb_count_live(logosdb_t* db)
 int logosdb_dim(logosdb_t* db)
 {
     return db ? db->dim : 0;
+}
+
+static bool
+peek_vectors_dim_dtype(const std::string& vec_path, int& dim, int& dtype_out, std::string& err)
+{
+    FILE* f = fopen(vec_path.c_str(), "rb");
+    if (!f)
+    {
+        err = "cannot open vectors.bin";
+        return false;
+    }
+    StorageHeader hdr{};
+    size_t n = fread(&hdr, 1, sizeof(hdr), f);
+    fclose(f);
+    if (n != sizeof(hdr))
+    {
+        err = "vectors.bin too small";
+        return false;
+    }
+    if (hdr.magic != 0x4C4F474FU)
+    {
+        err = "vectors.bin bad magic";
+        return false;
+    }
+    if (hdr.version != 0 && hdr.version != 1 && hdr.version != 2)
+    {
+        err = "unsupported vectors.bin version";
+        return false;
+    }
+    uint32_t dtype_u = hdr.dtype;
+    if (hdr.version == 0 || hdr.version == 1)
+        dtype_u = (uint32_t)DTYPE_FLOAT32;
+    if (dtype_u > (uint32_t)DTYPE_INT8)
+    {
+        err = "invalid dtype";
+        return false;
+    }
+    dim = (int)hdr.dim;
+    dtype_out = (int)dtype_u;
+    if (dim <= 0)
+    {
+        err = "invalid dim";
+        return false;
+    }
+    return true;
+}
+
+static bool peek_index_distance_metric(const std::string& meta_path, int& distance, bool& have_meta)
+{
+    have_meta = false;
+    distance = LOGOSDB_DIST_IP;
+    std::error_code ec;
+    if (!std::filesystem::exists(meta_path, ec))
+        return true;
+    FILE* f = fopen(meta_path.c_str(), "rb");
+    if (!f)
+        return true;
+    char magic[8];
+    uint32_t version = 0;
+    int32_t dist = 0;
+    int32_t d = 0;
+    uint8_t pad[12];
+    bool ok = fread(magic, 1, sizeof(magic), f) == sizeof(magic) &&
+              fread(&version, sizeof(version), 1, f) == 1u &&
+              fread(&dist, sizeof(dist), 1, f) == 1u && fread(&d, sizeof(d), 1, f) == 1u &&
+              fread(pad, 1, sizeof(pad), f) == sizeof(pad);
+    fclose(f);
+    if (!ok)
+        return true;
+    if (std::memcmp(magic, "LOGOSDB\0", 8) != 0 || version != 1u)
+        return true;
+    if (dist < 0 || dist > 2)
+        return true;
+    (void)d;
+    have_meta = true;
+    distance = dist;
+    return true;
+}
+
+void logosdb_stats(const logosdb_t* db, logosdb_stats_t* out)
+{
+    if (!db || !out)
+        return;
+    *out = logosdb_stats_t{};
+    out->rows_total = db->vectors.n_rows();
+    out->tombstones = db->meta.deleted_count();
+    out->rows_live = out->rows_total >= out->tombstones ? out->rows_total - out->tombstones : 0;
+    out->index_elements = db->index.count();
+    out->wal_pending = db->wal.pending_count();
+    out->distance_metric = db->distance;
+    out->storage_dtype = db->dtype;
+    out->put_success = db->st_put_ok.load(std::memory_order_relaxed);
+    out->put_failed = db->st_put_fail.load(std::memory_order_relaxed);
+    out->put_batch_success = db->st_put_batch_ok.load(std::memory_order_relaxed);
+    out->put_batch_failed = db->st_put_batch_fail.load(std::memory_order_relaxed);
+    out->search_success = db->st_search_ok.load(std::memory_order_relaxed);
+    out->search_failed = db->st_search_fail.load(std::memory_order_relaxed);
+    out->search_ts_success = db->st_search_ts_ok.load(std::memory_order_relaxed);
+    out->search_ts_failed = db->st_search_ts_fail.load(std::memory_order_relaxed);
+    out->delete_success = db->st_delete_ok.load(std::memory_order_relaxed);
+    out->delete_failed = db->st_delete_fail.load(std::memory_order_relaxed);
+    out->update_success = db->st_update_ok.load(std::memory_order_relaxed);
+    out->update_failed = db->st_update_fail.load(std::memory_order_relaxed);
+    out->sync_calls = db->st_sync.load(std::memory_order_relaxed);
+}
+
+int logosdb_compact(const char* src_path, const char* dst_path, char** errptr)
+{
+    if (!src_path || !dst_path)
+    {
+        set_err(errptr, "null path");
+        return -1;
+    }
+    std::string sp = src_path;
+    std::string dp = dst_path;
+    int dim = 0;
+    int dtype = LOGOSDB_DTYPE_FLOAT32;
+    std::string epeek;
+    if (!peek_vectors_dim_dtype(sp + "/vectors.bin", dim, dtype, epeek))
+    {
+        set_err(errptr, epeek);
+        return -1;
+    }
+    int distance = LOGOSDB_DIST_IP;
+    bool have_meta = false;
+    peek_index_distance_metric(sp + "/hnsw.idx.meta", distance, have_meta);
+    (void)have_meta;
+
+    std::error_code ec;
+    if (std::filesystem::exists(dp, ec))
+    {
+        if (!std::filesystem::is_empty(dp, ec))
+        {
+            set_err(errptr, "destination path is not empty");
+            return -1;
+        }
+    }
+    else
+    {
+        std::filesystem::create_directories(dp, ec);
+    }
+
+    logosdb_options_t* o = logosdb_options_create();
+    logosdb_options_set_dim(o, dim);
+    logosdb_options_set_distance(o, distance);
+    logosdb_options_set_dtype(o, dtype);
+    char* e2 = nullptr;
+    logosdb_t* src = logosdb_open(sp.c_str(), o, &e2);
+    if (!src)
+    {
+        set_err(errptr, e2 ? e2 : "open src failed");
+        free(e2);
+        logosdb_options_destroy(o);
+        return -1;
+    }
+    free(e2);
+    e2 = nullptr;
+    logosdb_t* dst = logosdb_open(dp.c_str(), o, &e2);
+    logosdb_options_destroy(o);
+    if (!dst)
+    {
+        set_err(errptr, e2 ? e2 : "open dst failed");
+        free(e2);
+        logosdb_close(src);
+        return -1;
+    }
+    free(e2);
+
+    const size_t n = logosdb_count(src);
+    std::vector<float> buf((size_t)dim);
+    for (uint64_t id = 0; id < n; ++id)
+    {
+        std::string text;
+        std::string ts;
+        {
+            std::lock_guard<std::mutex> lk(src->mu);
+            if (src->meta.is_deleted(id))
+                continue;
+            src->vectors.row_to_float32(id, buf.data());
+            const MetaRow* mr = src->meta.row(id);
+            if (mr)
+            {
+                text = mr->text;
+                ts = mr->timestamp;
+            }
+        }
+        uint64_t nid = logosdb_put(dst,
+                                   buf.data(),
+                                   dim,
+                                   text.empty() ? nullptr : text.c_str(),
+                                   ts.empty() ? nullptr : ts.c_str(),
+                                   &e2);
+        if (nid == UINT64_MAX)
+        {
+            set_err(errptr, e2 ? e2 : "put during compact failed");
+            free(e2);
+            logosdb_close(dst);
+            logosdb_close(src);
+            return -1;
+        }
+        free(e2);
+        e2 = nullptr;
+    }
+
+    if (logosdb_sync(dst, &e2) != 0)
+    {
+        set_err(errptr, e2 ? e2 : "sync dst failed");
+        free(e2);
+        logosdb_close(dst);
+        logosdb_close(src);
+        return -1;
+    }
+    free(e2);
+    logosdb_close(dst);
+    logosdb_close(src);
+    return 0;
 }
 
 const float* logosdb_raw_vectors(logosdb_t* db, size_t* n_rows, int* dim)
