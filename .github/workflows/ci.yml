@@ -67,7 +67,7 @@ jobs:
 
       - name: Run tests (verbose)
         working-directory: build
-        run: ./logosdb-test
+        run: ./logosdb-test --test-suite-exclude=stress
 
       - name: List test suites
         working-directory: build

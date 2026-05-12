@@ -5,9 +5,9 @@
 #include <stdint.h>
 
 #define LOGOSDB_VERSION_MAJOR 0
-#define LOGOSDB_VERSION_MINOR 7
-#define LOGOSDB_VERSION_PATCH 8
-#define LOGOSDB_VERSION_STRING "0.7.12"
+#define LOGOSDB_VERSION_MINOR 8
+#define LOGOSDB_VERSION_PATCH 0
+#define LOGOSDB_VERSION_STRING "0.8.0"
 
 /* Distance metrics for vector similarity search */
 #define LOGOSDB_DIST_IP 0     /* Inner product (default, requires L2-normalized vectors) */
@@ -71,6 +71,47 @@ extern "C"
 
     logosdb_t* logosdb_open(const char* path, const logosdb_options_t* opts, char** errptr);
     void logosdb_close(logosdb_t* db);
+
+    /* Flush WAL, persist index, and fsync vector + metadata stores (point-in-time
+     * durability for file-level backup). Holds the database mutex while flushing.
+     * Returns 0 on success, -1 on error (*errptr allocated on failure). */
+    int logosdb_sync(logosdb_t* db, char** errptr);
+
+    /* ── Observability (#82) ───────────────────────────────────────────── */
+
+    typedef struct logosdb_stats_t
+    {
+        uint64_t rows_total;
+        uint64_t rows_live;
+        uint64_t tombstones;
+        uint64_t index_elements;
+        uint64_t wal_pending;
+        int distance_metric;
+        int storage_dtype;
+        uint64_t put_success;
+        uint64_t put_failed;
+        uint64_t put_batch_success;
+        uint64_t put_batch_failed;
+        uint64_t search_success;
+        uint64_t search_failed;
+        uint64_t search_ts_success;
+        uint64_t search_ts_failed;
+        uint64_t delete_success;
+        uint64_t delete_failed;
+        uint64_t update_success;
+        uint64_t update_failed;
+        uint64_t sync_calls;
+    } logosdb_stats_t;
+
+    /* Snapshot counters and store health fields into *out (unchanged if db or out is NULL). */
+    void logosdb_stats(const logosdb_t* db, logosdb_stats_t* out);
+
+    /* ── Compaction (#81) ─────────────────────────────────────────────── */
+
+    /* Copy live rows from src_path into an empty dst_path database (same dim, distance,
+     * dtype as src). Rebuilds dense vector/metadata/index files; tombstones are dropped.
+     * Returns 0 on success, -1 on error (*errptr set). dst_path must be missing or empty. */
+    int logosdb_compact(const char* src_path, const char* dst_path, char** errptr);
 
     /* ── Write ─────────────────────────────────────────────────────────── */
 
@@ -270,6 +311,25 @@ class DB
             o.db_ = nullptr;
         }
         return *this;
+    }
+
+    /* Flush all on-disk state (WAL, HNSW index, vectors, metadata) under the DB lock. */
+    void sync()
+    {
+        char* err = nullptr;
+        if (logosdb_sync(db_, &err) != 0)
+        {
+            std::string msg = err ? err : "unknown";
+            free(err);
+            throw std::runtime_error("logosdb_sync: " + msg);
+        }
+    }
+
+    logosdb_stats_t get_stats() const
+    {
+        logosdb_stats_t s{};
+        logosdb_stats(db_, &s);
+        return s;
     }
 
     uint64_t put(const std::vector<float>& embedding,
@@ -492,6 +552,19 @@ class DB
   private:
     logosdb_t* db_ = nullptr;
 };
+
+/** Copy live rows from `src_path` into empty `dst_path` (same layout as a new DB; tombstones omitted). */
+inline void compact(const std::string& src_path, const std::string& dst_path)
+{
+    char* err = nullptr;
+    if (logosdb_compact(src_path.c_str(), dst_path.c_str(), &err) != 0)
+    {
+        std::string msg = err ? err : "unknown";
+        free(err);
+        throw std::runtime_error("logosdb_compact: " + msg);
+    }
+    free(err);
+}
 
 }  // namespace logosdb
 

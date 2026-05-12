@@ -1,6 +1,47 @@
 logosdb change log
 ==================
 
+0.8.0  (2026-05-12)
+-------------------
+
+  * **Thread safety:** `logosdb_search` and `logosdb_search_ts_range` now take the same
+    database mutex as writes, so concurrent searches cannot race in-flight puts
+    or index updates on a shared handle.
+
+  * **#83 — Snapshots / backup:** `logosdb_sync()` flushes WAL, HNSW index, vector store,
+    and metadata under the DB mutex (C API and C++ `DB::sync()`). `logosdb-cli snapshot`
+    runs sync, copies on-disk files to a directory, and writes **`snapshot.json`**
+    (`logosdb.snapshot` format v1). `logosdb-cli restore` validates the manifest and
+    copies back into a new (or `--force`-cleared) database directory.
+
+  * **#82 — Metrics / observability:** `logosdb_stats()` snapshots ingest and query counters
+    (put, put_batch, search, search_ts_range, delete, update, sync), plus row counts,
+    tombstones, HNSW element count, WAL pending entries, and configured distance/dtype.
+    **`logosdb-cli stats`** prints the same (optional **`--json`**). Python: **`DB.stats()`** and
+    existing **`DB.sync()`**.
+
+  * **#81 — Compaction:** **`logosdb_compact(src, dst)`** copies **live** rows into a new
+    dense database (same dim, distance, dtype as `src`; tombstones omitted). **`logosdb-cli compact`**
+    **`--force`** clears a non-empty destination first. Python: **`logosdb._core.compact(src, dst)`**.
+
+  * **#88 — DB doctor / upgrade:** `logosdb-cli doctor <path>` inspects on-disk layout
+    (vectors header version and dtype, index `.meta`, WAL header, expected file sizes)
+    and attempts a normal `logosdb_open` using dimension, distance, and dtype inferred
+    from those files. `logosdb-cli upgrade <path>` rewrites legacy **vectors.bin**
+    headers (storage format v0/v1) to **v2** on disk (default is a dry-run plan; use
+    **`--apply`** or **`--yes`** to write). Optional **`--distance ip|cosine|l2`**
+    on `doctor` overrides index metadata when probing open behavior.
+
+  * **Stress tests (opt-in):** doctest suite **`stress`** in **`tests/test_stress.cpp`**
+    (sequential load, **`std::thread`** concurrent put / search / mixed on one handle).
+    Default **`ctest`** and CI run **`logosdb-test --test-suite-exclude=stress`**.
+    Run stress only: **`./logosdb-test --test-suite=stress`**.
+
+  * **npm / n8n:** **`logosdb-mcp-server` 0.8.0**, **`logosdb` (Node native) 0.8.0**,
+    **`n8n-nodes-logosdb` 0.8.0** with **`logosdb` ^0.8.0**. The repo root **`package.json`**
+    **`workspaces`** now includes **`n8n`**, so **`npm install`** at the root resolves **`logosdb`**
+    from **`nodejs/`** (the per-package **`n8n/package-lock.json`** was removed as redundant).
+
 0.7.14  (2026-05-11)
 --------------------
 

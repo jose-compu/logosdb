@@ -46,7 +46,7 @@ npm run vendor-core -w logosdb
 npm run build -w logosdb
 ```
 
-### Publishing npm packages (`logosdb` + `logosdb-mcp-server`, 0.7.x)
+### Publishing npm packages (`logosdb`, `logosdb-mcp-server`, `n8n-nodes-logosdb`, 0.8.x)
 
 Versions are **`nodejs/package.json`** (`logosdb`) and **`mcp/package.json`** (`logosdb-mcp-server`). Keep them aligned for coordinated releases; summarize user-facing changes in repo root **`CHANGELOG`**.
 
@@ -54,6 +54,11 @@ From the **repository root**:
 
 ```bash
 npm install
+```
+
+The root **`package.json`** defines **`workspaces`** for **`mcp`**, **`nodejs`**, and **`n8n`**, so a single install wires **`logosdb-mcp-server`** and **`n8n-nodes-logosdb`** to the local **`logosdb`** package. Use **`npm run npm:verify`** from the repo root (not from **`n8n/`** alone).
+
+```bash
 npm run npm:verify
 ```
 
@@ -70,11 +75,12 @@ npm publish -w logosdb --dry-run
 npm publish -w logosdb-mcp-server --dry-run
 ```
 
-**Order:** publish **`logosdb` first**, then **`logosdb-mcp-server`**, so the registry satisfies **`logosdb@^0.7.12`** for non-workspace installs.
+**Order:** publish **`logosdb` first**, then **`logosdb-mcp-server`**, so the registry satisfies **`logosdb@^0.8.0`** for non-workspace installs.
 
 ```bash
 cd nodejs && npm publish
 cd ../mcp && npm publish
+cd ../n8n && npm publish
 ```
 
 Do **not** run **`npm publish`** from the repo root private workspace package.

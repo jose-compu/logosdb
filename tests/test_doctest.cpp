@@ -80,6 +80,49 @@ TEST_SUITE("core")
         std::filesystem::remove_all(path);
     }
 
+    TEST_CASE("core: logosdb_sync")
+    {
+        std::string path = "/tmp/logosdb_test_sync_api";
+        std::filesystem::remove_all(path);
+
+        char* err = nullptr;
+        logosdb_options_t* o = logosdb_options_create();
+        logosdb_options_set_dim(o, 16);
+        logosdb_t* db = logosdb_open(path.c_str(), o, &err);
+        logosdb_options_destroy(o);
+        CHECK(db != nullptr);
+        CHECK(err == nullptr);
+
+        auto v = unit_vec(16, 7777);
+        uint64_t id = logosdb_put(db, v.data(), 16, "sync_row", nullptr, &err);
+        CHECK(id != UINT64_MAX);
+        free(err);
+        err = nullptr;
+
+        CHECK(logosdb_sync(db, &err) == 0);
+        CHECK(err == nullptr);
+
+        logosdb_close(db);
+
+        {
+            logosdb::DB db2(path, {.dim = 16});
+            CHECK(db2.count() == 1);
+            auto hits = db2.search(unit_vec(16, 7777), 1);
+            CHECK(!hits.empty());
+            CHECK(hits[0].text == "sync_row");
+        }
+
+        std::filesystem::remove_all(path);
+    }
+
+    TEST_CASE("core: logosdb_sync rejects null db")
+    {
+        char* err = nullptr;
+        CHECK(logosdb_sync(nullptr, &err) == -1);
+        CHECK(err != nullptr);
+        free(err);
+    }
+
     TEST_CASE("core: put and search")
     {
         std::string path = "/tmp/logosdb_test_ps";
@@ -1384,6 +1427,157 @@ TEST_SUITE("cli")
 
         std::filesystem::remove_all(path);
         std::remove("/tmp/query_vec.bin");
+    }
+
+    TEST_CASE("cli: doctor reports healthy database")
+    {
+        std::string path = "/tmp/logosdb_test_cli_doctor";
+        std::filesystem::remove_all(path);
+
+        logosdb::DB db(path, {.dim = 32});
+        db.put(unit_vec(32, 42000), "x", "2025-01-01T00:00:00Z");
+
+        std::string output;
+        int rc = run_cli("doctor " + path, output);
+        CHECK(rc == 0);
+        CHECK(output.find("probe logosdb_open") != std::string::npos);
+        CHECK(output.find("vectors layout      : OK") != std::string::npos);
+
+        output.clear();
+        rc = run_cli("doctor " + path + " --json", output);
+        CHECK(rc == 0);
+        CHECK(output.find("\"library_version\":") != std::string::npos);
+        CHECK(output.find(LOGOSDB_VERSION_STRING) != std::string::npos);
+        CHECK(output.find("\"layout_ok\": true") != std::string::npos);
+
+        std::filesystem::remove_all(path);
+    }
+
+    TEST_CASE("cli: upgrade dry-run and apply on legacy vectors header")
+    {
+        std::string path = "/tmp/logosdb_test_cli_upgrade_hdr";
+        std::filesystem::remove_all(path);
+        std::filesystem::create_directories(path);
+        const std::string vec = path + "/vectors.bin";
+
+        {
+            std::ofstream out(vec, std::ios::binary);
+            uint32_t hdr32[4] = {0x4C4F474FU, 1u, 4u, 0u};
+            uint64_t n_rows = 1ull;
+            uint64_t reserved2 = 0ull;
+            out.write(reinterpret_cast<const char*>(hdr32), sizeof(hdr32));
+            out.write(reinterpret_cast<const char*>(&n_rows), sizeof(n_rows));
+            out.write(reinterpret_cast<const char*>(&reserved2), sizeof(reserved2));
+            float row[4] = {0.25f, 0.25f, 0.25f, 0.25f};
+            out.write(reinterpret_cast<const char*>(row), sizeof(row));
+        }
+
+        std::string o;
+        CHECK(run_cli("upgrade " + path, o) == 0);
+        CHECK(o.find("dry run") != std::string::npos);
+
+        o.clear();
+        CHECK(run_cli("upgrade " + path + " --apply", o) == 0);
+        CHECK(o.find("Wrote storage header v2") != std::string::npos);
+
+        std::ifstream in(vec, std::ios::binary);
+        uint32_t ver = 0;
+        in.seekg(4);
+        in.read(reinterpret_cast<char*>(&ver), sizeof(ver));
+        CHECK(ver == 2u);
+
+        o.clear();
+        CHECK(run_cli("upgrade " + path, o) == 0);
+        CHECK(o.find("already storage format v2") != std::string::npos);
+
+        std::filesystem::remove_all(path);
+    }
+
+    TEST_CASE("cli: snapshot and restore roundtrip")
+    {
+        std::string src = "/tmp/logosdb_test_snap_src";
+        std::string snap = "/tmp/logosdb_test_snap_out";
+        std::string dst = "/tmp/logosdb_test_snap_dst";
+        std::filesystem::remove_all(src);
+        std::filesystem::remove_all(snap);
+        std::filesystem::remove_all(dst);
+
+        {
+            logosdb::DB db(src, {.dim = 32});
+            db.put(unit_vec(32, 50111), "hello", "2025-01-01T00:00:00Z");
+            db.put(unit_vec(32, 50222), "world", "2025-02-01T00:00:00Z");
+        }
+
+        std::string output;
+        CHECK(run_cli("snapshot " + src + " " + snap + " --overwrite", output) == 0);
+        CHECK(output.find("snapshot written") != std::string::npos);
+        CHECK(std::filesystem::exists(snap + "/snapshot.json"));
+
+        output.clear();
+        CHECK(run_cli("restore " + snap + " " + dst + " --force", output) == 0);
+        CHECK(output.find("restored snapshot") != std::string::npos);
+
+        {
+            logosdb::DB db(dst, {.dim = 32});
+            CHECK(db.count() == 2);
+            auto hits = db.search(unit_vec(32, 50111), 1);
+            CHECK(!hits.empty());
+            CHECK(hits[0].text == "hello");
+        }
+
+        std::filesystem::remove_all(src);
+        std::filesystem::remove_all(snap);
+        std::filesystem::remove_all(dst);
+    }
+
+    TEST_CASE("cli: restore rejects missing manifest")
+    {
+        std::string snap = "/tmp/logosdb_test_restore_bad";
+        std::string dst = "/tmp/logosdb_test_restore_dst";
+        std::filesystem::remove_all(snap);
+        std::filesystem::remove_all(dst);
+        std::filesystem::create_directories(snap);
+        std::string o;
+        CHECK(run_cli("restore " + snap + " " + dst + " --force", o) != 0);
+        std::filesystem::remove_all(snap);
+    }
+
+    TEST_CASE("cli: stats and compact")
+    {
+        std::string src = "/tmp/logosdb_test_cli_stats_src";
+        std::string dst = "/tmp/logosdb_test_cli_stats_dst";
+        std::filesystem::remove_all(src);
+        std::filesystem::remove_all(dst);
+
+        {
+            logosdb::DB db(src, {.dim = 16});
+            db.put(unit_vec(16, 88001), "a");
+            db.put(unit_vec(16, 88002), "b");
+            db.del(0);
+            auto hits = db.search(unit_vec(16, 88002), 1);
+            CHECK(!hits.empty());
+        }
+
+        std::string o;
+        CHECK(run_cli("stats " + src, o) == 0);
+        CHECK(o.find("put ok / fail") != std::string::npos);
+        CHECK(o.find("search ok / fail") != std::string::npos);
+
+        o.clear();
+        CHECK(run_cli("compact " + src + " " + dst + " --force", o) == 0);
+        CHECK(o.find("compact completed") != std::string::npos);
+
+        {
+            logosdb::DB db2(dst, {.dim = 16});
+            CHECK(db2.count() == 1);
+            CHECK(db2.count_live() == 1);
+            auto h = db2.search(unit_vec(16, 88002), 1);
+            CHECK(!h.empty());
+            CHECK(h[0].text == "b");
+        }
+
+        std::filesystem::remove_all(src);
+        std::filesystem::remove_all(dst);
     }
 
 }  // TEST_SUITE("cli")
