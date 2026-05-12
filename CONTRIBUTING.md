@@ -127,25 +127,33 @@ We follow these conventions:
 - **Filenames**: `snake_case.cpp`, `snake_case.h`
 
 **Formatting tools available:**
-- Run `clang-format -i src/yourfile.cpp` to auto-format C/C++ code
+- Use **`clang-format` 18.x** (see **Before you push** below); run `clang-format -i src/yourfile.cpp` on individual files if you prefer
 - Run `clang-tidy src/yourfile.cpp` to check for common issues
-- CI enforces formatting via `clang-format --dry-run -Werror`
+- CI enforces formatting with **`clang-format-18 --dry-run -Werror`** (see **`.github/workflows/ci.yml`**)
 
-**Before you push:** run the same check CI uses so the format job does not fail on GitHub. From the repo root:
+**Before you push:** CI runs **`clang-format-18`** (Ubuntu package). Apple’s default **`clang-format`** from Xcode is often a **newer** LLVM (e.g. 19–22) and formats the same files **differently**, which makes local “clean” runs still fail in GitHub Actions. Use **18.x** locally so output matches CI.
+
+**macOS (Homebrew):**
 
 ```bash
+brew install llvm@18
+export PATH="/opt/homebrew/opt/llvm@18/bin:$PATH"   # Intel: /usr/local/opt/llvm@18/bin
+clang-format --version   # should report 18.x
+
 find src include tests tools \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) | \
   grep -v 'doctest.h' | \
   xargs clang-format --dry-run -Werror
 ```
 
-If that reports violations, apply the repo style in one pass:
+Apply fixes in one pass (same `PATH`):
 
 ```bash
 find src include tests tools \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) | \
   grep -v 'doctest.h' | \
   xargs clang-format -i
 ```
+
+**Linux:** install **`clang-format-18`** from your distro (CI uses `apt install clang-format-18`) and use the same `find … | xargs clang-format-18 …` commands as in **`.github/workflows/ci.yml`**.
 
 Also run **`npm run lint`** / **`npm run format:check`** in **`mcp/`** and **`n8n/`** when you change those packages, and **`npm run npm:verify`** before a release that touches the Node addon or MCP.
 
@@ -172,7 +180,7 @@ Also run **`npm run lint`** / **`npm run format:check`** in **`mcp/`** and **`n8
 
 Before submitting:
 
-- [ ] C/C++ formatting passes (`clang-format --dry-run -Werror` as in **Code Style** above)
+- [ ] C/C++ formatting passes (`clang-format-18 --dry-run -Werror` on Linux, or **`clang-format` 18.x** from Homebrew `llvm@18` on macOS — see **CONTRIBUTING**)
 - [ ] Tests added for new functionality
 - [ ] Existing tests pass (`ctest`, `pytest`)
 - [ ] Benchmarks run if performance-related
