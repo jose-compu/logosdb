@@ -16,7 +16,8 @@
 #include <thread>
 #include <vector>
 
-namespace {
+namespace
+{
 
 std::vector<float> unit_vec(int dim, int seed)
 {
@@ -132,14 +133,8 @@ TEST_SUITE("stress")
 
         std::vector<const char*> texts(static_cast<size_t>(n), "b");
         std::vector<uint64_t> out_ids(static_cast<size_t>(n));
-        int rc = logosdb_put_batch(db,
-                                   emb.data(),
-                                   n,
-                                   dim,
-                                   texts.data(),
-                                   nullptr,
-                                   out_ids.data(),
-                                   &err);
+        int rc =
+            logosdb_put_batch(db, emb.data(), n, dim, texts.data(), nullptr, out_ids.data(), &err);
         CHECK(rc == 0);
         CHECK(err == nullptr);
         CHECK(logosdb_count(db) == n);
@@ -204,20 +199,22 @@ TEST_SUITE("stress")
         workers.reserve(static_cast<size_t>(n_threads));
         for (int t = 0; t < n_threads; ++t)
         {
-            workers.emplace_back([db, t, &fail_count]() {
-                for (int i = 0; i < per_thread; ++i)
+            workers.emplace_back(
+                [db, t, &fail_count]()
                 {
-                    char* e = nullptr;
-                    auto v = unit_vec(32, t * 200000 + i);
-                    uint64_t id = logosdb_put(db, v.data(), 32, "par", nullptr, &e);
-                    if (id == UINT64_MAX || e != nullptr)
+                    for (int i = 0; i < per_thread; ++i)
                     {
-                        if (e)
-                            free(e);
-                        fail_count.fetch_add(1, std::memory_order_relaxed);
+                        char* e = nullptr;
+                        auto v = unit_vec(32, t * 200000 + i);
+                        uint64_t id = logosdb_put(db, v.data(), 32, "par", nullptr, &e);
+                        if (id == UINT64_MAX || e != nullptr)
+                        {
+                            if (e)
+                                free(e);
+                            fail_count.fetch_add(1, std::memory_order_relaxed);
+                        }
                     }
-                }
-            });
+                });
         }
         for (auto& w : workers)
             w.join();
@@ -261,24 +258,26 @@ TEST_SUITE("stress")
         workers.reserve(static_cast<size_t>(n_threads));
         for (int t = 0; t < n_threads; ++t)
         {
-            workers.emplace_back([db, t, &fail_count]() {
-                for (int q = 0; q < queries_per_thread; ++q)
+            workers.emplace_back(
+                [db, t, &fail_count]()
                 {
-                    char* e = nullptr;
-                    auto qv = unit_vec(24, 800000 + t * 100000 + q);
-                    logosdb_search_result_t* r = logosdb_search(db, qv.data(), 24, 10, &e);
-                    if (!r || e != nullptr)
+                    for (int q = 0; q < queries_per_thread; ++q)
                     {
-                        if (e)
-                            free(e);
-                        fail_count.fetch_add(1, std::memory_order_relaxed);
-                        continue;
+                        char* e = nullptr;
+                        auto qv = unit_vec(24, 800000 + t * 100000 + q);
+                        logosdb_search_result_t* r = logosdb_search(db, qv.data(), 24, 10, &e);
+                        if (!r || e != nullptr)
+                        {
+                            if (e)
+                                free(e);
+                            fail_count.fetch_add(1, std::memory_order_relaxed);
+                            continue;
+                        }
+                        if (logosdb_result_count(r) < 1)
+                            fail_count.fetch_add(1, std::memory_order_relaxed);
+                        logosdb_result_free(r);
                     }
-                    if (logosdb_result_count(r) < 1)
-                        fail_count.fetch_add(1, std::memory_order_relaxed);
-                    logosdb_result_free(r);
-                }
-            });
+                });
         }
         for (auto& w : workers)
             w.join();
@@ -320,39 +319,43 @@ TEST_SUITE("stress")
 
         for (int t = 0; t < n_putters; ++t)
         {
-            workers.emplace_back([db, t, &fail_count]() {
-                for (int i = 0; i < put_iters; ++i)
+            workers.emplace_back(
+                [db, t, &fail_count]()
                 {
-                    char* e = nullptr;
-                    auto v = unit_vec(16, 900000 + t * 50000 + i);
-                    uint64_t id = logosdb_put(db, v.data(), 16, "mix", nullptr, &e);
-                    if (id == UINT64_MAX || e != nullptr)
+                    for (int i = 0; i < put_iters; ++i)
                     {
-                        if (e)
-                            free(e);
-                        fail_count.fetch_add(1, std::memory_order_relaxed);
+                        char* e = nullptr;
+                        auto v = unit_vec(16, 900000 + t * 50000 + i);
+                        uint64_t id = logosdb_put(db, v.data(), 16, "mix", nullptr, &e);
+                        if (id == UINT64_MAX || e != nullptr)
+                        {
+                            if (e)
+                                free(e);
+                            fail_count.fetch_add(1, std::memory_order_relaxed);
+                        }
                     }
-                }
-            });
+                });
         }
         for (int t = 0; t < n_searchers; ++t)
         {
-            workers.emplace_back([db, t, &fail_count]() {
-                for (int q = 0; q < search_iters; ++q)
+            workers.emplace_back(
+                [db, t, &fail_count]()
                 {
-                    char* e = nullptr;
-                    auto qv = unit_vec(16, 1200000 + t * 70000 + q);
-                    logosdb_search_result_t* r = logosdb_search(db, qv.data(), 16, 6, &e);
-                    if (!r || e != nullptr)
+                    for (int q = 0; q < search_iters; ++q)
                     {
-                        if (e)
-                            free(e);
-                        fail_count.fetch_add(1, std::memory_order_relaxed);
-                        continue;
+                        char* e = nullptr;
+                        auto qv = unit_vec(16, 1200000 + t * 70000 + q);
+                        logosdb_search_result_t* r = logosdb_search(db, qv.data(), 16, 6, &e);
+                        if (!r || e != nullptr)
+                        {
+                            if (e)
+                                free(e);
+                            fail_count.fetch_add(1, std::memory_order_relaxed);
+                            continue;
+                        }
+                        logosdb_result_free(r);
                     }
-                    logosdb_result_free(r);
-                }
-            });
+                });
         }
 
         for (auto& w : workers)

@@ -131,6 +131,24 @@ We follow these conventions:
 - Run `clang-tidy src/yourfile.cpp` to check for common issues
 - CI enforces formatting via `clang-format --dry-run -Werror`
 
+**Before you push:** run the same check CI uses so the format job does not fail on GitHub. From the repo root:
+
+```bash
+find src include tests tools \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) | \
+  grep -v 'doctest.h' | \
+  xargs clang-format --dry-run -Werror
+```
+
+If that reports violations, apply the repo style in one pass:
+
+```bash
+find src include tests tools \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) | \
+  grep -v 'doctest.h' | \
+  xargs clang-format -i
+```
+
+Also run **`npm run lint`** / **`npm run format:check`** in **`mcp/`** and **`n8n/`** when you change those packages, and **`npm run npm:verify`** before a release that touches the Node addon or MCP.
+
 ### Style Guidelines
 
 - Keep functions focused and under 50 lines when possible
@@ -154,6 +172,7 @@ We follow these conventions:
 
 Before submitting:
 
+- [ ] C/C++ formatting passes (`clang-format --dry-run -Werror` as in **Code Style** above)
 - [ ] Tests added for new functionality
 - [ ] Existing tests pass (`ctest`, `pytest`)
 - [ ] Benchmarks run if performance-related

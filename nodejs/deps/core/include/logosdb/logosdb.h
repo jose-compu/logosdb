@@ -553,7 +553,8 @@ class DB
     logosdb_t* db_ = nullptr;
 };
 
-/** Copy live rows from `src_path` into empty `dst_path` (same layout as a new DB; tombstones omitted). */
+/** Copy live rows from `src_path` into empty `dst_path` (same layout as a new DB; tombstones
+ * omitted). */
 inline void compact(const std::string& src_path, const std::string& dst_path)
 {
     char* err = nullptr;

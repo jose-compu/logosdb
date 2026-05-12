@@ -1,19 +1,19 @@
 #include <logosdb/logosdb.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
-#include <fstream>
 #include <filesystem>
-#include <iterator>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
-#include <cstdint>
 
 // Base64 encoding/decoding for import/export
 static const char* BASE64_CHARS =
@@ -325,7 +325,8 @@ static IndexMetaProbe read_index_meta(const std::string& meta_path)
     return p;
 }
 
-static bool read_wal_probe(const std::string& path, bool& exists, uint32_t& version, std::string& err)
+static bool
+read_wal_probe(const std::string& path, bool& exists, uint32_t& version, std::string& err)
 {
     exists = false;
     version = 0;
@@ -526,8 +527,8 @@ static int run_upgrade_cmd(const std::string& db_path, bool apply)
     out.dtype = 0u;
     out.scale = 1.0f;
     out.reserved = 0.0f;
-    if (fseek(wf, 0, SEEK_SET) != 0 ||
-        fwrite(&out, 1, sizeof(out), wf) != sizeof(out) || fflush(wf) != 0)
+    if (fseek(wf, 0, SEEK_SET) != 0 || fwrite(&out, 1, sizeof(out), wf) != sizeof(out) ||
+        fflush(wf) != 0)
     {
         fprintf(stderr, "error: failed to write header\n");
         fclose(wf);
@@ -559,7 +560,8 @@ static int run_doctor(const std::string& db_path, bool json, int distance_overri
     const std::string p_idx_meta = db_path + "/hnsw.idx.meta";
     const std::string p_wal = db_path + "/wal.log";
 
-    auto exists_size = [](const std::string& p, bool& ex, size_t& sz) {
+    auto exists_size = [](const std::string& p, bool& ex, size_t& sz)
+    {
         std::error_code ec;
         ex = std::filesystem::exists(p, ec);
         sz = 0;
@@ -789,9 +791,8 @@ static int run_doctor(const std::string& db_path, bool json, int distance_overri
         printf("vectors layout      : FAILED (%s)\n", vec_err.c_str());
 
     if (im.valid)
-        printf("index meta          : OK (distance=%s dim=%d)\n",
-               distance_label(im.distance),
-               im.dim);
+        printf(
+            "index meta          : OK (distance=%s dim=%d)\n", distance_label(im.distance), im.dim);
     else if (e_imeta)
         printf("index meta          : INVALID (%s)\n", im.parse_error.c_str());
     else
@@ -853,8 +854,7 @@ static int cmd_restore(const std::string& snap_root, const std::string& target_r
         {
             if (!force)
             {
-                fprintf(stderr,
-                        "error: restore target is not empty (use --force to replace it)\n");
+                fprintf(stderr, "error: restore target is not empty (use --force to replace it)\n");
                 return 1;
             }
             std::filesystem::remove_all(target_root, ec);
@@ -870,9 +870,9 @@ static int cmd_restore(const std::string& snap_root, const std::string& target_r
         if (!std::filesystem::exists(src, ec))
             continue;
         std::filesystem::copy_file(src,
-                                    target_root + "/" + kParts[i],
-                                    std::filesystem::copy_options::overwrite_existing,
-                                    ec);
+                                   target_root + "/" + kParts[i],
+                                   std::filesystem::copy_options::overwrite_existing,
+                                   ec);
         if (ec)
         {
             fprintf(stderr, "error: copy %s: %s\n", kParts[i], ec.message().c_str());
@@ -883,9 +883,7 @@ static int cmd_restore(const std::string& snap_root, const std::string& target_r
     return 0;
 }
 
-static int cmd_snapshot(const std::string& db_root,
-                        const std::string& dest_root,
-                        bool overwrite)
+static int cmd_snapshot(const std::string& db_root, const std::string& dest_root, bool overwrite)
 {
     std::error_code ec;
     if (std::filesystem::exists(dest_root, ec))
@@ -894,8 +892,7 @@ static int cmd_snapshot(const std::string& db_root,
         {
             if (!overwrite)
             {
-                fprintf(stderr,
-                        "error: snapshot directory is not empty (use --overwrite)\n");
+                fprintf(stderr, "error: snapshot directory is not empty (use --overwrite)\n");
                 return 1;
             }
             std::filesystem::remove_all(dest_root, ec);
@@ -944,9 +941,9 @@ static int cmd_snapshot(const std::string& db_root,
         if (!std::filesystem::exists(src, ec))
             continue;
         std::filesystem::copy_file(src,
-                                    dest_root + "/" + kParts[i],
-                                    std::filesystem::copy_options::overwrite_existing,
-                                    ec);
+                                   dest_root + "/" + kParts[i],
+                                   std::filesystem::copy_options::overwrite_existing,
+                                   ec);
         if (ec)
         {
             fprintf(stderr, "error: copy %s: %s\n", kParts[i], ec.message().c_str());
@@ -1091,80 +1088,81 @@ static void print_version()
 
 static void print_usage(const char* prog)
 {
-    printf("Usage: %s <command> [options]\n"
-           "\n"
-           "Commands:\n"
-           "  info <db-path> [--json]           Show database info (dim read from file)\n"
-           "  put <db-path> [options]           Insert a vector\n"
-           "  search <db-path> [options]        Search for similar vectors\n"
-           "  export <db-path> [--output FILE]  Export DB to JSONL with base64 vectors\n"
-           "  import <db-path> [--input FILE]   Import from JSONL\n"
-           "  doctor <db-path> [--json] [--distance ip|cosine|l2]\n"
-           "                                    Compatibility checks and open probe\n"
-           "  upgrade <db-path> [--apply|--yes] Rewrite legacy vectors.bin header to v2\n"
-           "  snapshot <db-path> <dir> [--overwrite]\n"
-           "                                    Point-in-time copy after logosdb_sync\n"
-           "  restore <snapshot-dir> <db-path> [--force]\n"
-           "                                    Restore files from snapshot to new DB dir\n"
-           "  stats <db-path> [--json]          Ingest/query counters and store health\n"
-           "  compact <src-db> <dst-db> [--force]\n"
-           "                                    Dense copy (drops tombstones); dst empty or --force\n"
-           "\n"
-           "Global Options:\n"
-           "  --version                         Show version and exit\n"
-           "  --help, -h                        Show this help and exit\n"
-           "\n"
-           "Put Options:\n"
-           "  --dim N                           Vector dimension (required for new DB)\n"
-           "  --text TEXT                       Text metadata\n"
-           "  --ts TIMESTAMP                    ISO 8601 timestamp\n"
-           "  --embedding-file FILE             Binary float32 vector file\n"
-           "\n"
-           "Search Options:\n"
-           "  --dim N                           Vector dimension (required for new DB)\n"
-           "  --query-file FILE                 Binary float32 query vector\n"
-           "  --query-id ID                     Use existing vector as query\n"
-           "  --top-k N                         Number of results (default: 5)\n"
-           "  --ts-from TIMESTAMP               Filter from timestamp (inclusive)\n"
-           "  --ts-to TIMESTAMP                 Filter to timestamp (inclusive)\n"
-           "  --json                            Output results as JSON\n"
-           "\n"
-           "Export Options:\n"
-           "  --output FILE                     Output file (default: stdout)\n"
-           "  --json                            Same as default (JSONL output)\n"
-           "\n"
-           "Import Options:\n"
-           "  --dim N                           Vector dimension (required for new DB)\n"
-           "  --input FILE                      Input JSONL file (default: stdin)\n"
-           "\n"
-           "Examples:\n"
-           "  %s info /tmp/mydb                 Show database info\n"
-           "  %s info /tmp/mydb --json          Show info as JSON\n"
-           "  %s put /tmp/mydb --dim 128 --text \"hello\" --embedding-file vec.bin\n"
-           "  %s search /tmp/mydb --dim 128 --query-file query.bin --top-k 10\n"
-           "  %s search /tmp/mydb --dim 128 --query-id 0 --ts-from 2025-01-01T00:00:00Z\n"
-           "  %s export /tmp/mydb --output backup.jsonl\n"
-           "  %s import /tmp/newdb --dim 128 --input backup.jsonl\n"
-           "  %s doctor /tmp/mydb --json\n"
-           "  %s upgrade /tmp/mydb --apply\n"
-           "  %s snapshot /tmp/mydb /tmp/mydb.snap --overwrite\n"
-           "  %s restore /tmp/mydb.snap /tmp/mydb_restored --force\n"
-           "  %s stats /tmp/mydb --json\n"
-           "  %s compact /tmp/mydb /tmp/mydb_dense --force\n",
-           prog,
-           prog,
-           prog,
-           prog,
-           prog,
-           prog,
-           prog,
-           prog,
-           prog,
-           prog,
-           prog,
-           prog,
-           prog,
-           prog);
+    printf(
+        "Usage: %s <command> [options]\n"
+        "\n"
+        "Commands:\n"
+        "  info <db-path> [--json]           Show database info (dim read from file)\n"
+        "  put <db-path> [options]           Insert a vector\n"
+        "  search <db-path> [options]        Search for similar vectors\n"
+        "  export <db-path> [--output FILE]  Export DB to JSONL with base64 vectors\n"
+        "  import <db-path> [--input FILE]   Import from JSONL\n"
+        "  doctor <db-path> [--json] [--distance ip|cosine|l2]\n"
+        "                                    Compatibility checks and open probe\n"
+        "  upgrade <db-path> [--apply|--yes] Rewrite legacy vectors.bin header to v2\n"
+        "  snapshot <db-path> <dir> [--overwrite]\n"
+        "                                    Point-in-time copy after logosdb_sync\n"
+        "  restore <snapshot-dir> <db-path> [--force]\n"
+        "                                    Restore files from snapshot to new DB dir\n"
+        "  stats <db-path> [--json]          Ingest/query counters and store health\n"
+        "  compact <src-db> <dst-db> [--force]\n"
+        "                                    Dense copy (drops tombstones); dst empty or --force\n"
+        "\n"
+        "Global Options:\n"
+        "  --version                         Show version and exit\n"
+        "  --help, -h                        Show this help and exit\n"
+        "\n"
+        "Put Options:\n"
+        "  --dim N                           Vector dimension (required for new DB)\n"
+        "  --text TEXT                       Text metadata\n"
+        "  --ts TIMESTAMP                    ISO 8601 timestamp\n"
+        "  --embedding-file FILE             Binary float32 vector file\n"
+        "\n"
+        "Search Options:\n"
+        "  --dim N                           Vector dimension (required for new DB)\n"
+        "  --query-file FILE                 Binary float32 query vector\n"
+        "  --query-id ID                     Use existing vector as query\n"
+        "  --top-k N                         Number of results (default: 5)\n"
+        "  --ts-from TIMESTAMP               Filter from timestamp (inclusive)\n"
+        "  --ts-to TIMESTAMP                 Filter to timestamp (inclusive)\n"
+        "  --json                            Output results as JSON\n"
+        "\n"
+        "Export Options:\n"
+        "  --output FILE                     Output file (default: stdout)\n"
+        "  --json                            Same as default (JSONL output)\n"
+        "\n"
+        "Import Options:\n"
+        "  --dim N                           Vector dimension (required for new DB)\n"
+        "  --input FILE                      Input JSONL file (default: stdin)\n"
+        "\n"
+        "Examples:\n"
+        "  %s info /tmp/mydb                 Show database info\n"
+        "  %s info /tmp/mydb --json          Show info as JSON\n"
+        "  %s put /tmp/mydb --dim 128 --text \"hello\" --embedding-file vec.bin\n"
+        "  %s search /tmp/mydb --dim 128 --query-file query.bin --top-k 10\n"
+        "  %s search /tmp/mydb --dim 128 --query-id 0 --ts-from 2025-01-01T00:00:00Z\n"
+        "  %s export /tmp/mydb --output backup.jsonl\n"
+        "  %s import /tmp/newdb --dim 128 --input backup.jsonl\n"
+        "  %s doctor /tmp/mydb --json\n"
+        "  %s upgrade /tmp/mydb --apply\n"
+        "  %s snapshot /tmp/mydb /tmp/mydb.snap --overwrite\n"
+        "  %s restore /tmp/mydb.snap /tmp/mydb_restored --force\n"
+        "  %s stats /tmp/mydb --json\n"
+        "  %s compact /tmp/mydb /tmp/mydb_dense --force\n",
+        prog,
+        prog,
+        prog,
+        prog,
+        prog,
+        prog,
+        prog,
+        prog,
+        prog,
+        prog,
+        prog,
+        prog,
+        prog,
+        prog);
 }
 
 static void print_cmd_help(const char* cmd)

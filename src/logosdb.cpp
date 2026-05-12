@@ -6,13 +6,13 @@
 
 #include <logosdb/logosdb.h>
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <functional>
 #include <mutex>
-#include <atomic>
 #include <string>
 #include <vector>
 
@@ -797,7 +797,8 @@ int logosdb_dim(logosdb_t* db)
     return db ? db->dim : 0;
 }
 
-static bool peek_vectors_dim_dtype(const std::string& vec_path, int& dim, int& dtype_out, std::string& err)
+static bool
+peek_vectors_dim_dtype(const std::string& vec_path, int& dim, int& dtype_out, std::string& err)
 {
     FILE* f = fopen(vec_path.c_str(), "rb");
     if (!f)
@@ -981,11 +982,11 @@ int logosdb_compact(const char* src_path, const char* dst_path, char** errptr)
             }
         }
         uint64_t nid = logosdb_put(dst,
-                                  buf.data(),
-                                  dim,
-                                  text.empty() ? nullptr : text.c_str(),
-                                  ts.empty() ? nullptr : ts.c_str(),
-                                  &e2);
+                                   buf.data(),
+                                   dim,
+                                   text.empty() ? nullptr : text.c_str(),
+                                   ts.empty() ? nullptr : ts.c_str(),
+                                   &e2);
         if (nid == UINT64_MAX)
         {
             set_err(errptr, e2 ? e2 : "put during compact failed");
