@@ -1,6 +1,6 @@
 {
   "name": "logosdb-mcp-server",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "MCP server exposing LogosDB semantic search to Claude Code and other MCP clients",
   "main": "dist/index.js",
   "readme": "README.md",
@@ -18,7 +18,7 @@
     "format:check": "prettier --check src/",
     "prepublishOnly": "npm run build",
     "smoke": "node scripts/mcp-stdio-smoke.mjs",
-    "test": "npm run build && node --test dist/security.test.js dist/file-index-manifest.test.js && npm run smoke"
+    "test": "npm run build && node --test dist/security.test.js dist/file-index-manifest.test.js dist/gitignore-walker.test.js && npm run smoke"
   },
   "repository": {
     "type": "git",
@@ -43,7 +43,8 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@xenova/transformers": "^2.17.2",
-    "logosdb": "^0.8.0"
+    "ignore": "^7.0.5",
+    "logosdb": "^0.9.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

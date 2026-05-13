@@ -657,7 +657,7 @@ Voyage AI (`voyage-3`, dim=1024) is Anthropic's recommended cloud embedding mode
 | Tool | Description |
 |---|---|
 | `logosdb_index` | Embed and store a text snippet in a namespace |
-| `logosdb_index_file` | Chunk, embed, and store a file or tree; optional **`incremental: true`** (skip unchanged, replace changed, prune deleted under a directory) |
+| `logosdb_index_file` | Chunk, embed, and store a file or tree; optional **`incremental: true`** (skip unchanged, replace changed, prune deleted under a directory). When the path lives inside a Git working tree the walker honours `.gitignore` (root + nested + `.git/info/exclude` + global excludes) by default; disable with `respect_gitignore: false` or `LOGOSDB_RESPECT_GITIGNORE=0`. |
 | `logosdb_search` | Semantic search; optional `ts_from` / `ts_to` (ISO 8601) for timestamp-window filter |
 | `logosdb_list` | List all namespaces |
 | `logosdb_info` | Stats for a namespace (count, dimension, path) |

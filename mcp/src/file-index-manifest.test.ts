@@ -59,6 +59,9 @@ describe('file-index-manifest', () => {
     assert.ok(!manifest.files['/proj/b.ts']);
     assert.ok(manifest.files['/proj/a.ts']);
     assert.ok(manifest.files['/other/x.ts']);
-    assert.deepEqual(deleted.sort((a, b) => a - b), [20, 21]);
+    assert.deepEqual(
+      deleted.sort((a, b) => a - b),
+      [20, 21],
+    );
   });
 });

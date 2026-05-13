@@ -46,7 +46,8 @@ function sanitizeEntry(raw: unknown): FileIndexEntry | null {
       if (Number.isFinite(n)) ids.push(n);
     }
   }
-  if (!Number.isFinite(mtimeMs) || !Number.isFinite(size) || !Number.isFinite(chunkSize)) return null;
+  if (!Number.isFinite(mtimeMs) || !Number.isFinite(size) || !Number.isFinite(chunkSize))
+    return null;
   return { mtimeMs, size, chunkSize, ids };
 }
 
@@ -54,7 +55,8 @@ export function loadManifest(filePath: string): FileIndexManifest {
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
     const j = JSON.parse(raw) as { version?: unknown; files?: unknown };
-    if (j?.version !== MANIFEST_VERSION || !j.files || typeof j.files !== 'object') return emptyManifest();
+    if (j?.version !== MANIFEST_VERSION || !j.files || typeof j.files !== 'object')
+      return emptyManifest();
     const files: Record<string, FileIndexEntry> = {};
     for (const [k, v] of Object.entries(j.files as Record<string, unknown>)) {
       const ent = sanitizeEntry(v);

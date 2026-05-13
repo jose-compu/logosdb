@@ -6,6 +6,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import {
+  buildGitignoreContext,
+  findGitRoot,
+  isIgnoredByStack,
+  maybePushLocalGitignore,
+  type GitignoreContext,
+  type IgnoreFrame,
+} from './gitignore-walker';
+
 /** Max UTF-16 code units for indexed text or search query. */
 export const MAX_TEXT_CHARS = 512 * 1024;
 export const MAX_METADATA_CHARS = 32 * 1024;
@@ -120,11 +129,32 @@ export function resolveIndexablePath(userPath: string): string {
   );
 }
 
-export function collectFilesSafe(rootDirReal: string): string[] {
+export interface CollectFilesOptions {
+  /**
+   * When true, honour `.gitignore` (root + nested + `.git/info/exclude` + global
+   * excludes) **in addition to** the static `SKIP_DIRS` / hidden / extension
+   * filters. If no enclosing Git working tree is found (walking up to
+   * `process.cwd()` / `LOGOSDB_INDEX_ROOT`), this option is a no-op.
+   * Default: `false` (callers in `index.ts` derive a default per-call).
+   */
+  respectGitignore?: boolean;
+}
+
+export function collectFilesSafe(rootDirReal: string, options: CollectFilesOptions = {}): string[] {
   const rootReal = fs.realpathSync.native(rootDirReal);
   const results: string[] = [];
 
-  function walk(dir: string): void {
+  let gitignore: GitignoreContext | null = null;
+  if (options.respectGitignore) {
+    const gitRoot = findGitRoot(rootReal, indexRoots());
+    if (gitRoot !== null) {
+      gitignore = buildGitignoreContext(gitRoot);
+    }
+  }
+
+  function walk(dir: string, stack: IgnoreFrame[]): void {
+    const localStack = gitignore ? maybePushLocalGitignore(stack, dir) : stack;
+
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -135,6 +165,11 @@ export function collectFilesSafe(rootDirReal: string): string[] {
       if (entry.name.startsWith('.') && entry.isDirectory()) continue;
       if (SKIP_DIRS.has(entry.name)) continue;
       const full = path.join(dir, entry.name);
+
+      if (gitignore && localStack.length > 0) {
+        if (isIgnoredByStack(localStack, full, entry.isDirectory())) continue;
+      }
+
       let entryReal: string;
       try {
         entryReal = fs.realpathSync.native(full);
@@ -144,14 +179,14 @@ export function collectFilesSafe(rootDirReal: string): string[] {
       if (!isInsideRoot(entryReal, rootReal)) continue;
 
       if (entry.isDirectory()) {
-        walk(full);
+        walk(full, localStack);
       } else if (entry.isFile() && INDEXABLE_EXTENSIONS.has(path.extname(entry.name))) {
         results.push(entryReal);
       }
     }
   }
 
-  walk(rootDirReal);
+  walk(rootDirReal, gitignore ? gitignore.rootStack : []);
   return results;
 }
 
