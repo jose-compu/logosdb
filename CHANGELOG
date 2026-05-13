@@ -1,7 +1,25 @@
 logosdb change log
 ==================
 
-0.9.0  (unreleased)
+0.9.1  (unreleased) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * **#101 — `.gitignore`-aware indexing in `logosdb_index_file`:** when the
+    indexed path lives inside a Git working tree, the directory walker now
+    honours `.gitignore` rules (root + nested per-directory + `.git/info/exclude`
+    + the global excludes file at `$XDG_CONFIG_HOME/git/ignore` or
+    `~/.config/git/ignore`) in addition to the legacy `SKIP_DIRS` / hidden /
+    extension filters. Pattern semantics (leading `/`, trailing `/`, `**`,
+    negations `!pattern`) are delegated to the `ignore` npm package (Git-spec
+    compatible). The new behaviour is **on by default** when a `.git/` dir is
+    found and is a no-op otherwise (no breaking change for non-Git users). Two
+    opt-outs: `LOGOSDB_RESPECT_GITIGNORE=0` (env) and `respect_gitignore: false`
+    (tool argument). New module `mcp/src/gitignore-walker.ts`; new test file
+    `mcp/src/gitignore-walker.test.ts` (13 cases covering nested rules,
+    negation, `info/exclude`, env overrides, and the no-`.git` fallback).
+    `mcp/package.json` adds `ignore@^7` and re-pins `logosdb` to `^0.9.0`.
+
+0.9.0  (2026-05-13)
 -------------------
 
   * **#80 — Batch ingest v2 (WAL-aware, chunked):** `logosdb_put_batch` now writes

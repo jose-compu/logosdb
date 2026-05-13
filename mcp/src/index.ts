@@ -39,6 +39,7 @@ import {
   validateMetadata,
   validateUserText,
 } from './security.js';
+import { respectGitignoreDefault } from './gitignore-walker.js';
 import {
   loadManifest,
   MANIFEST_VERSION,
@@ -97,6 +98,7 @@ const TOOLS: Tool[] = [
     description:
       'Read a file OR directory from disk, chunk each file, embed the chunks, and store them in a namespace. ' +
       'When given a directory it walks recursively, skipping hidden paths and node_modules. ' +
+      'When a Git working tree is detected the walker honours `.gitignore` (root + nested + `.git/info/exclude` + global excludes); disable with `respect_gitignore=false` or `LOGOSDB_RESPECT_GITIGNORE=0`. ' +
       'Supports any UTF-8 text file (source code, markdown, plain text). ' +
       'With incremental=true, skips files unchanged since last index (mtime+size+chunk_size), re-indexes modified files after deleting their previous chunk rows, and when indexing a directory removes DB rows for files that disappeared from disk.',
     inputSchema: {
@@ -116,6 +118,11 @@ const TOOLS: Tool[] = [
           description:
             'If true, only index new or changed files (vs last run in this namespace); delete old chunks for changed or removed files. Default false (full re-chunk of every file, may duplicate rows).',
         },
+        respect_gitignore: {
+          type: 'boolean',
+          description:
+            'Skip files matched by `.gitignore` rules of the enclosing Git working tree (root + nested + `.git/info/exclude` + global excludes). Default: true when `.git` is detected, else no-op. Set false to fall back to the legacy SKIP_DIRS + extension filters only. Env override: `LOGOSDB_RESPECT_GITIGNORE=0`.',
+        },
       },
       required: ['path', 'namespace'],
     },
@@ -133,11 +140,13 @@ const TOOLS: Tool[] = [
         top_k: { type: 'number', description: 'Number of results to return (default: 5)' },
         ts_from: {
           type: 'string',
-          description: 'Optional inclusive lower bound (ISO 8601). Omit with no `ts_to` for full-range search.',
+          description:
+            'Optional inclusive lower bound (ISO 8601). Omit with no `ts_to` for full-range search.',
         },
         ts_to: {
           type: 'string',
-          description: 'Optional inclusive upper bound (ISO 8601). Omit with no `ts_from` for full-range search.',
+          description:
+            'Optional inclusive upper bound (ISO 8601). Omit with no `ts_from` for full-range search.',
         },
         candidate_k: {
           type: 'number',
@@ -232,6 +241,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           CHUNK_SIZE,
         );
         const incremental = Boolean(args.incremental);
+        const respectGitignore =
+          args.respect_gitignore === undefined
+            ? respectGitignoreDefault()
+            : Boolean(args.respect_gitignore);
 
         if (!inputPath) throw new Error('"path" is required');
         if (!namespace) throw new Error('"namespace" is required');
@@ -240,7 +253,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const absPath = resolveIndexablePath(inputPath);
         const stat = fs.statSync(absPath);
-        const filesToIndex = stat.isDirectory() ? collectFilesSafe(absPath) : [absPath];
+        const filesToIndex = stat.isDirectory()
+          ? collectFilesSafe(absPath, { respectGitignore })
+          : [absPath];
 
         if (filesToIndex.length === 0) {
           return ok({
@@ -249,6 +264,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             namespace,
             path: absPath,
             incremental,
+            respect_gitignore: respectGitignore,
             skipped_files: 0,
             indexed_files: 0,
             pruned_files: 0,
@@ -358,6 +374,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           namespace,
           path: absPath,
           incremental,
+          respect_gitignore: respectGitignore,
           skipped_files: incremental ? skippedFiles : 0,
           indexed_files: indexedFiles,
           pruned_files: incremental ? prunedFiles : 0,
@@ -477,7 +494,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           try {
             db = store.get(namespace);
             if (vec.length !== db.dim()) {
-              throw new Error(`Embedding dimension ${vec.length} does not match namespace dim ${db.dim()}`);
+              throw new Error(
+                `Embedding dimension ${vec.length} does not match namespace dim ${db.dim()}`,
+              );
             }
           } catch {
             const nsPath = path.join(LOGOSDB_PATH, namespace);
@@ -513,7 +532,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         try {
           db = store.get(namespace);
         } catch {
-          throw new Error(`Namespace "${namespace}" is not open. Index or search in it first (or use \`query\` delete).`);
+          throw new Error(
+            `Namespace "${namespace}" is not open. Index or search in it first (or use \`query\` delete).`,
+          );
         }
         const id = typeof args.id === 'number' ? args.id : parseInt(String(args.id), 10);
         if (isNaN(id)) throw new Error('"id" must be a number');

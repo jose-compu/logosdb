@@ -123,6 +123,26 @@ If you switch models, set `TRANSFORMERS_EMBEDDING_DIM` / `EMBEDDING_DIM` to the 
 
 Indexing resolves paths with `realpath` and only allows files under **`process.cwd()`** or, if set, **`LOGOSDB_INDEX_ROOT`** (absolute directory). Symlinks that escape those roots are rejected. Optional: set **`EMBEDDING_FETCH_TIMEOUT_MS`** (milliseconds, capped at 600000) for Ollama/OpenAI/Voyage HTTP calls; default is 120000.
 
+### `.gitignore`-aware walking (0.9.1)
+
+When `logosdb_index_file` walks a directory that lives inside a Git working tree, it honours `.gitignore` rules **in addition to** the legacy `SKIP_DIRS` / hidden / extension filters. Sources, in Git order:
+
+- the working tree's root **`.gitignore`**,
+- every **nested `.gitignore`** discovered during the walk (per-directory scope),
+- **`.git/info/exclude`**,
+- the **global excludes file** at `$XDG_CONFIG_HOME/git/ignore` (or `~/.config/git/ignore`). Reading `core.excludesFile` from `~/.gitconfig` is **not** parsed; symlink that file into `~/.config/git/ignore` if you need it.
+
+Pattern semantics (leading `/`, trailing `/`, `**`, `!pattern` negations) match Git via the [`ignore`](https://www.npmjs.com/package/ignore) npm package.
+
+**Default:** on when a `.git/` dir is found by walking up from the indexed path (and staying inside `process.cwd()` / `LOGOSDB_INDEX_ROOT`). **No-op** when no Git working tree is detected — non-Git projects see no change.
+
+**Disable** in either of:
+
+- per call: `logosdb_index_file({ path, namespace, respect_gitignore: false })`
+- globally: `LOGOSDB_RESPECT_GITIGNORE=0` (`false`, `no`, `off` all accepted)
+
+The tool response echoes `respect_gitignore: <bool>` so the agent can confirm what was applied.
+
 ### Local HTTP: Ollama
 
 Run [Ollama](https://ollama.com) with an embedding model (e.g. `nomic-embed-text`), then:
@@ -300,6 +320,7 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 | `OPENAI_API_KEY` | — | Required when `EMBEDDING_PROVIDER=openai` |
 | `VOYAGE_API_KEY` | — | Required when `EMBEDDING_PROVIDER=voyage` |
 | `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk when indexing files |
+| `LOGOSDB_RESPECT_GITIGNORE` | `1` (auto-on inside a Git working tree) | `0` / `false` / `no` / `off` disables `.gitignore`-aware filtering globally (0.9.1+) |
 
 **Important:** Use one embedding backend consistently for a given namespace on disk. Mixing dimensions or models on the same `LOGOSDB_PATH` namespace will produce invalid search results.
 
@@ -308,7 +329,7 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 | Tool | Inputs | Description |
 |---|---|---|
 | `logosdb_index` | `text`, `namespace`, `metadata?` | Embed and store a text snippet |
-| `logosdb_index_file` | `path`, `namespace`, `chunk_size?`, `incremental?` | Chunk, embed, and store a file or tree; **`incremental: true`** skips unchanged files, replaces chunks for changed files, and prunes removed files under a directory (state in `LOGOSDB_PATH/_logosdb_mcp_manifests/`) |
+| `logosdb_index_file` | `path`, `namespace`, `chunk_size?`, `incremental?`, `respect_gitignore?` | Chunk, embed, and store a file or tree; **`incremental: true`** skips unchanged files, replaces chunks for changed files, and prunes removed files under a directory (state in `LOGOSDB_PATH/_logosdb_mcp_manifests/`). When the path lives inside a Git working tree, `.gitignore` rules are applied by default (override per call with `respect_gitignore: false` or globally with `LOGOSDB_RESPECT_GITIGNORE=0`; see [`.gitignore`-aware walking](#gitignore-aware-walking-091)) |
 | `logosdb_search` | `query`, `namespace`, `top_k?`, `ts_from?`, `ts_to?`, `candidate_k?` | Semantic search; optional inclusive ISO 8601 time window (maps to `search_ts_range`) |
 | `logosdb_list` | — | List all namespaces |
 | `logosdb_info` | `namespace` | Stats: count, live count, dimension |
