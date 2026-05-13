@@ -1,4 +1,4 @@
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/9bc8a125-3a6b-4e83-b2e9-0e32bd315ff3" />
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/2e1a2dc0-b2d4-46fa-bf59-a5bc476359b7" />
 
 [![CI](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml)
 [![Python](https://github.com/jose-compu/logosdb/actions/workflows/python.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/python.yml)
@@ -63,18 +63,18 @@ Target versions and issue assignment match **[GitHub milestones](https://github.
 
 ## Milestones → issues
 
-### [0.7.7](https://github.com/jose-compu/logosdb/milestone/7) — patch (`0.x.Z`) **SHIPPED**
+### **SHIPPED** [0.7.7](https://github.com/jose-compu/logosdb/milestone/7) — patch (`0.x.Z`) **SHIPPED**
 
   * [#74](https://github.com/jose-compu/logosdb/issues/74) — security: harden encoding and injection surfaces across MCP, CLI, and integrations
   * [#9](https://github.com/jose-compu/logosdb/issues/9) — libFuzzer JSON harness in CI; local ASan/UBSan builds possible; full-tree sanitizer CI not enabled (vendored hnswlib noise)
 
-### [0.7.8](https://github.com/jose-compu/logosdb/milestone/14) — patch (`0.x.Z`) **SHIPPED**
+### **SHIPPED** [0.7.8](https://github.com/jose-compu/logosdb/milestone/14) — patch (`0.x.Z`) **SHIPPED**
 
   * [#94](https://github.com/jose-compu/logosdb/issues/94) — feat(mcp): expose timestamp-range search (`search_ts_range` / `from_ts`, `to_ts`)
   * [#95](https://github.com/jose-compu/logosdb/issues/95) — docs: document Claude Code slash commands (/index, /search, /forget) in main README
   * [#96](https://github.com/jose-compu/logosdb/issues/96) — feat(mcp) or docs: semantic delete / forget-by-query vs ID-only `logosdb_delete`
 
-### [0.8.0](https://github.com/jose-compu/logosdb/milestone/5) — minor — operations and durability
+### **SHIPPED** [0.8.0](https://github.com/jose-compu/logosdb/milestone/5) — minor — operations and durability **SHIPPED**
 
   * [#88](https://github.com/jose-compu/logosdb/issues/88) — DB doctor/upgrade: compatibility checks and guided migrations
   * [#83](https://github.com/jose-compu/logosdb/issues/83) — Snapshots and backup: consistent point-in-time export/restore
