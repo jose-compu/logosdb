@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# LogosDB pre-commit hook: auto-format staged C/C++ files with clang-format 18
+# (matching CI: .github/workflows/ci.yml uses clang-format-18 --dry-run -Werror).
+#
+# Install once per clone:
+#     ./.githooks/install.sh
+# (or: git config core.hooksPath .githooks)
+#
+# Skip a single commit:
+#     LOGOSDB_SKIP_HOOK=1 git commit ...
+# or:
+#     git commit --no-verify ...
+
+set -euo pipefail
+
+if [[ "${LOGOSDB_SKIP_HOOK:-0}" == "1" ]]; then
+    exit 0
+fi
+
+# ── Find a clang-format 18.x binary ───────────────────────────────────────────
+# CI uses clang-format-18 (Ubuntu apt). On macOS, brew's llvm@18 ships
+# clang-format under /opt/homebrew/opt/llvm@18/bin (arm64) or
+# /usr/local/opt/llvm@18/bin (Intel). Apple's default Xcode clang-format is
+# usually too new and formats differently.
+
+find_clang_format_18() {
+    local candidates=(
+        clang-format-18
+        /opt/homebrew/opt/llvm@18/bin/clang-format
+        /usr/local/opt/llvm@18/bin/clang-format
+        /opt/homebrew/bin/clang-format-18
+    )
+    for c in "${candidates[@]}"; do
+        if command -v "$c" >/dev/null 2>&1 || [[ -x "$c" ]]; then
+            local ver
+            ver="$("$c" --version 2>/dev/null | head -n1 || true)"
+            if [[ "$ver" == *"version 18."* ]]; then
+                echo "$c"
+                return 0
+            fi
+        fi
+    done
+    # Fall back to whatever clang-format is on PATH but warn loudly.
+    if command -v clang-format >/dev/null 2>&1; then
+        local ver
+        ver="$(clang-format --version 2>/dev/null | head -n1 || true)"
+        if [[ "$ver" == *"version 18."* ]]; then
+            echo "clang-format"
+            return 0
+        fi
+        # Different major: still better than nothing, but warn.
+        echo "clang-format"
+        echo "[pre-commit] warning: $ver is not 18.x; CI runs clang-format-18 and may disagree." >&2
+        return 0
+    fi
+    return 1
+}
+
+CLANG_FORMAT="$(find_clang_format_18 || true)"
+if [[ -z "${CLANG_FORMAT:-}" ]]; then
+    cat >&2 <<'MSG'
+[pre-commit] clang-format not found.
+Install one of:
+  macOS  : brew install llvm@18
+  Linux  : apt install clang-format-18  (or your distro equivalent)
+Then re-commit, or skip once with: LOGOSDB_SKIP_HOOK=1 git commit ...
+MSG
+    exit 1
+fi
+
+# ── Collect, format, and re-stage in one pipeline ─────────────────────────────
+# Portable to bash 3.2 (macOS default): no `mapfile`, no NUL-storage in
+# variables. Read NUL-delimited names straight from `git diff` so paths with
+# spaces / special chars are safe.
+
+CHANGED_COUNT=0
+CHANGED_LIST=""
+
+while IFS= read -r -d '' f; do
+    case "$f" in
+        */doctest.h|doctest.h) continue ;;
+    esac
+    [[ -f "$f" ]] || continue
+    before_hash="$(git hash-object "$f")"
+    "$CLANG_FORMAT" -i "$f"
+    after_hash="$(git hash-object "$f")"
+    if [[ "$before_hash" != "$after_hash" ]]; then
+        git add -- "$f"
+        CHANGED_LIST="${CHANGED_LIST}  - ${f}"$'\n'
+        CHANGED_COUNT=$((CHANGED_COUNT + 1))
+    fi
+done < <(
+    git diff --cached --name-only -z --diff-filter=ACMR -- \
+        'src/*.cpp' 'src/*.h' 'src/*.hpp' \
+        'include/*.cpp' 'include/*.h' 'include/*.hpp' \
+        'tests/*.cpp' 'tests/*.h' 'tests/*.hpp' \
+        'tools/*.cpp' 'tools/*.h' 'tools/*.hpp'
+)
+
+if [[ $CHANGED_COUNT -gt 0 ]]; then
+    echo "[pre-commit] clang-format ($("$CLANG_FORMAT" --version | head -n1)) auto-fixed and re-staged:"
+    printf '%s' "$CHANGED_LIST"
+fi
+
+exit 0

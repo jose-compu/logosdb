@@ -1108,7 +1108,8 @@ TEST_SUITE("streaming")
             for (int i = 0; i < n; ++i)
             {
                 auto v = unit_vec(dim, 30000 + i);
-                db.put(v, "row_" + std::to_string(i), "2025-02-01T00:00:" + std::to_string(i) + "Z");
+                db.put(
+                    v, "row_" + std::to_string(i), "2025-02-01T00:00:" + std::to_string(i) + "Z");
             }
             db.export_ndjson(ndjson);
         }

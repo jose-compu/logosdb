@@ -133,6 +133,14 @@ We follow these conventions:
 
 **Before you push:** CI runs **`clang-format-18`** (Ubuntu package). Apple’s default **`clang-format`** from Xcode is often a **newer** LLVM (e.g. 19–22) and formats the same files **differently**, which makes local “clean” runs still fail in GitHub Actions. Use **18.x** locally so output matches CI.
 
+**Recommended: enable the repo-tracked pre-commit hook** so staged C/C++ files are auto-formatted with `clang-format` 18.x on every commit (no need to remember `find … | xargs clang-format -i`). One-time, this clone only:
+
+```bash
+./.githooks/install.sh   # sets core.hooksPath = .githooks
+```
+
+See [`.githooks/README.md`](.githooks/README.md). Skip a commit once with `LOGOSDB_SKIP_HOOK=1 git commit …` or `git commit --no-verify`; CI still enforces the same check.
+
 **macOS (Homebrew):**
 
 ```bash

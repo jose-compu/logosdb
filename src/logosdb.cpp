@@ -6,8 +6,6 @@
 
 #include <logosdb/logosdb.h>
 
-#include <nlohmann/json.hpp>
-
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
@@ -17,6 +15,7 @@
 #include <fstream>
 #include <functional>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -1295,8 +1294,7 @@ int logosdb_import_ndjson(logosdb_t* db,
             }
             catch (const std::exception& e)
             {
-                set_err(errptr,
-                        std::string("import_ndjson: bad checkpoint json: ") + e.what());
+                set_err(errptr, std::string("import_ndjson: bad checkpoint json: ") + e.what());
                 return -1;
             }
         }
@@ -1332,14 +1330,8 @@ int logosdb_import_ndjson(logosdb_t* db,
             ts_ptrs[i] = chunk_ts[i].empty() ? nullptr : chunk_ts[i].c_str();
         }
         char* berr = nullptr;
-        int rc = logosdb_put_batch(db,
-                                   chunk_vecs.data(),
-                                   n,
-                                   dim,
-                                   text_ptrs.data(),
-                                   ts_ptrs.data(),
-                                   out_ids.data(),
-                                   &berr);
+        int rc = logosdb_put_batch(
+            db, chunk_vecs.data(), n, dim, text_ptrs.data(), ts_ptrs.data(), out_ids.data(), &berr);
         if (rc != 0)
         {
             set_err(errptr, berr ? berr : "import_ndjson: put_batch failed");
@@ -1401,8 +1393,7 @@ int logosdb_import_ndjson(logosdb_t* db,
         }
         catch (const std::exception& e)
         {
-            set_err(errptr,
-                    std::string("import_ndjson: parse error at line: ") + e.what());
+            set_err(errptr, std::string("import_ndjson: parse error at line: ") + e.what());
             return -1;
         }
         if (!j.contains("vector") || !j["vector"].is_string())

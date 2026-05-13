@@ -558,9 +558,8 @@ class DB
 
     /* Streaming NDJSON export of live rows in [start_id, end_id_exclusive) to `out_path`.
      * Pass end_id_exclusive == 0 to export until count(). */
-    void export_ndjson(const std::string& out_path,
-                       uint64_t start_id = 0,
-                       uint64_t end_id_exclusive = 0)
+    void
+    export_ndjson(const std::string& out_path, uint64_t start_id = 0, uint64_t end_id_exclusive = 0)
     {
         char* err = nullptr;
         if (logosdb_export_ndjson(db_, out_path.c_str(), start_id, end_id_exclusive, &err) != 0)

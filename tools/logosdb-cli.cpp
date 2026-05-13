@@ -1569,17 +1569,13 @@ int main(int argc, char** argv)
     {
         if (!args.output_file)
         {
-            fprintf(stderr,
-                    "error: export requires --output FILE (stream NDJSON to disk)\n");
+            fprintf(stderr, "error: export requires --output FILE (stream NDJSON to disk)\n");
             rc = 1;
             goto done;
         }
         char* err = nullptr;
-        int xrc = logosdb_export_ndjson(db,
-                                        args.output_file,
-                                        args.export_start_id,
-                                        args.export_end_id,
-                                        &err);
+        int xrc = logosdb_export_ndjson(
+            db, args.output_file, args.export_start_id, args.export_end_id, &err);
         if (xrc != 0)
         {
             fprintf(stderr, "export failed: %s\n", err ? err : "unknown error");
@@ -1597,8 +1593,7 @@ int main(int argc, char** argv)
     {
         if (!args.input_file)
         {
-            fprintf(stderr,
-                    "error: import requires --input FILE (streaming NDJSON, no stdin)\n");
+            fprintf(stderr, "error: import requires --input FILE (streaming NDJSON, no stdin)\n");
             rc = 1;
             goto done;
         }
