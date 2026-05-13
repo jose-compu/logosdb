@@ -5,9 +5,9 @@
 #include <stdint.h>
 
 #define LOGOSDB_VERSION_MAJOR 0
-#define LOGOSDB_VERSION_MINOR 8
+#define LOGOSDB_VERSION_MINOR 9
 #define LOGOSDB_VERSION_PATCH 0
-#define LOGOSDB_VERSION_STRING "0.8.0"
+#define LOGOSDB_VERSION_STRING "0.9.0"
 
 /* Distance metrics for vector similarity search */
 #define LOGOSDB_DIST_IP 0     /* Inner product (default, requires L2-normalized vectors) */
@@ -207,6 +207,38 @@ extern "C"
     /* ── Bulk read (for tensor construction) ───────────────────────────── */
 
     const float* logosdb_raw_vectors(logosdb_t* db, size_t* n_rows, int* dim);
+
+    /* ── Streaming import/export (#87) ─────────────────────────────────── */
+
+    /* Stream live rows in [start_id, end_id_exclusive) to `out_path` as NDJSON,
+     * one row per line:
+     *   {"id":N,"vector":"<base64 float32 little-endian>","text":"...","timestamp":"..."}
+     * Tombstoned rows are skipped. Pass end_id_exclusive == 0 to mean
+     * "until vectors.n_rows()". Memory use is O(dim) per row.
+     * Returns 0 on success, -1 on error (*errptr set). */
+    int logosdb_export_ndjson(logosdb_t* db,
+                              const char* out_path,
+                              uint64_t start_id,
+                              uint64_t end_id_exclusive,
+                              char** errptr);
+
+    /* Stream NDJSON from `in_path` into `db` with chunked, WAL-aware put_batch.
+     *   chunk_size:    rows per batch (<=0 means default 1024). Bounds memory.
+     *   checkpoint_path: optional file the importer rewrites after every flushed
+     *                    chunk with {"byte_offset":N,"rows_imported":M,"sha1":...}.
+     *                    Pass NULL to disable.
+     *   resume:        if non-zero and `checkpoint_path` exists with a valid
+     *                  byte_offset, the importer fseek()s past it before
+     *                  reading. Use 0 for "always import from the start".
+     * Returns 0 on success, -1 on error (*errptr set). Lines that fail to parse
+     * are reported via *errptr and abort the import (any earlier chunks remain
+     * durable in the WAL/store). */
+    int logosdb_import_ndjson(logosdb_t* db,
+                              const char* in_path,
+                              int chunk_size,
+                              const char* checkpoint_path,
+                              int resume,
+                              char** errptr);
 
     /* ── Vector utilities ──────────────────────────────────────────────── */
 
@@ -523,6 +555,42 @@ class DB
     size_t count() const { return logosdb_count(db_); }
     size_t count_live() const { return logosdb_count_live(db_); }
     int dim() const { return logosdb_dim(db_); }
+
+    /* Streaming NDJSON export of live rows in [start_id, end_id_exclusive) to `out_path`.
+     * Pass end_id_exclusive == 0 to export until count(). */
+    void export_ndjson(const std::string& out_path,
+                       uint64_t start_id = 0,
+                       uint64_t end_id_exclusive = 0)
+    {
+        char* err = nullptr;
+        if (logosdb_export_ndjson(db_, out_path.c_str(), start_id, end_id_exclusive, &err) != 0)
+        {
+            std::string msg = err ? err : "unknown";
+            free(err);
+            throw std::runtime_error("logosdb_export_ndjson: " + msg);
+        }
+    }
+
+    /* Streaming NDJSON import with chunked, WAL-aware put_batch. Optional
+     * checkpoint file lets a later call resume after a crash or restart. */
+    void import_ndjson(const std::string& in_path,
+                       int chunk_size = 1024,
+                       const std::string& checkpoint_path = {},
+                       bool resume = false)
+    {
+        char* err = nullptr;
+        if (logosdb_import_ndjson(db_,
+                                  in_path.c_str(),
+                                  chunk_size,
+                                  checkpoint_path.empty() ? nullptr : checkpoint_path.c_str(),
+                                  resume ? 1 : 0,
+                                  &err) != 0)
+        {
+            std::string msg = err ? err : "unknown";
+            free(err);
+            throw std::runtime_error("logosdb_import_ndjson: " + msg);
+        }
+    }
 
     // Get raw vectors as float32. For quantized storage, this allocates and dequantizes.
     // The caller receives a vector they own (copy for quantized, view for float32).

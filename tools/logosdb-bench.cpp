@@ -146,6 +146,8 @@ int main(int argc, char** argv)
     std::vector<int> counts = {1000, 10000, 100000};
     int n_queries = 50;
     int top_k = 10;
+    int batch_n = 100000;
+    int batch_dim = 256;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -155,6 +157,10 @@ int main(int argc, char** argv)
             top_k = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--queries") && i + 1 < argc)
             n_queries = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--batch-n") && i + 1 < argc)
+            batch_n = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--batch-dim") && i + 1 < argc)
+            batch_dim = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--counts") && i + 1 < argc)
         {
             counts.clear();
@@ -191,10 +197,8 @@ int main(int argc, char** argv)
     printf("%-20s %14s %14s\n", "Startup overhead", "Python RT", "zero");
 
     // Batch benchmark: compare individual puts vs batch puts
-    printf("\n--- Batch Put Benchmark (100K vectors, dim=256) ---\n");
+    printf("\n--- Batch Put Benchmark (%d vectors, dim=%d) ---\n", batch_n, batch_dim);
     {
-        int batch_n = 100000;
-        int batch_dim = 256;
         double individual_ms = 0.0;
         double batch_ms = 0.0;
 

@@ -6,11 +6,15 @@
 
 #include <logosdb/logosdb.h>
 
+#include <nlohmann/json.hpp>
+
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <mutex>
 #include <string>
@@ -432,45 +436,106 @@ int logosdb_put_batch(logosdb_t* db,
         return -1;
     }
 
+    // Chunk size bounds: one chunk owns one WAL fsync, one vector append, one
+    // metadata append, n HNSW inserts, then one commit-stamp fsync. Larger
+    // chunks amortise fsync overhead; smaller chunks bound peak RSS. Override
+    // via LOGOSDB_BATCH_CHUNK_SIZE for benchmarking.
+    int chunk = 1024;
+    if (const char* env = std::getenv("LOGOSDB_BATCH_CHUNK_SIZE"))
+    {
+        int v = std::atoi(env);
+        if (v > 0)
+            chunk = v;
+    }
+    if (chunk > n)
+        chunk = n;
+
     std::lock_guard<std::mutex> lock(db->mu);
     std::string err;
+    std::vector<int64_t> wal_offsets;
+    wal_offsets.reserve(static_cast<size_t>(chunk));
 
-    // Step 1: Batch write to vector storage (single ftruncate + pwrite)
-    uint64_t vid = db->vectors.append_batch(embeddings, n, dim, err);
-    if (vid == UINT64_MAX)
+    int processed = 0;
+    while (processed < n)
     {
-        set_err(errptr, err);
-        db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
-        return -1;
-    }
+        int this_chunk = std::min(chunk, n - processed);
+        uint64_t start_expected_id = db->vectors.n_rows();
 
-    // Step 2: Batch write to metadata storage
-    uint64_t mid = db->meta.append_batch(texts, timestamps, n, err);
-    if (mid == UINT64_MAX)
-    {
-        set_err(errptr, err);
-        db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
-        return -1;
-    }
-
-    // Step 3: Add to HNSW index (must be done per-vector)
-    const float* vec = embeddings;
-    size_t stride = (size_t)dim * sizeof(float);
-    for (int i = 0; i < n; ++i)
-    {
-        if (!db->index.add(vid + i, vec, err))
+        // 1. WAL: append `this_chunk` pending entries (single fsync).
+        const float* chunk_vecs =
+            embeddings + static_cast<size_t>(processed) * static_cast<size_t>(dim);
+        const char* const* chunk_texts = texts ? texts + processed : nullptr;
+        const char* const* chunk_ts = timestamps ? timestamps + processed : nullptr;
+        wal_offsets.clear();
+        if (db->wal.append_pending_batch(chunk_vecs,
+                                         this_chunk,
+                                         dim,
+                                         chunk_texts,
+                                         chunk_ts,
+                                         start_expected_id,
+                                         wal_offsets,
+                                         err) != 0)
         {
             set_err(errptr, err);
             db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
             return -1;
         }
-        vec = reinterpret_cast<const float*>(reinterpret_cast<const uint8_t*>(vec) + stride);
-    }
 
-    // Fill out_ids with assigned ids
-    for (int i = 0; i < n; ++i)
-    {
-        out_ids[i] = vid + i;
+        // 2. Vector storage: single bulk append for the chunk.
+        uint64_t vid = db->vectors.append_batch(chunk_vecs, this_chunk, dim, err);
+        if (vid == UINT64_MAX)
+        {
+            set_err(errptr, err);
+            db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
+            return -1;
+        }
+        if (vid != start_expected_id)
+        {
+            set_err(errptr, "put_batch: vector id drift after WAL");
+            db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
+            return -1;
+        }
+
+        // 3. Metadata: single bulk append for the chunk.
+        uint64_t mid = db->meta.append_batch(chunk_texts, chunk_ts, this_chunk, err);
+        if (mid == UINT64_MAX)
+        {
+            // Vectors are durable; entries still live as PENDING in the WAL and
+            // will be replayed on next open. Surface the error.
+            set_err(errptr, err);
+            db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
+            return -1;
+        }
+
+        // 4. HNSW: per-row add (no public bulk API in hnswlib).
+        size_t stride = static_cast<size_t>(dim) * sizeof(float);
+        const float* vec = chunk_vecs;
+        for (int i = 0; i < this_chunk; ++i)
+        {
+            if (!db->index.add(vid + static_cast<uint64_t>(i), vec, err))
+            {
+                set_err(errptr, err);
+                db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
+                return -1;
+            }
+            vec = reinterpret_cast<const float*>(reinterpret_cast<const uint8_t*>(vec) + stride);
+        }
+
+        // 5. WAL: stamp the chunk committed (single fsync).
+        if (!db->wal.mark_committed_batch(wal_offsets, err))
+        {
+            // Non-fatal: entries remain PENDING but replay will recover them.
+            // We still surface the partial-durability error to the caller.
+            set_err(errptr, err);
+            db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
+            return -1;
+        }
+
+        for (int i = 0; i < this_chunk; ++i)
+        {
+            out_ids[processed + i] = vid + static_cast<uint64_t>(i);
+        }
+        processed += this_chunk;
     }
 
     db->st_put_batch_ok.fetch_add(1, std::memory_order_relaxed);
@@ -1042,6 +1107,350 @@ const float* logosdb_raw_vectors(logosdb_t* db, size_t* n_rows, int* dim)
         return nullptr;
     }
     return static_cast<const float*>(db->vectors.data_raw());
+}
+
+/* ── Streaming import/export (#87) ─────────────────────────────────── */
+
+namespace
+{
+constexpr const char BASE64_ALPHABET[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+std::string base64_encode_floats(const float* data, int dim)
+{
+    const unsigned char* bytes = reinterpret_cast<const unsigned char*>(data);
+    size_t len = static_cast<size_t>(dim) * sizeof(float);
+    std::string out;
+    out.reserve(((len + 2) / 3) * 4);
+    for (size_t i = 0; i < len; i += 3)
+    {
+        unsigned char b[3] = {0, 0, 0};
+        size_t n = 0;
+        for (size_t j = 0; j < 3 && i + j < len; ++j)
+        {
+            b[j] = bytes[i + j];
+            ++n;
+        }
+        out += BASE64_ALPHABET[b[0] >> 2];
+        out += BASE64_ALPHABET[((b[0] & 0x03) << 4) | (b[1] >> 4)];
+        out += (n > 1) ? BASE64_ALPHABET[((b[1] & 0x0F) << 2) | (b[2] >> 6)] : '=';
+        out += (n > 2) ? BASE64_ALPHABET[b[2] & 0x3F] : '=';
+    }
+    return out;
+}
+
+int base64_char_value(char c)
+{
+    if (c >= 'A' && c <= 'Z')
+        return c - 'A';
+    if (c >= 'a' && c <= 'z')
+        return c - 'a' + 26;
+    if (c >= '0' && c <= '9')
+        return c - '0' + 52;
+    if (c == '+')
+        return 62;
+    if (c == '/')
+        return 63;
+    if (c == '=')
+        return -2;
+    return -1;
+}
+
+bool base64_decode_floats(const std::string& s, int dim, std::vector<float>& out, std::string& err)
+{
+    const size_t expected_bytes = static_cast<size_t>(dim) * sizeof(float);
+    std::vector<unsigned char> bytes;
+    bytes.reserve(expected_bytes);
+
+    size_t len = s.size();
+    for (size_t i = 0; i + 3 < len; i += 4)
+    {
+        int v[4];
+        for (int j = 0; j < 4; ++j)
+            v[j] = base64_char_value(s[i + j]);
+        if (v[0] < 0 || v[0] == -2 || v[1] < 0 || v[1] == -2)
+        {
+            err = "base64: invalid leading characters";
+            return false;
+        }
+        bytes.push_back(static_cast<unsigned char>((v[0] << 2) | (v[1] >> 4)));
+        if (v[2] >= 0)
+            bytes.push_back(static_cast<unsigned char>(((v[1] & 0x0F) << 4) | (v[2] >> 2)));
+        if (v[3] >= 0)
+            bytes.push_back(static_cast<unsigned char>(((v[2] & 0x03) << 6) | v[3]));
+    }
+    if (bytes.size() < expected_bytes)
+    {
+        err = "base64: decoded " + std::to_string(bytes.size()) + " bytes, expected " +
+              std::to_string(expected_bytes);
+        return false;
+    }
+    out.resize(static_cast<size_t>(dim));
+    std::memcpy(out.data(), bytes.data(), expected_bytes);
+    return true;
+}
+}  // namespace
+
+int logosdb_export_ndjson(logosdb_t* db,
+                          const char* out_path,
+                          uint64_t start_id,
+                          uint64_t end_id_exclusive,
+                          char** errptr)
+{
+    if (!db || !out_path)
+    {
+        set_err(errptr, "export_ndjson: null db or out_path");
+        return -1;
+    }
+    std::lock_guard<std::mutex> lock(db->mu);
+
+    size_t total = db->vectors.n_rows();
+    if (end_id_exclusive == 0 || end_id_exclusive > total)
+        end_id_exclusive = total;
+    if (start_id > end_id_exclusive)
+    {
+        set_err(errptr, "export_ndjson: start_id > end_id_exclusive");
+        return -1;
+    }
+    int dim = db->dim;
+    if (dim <= 0)
+    {
+        set_err(errptr, "export_ndjson: invalid dim");
+        return -1;
+    }
+
+    std::ofstream f(out_path, std::ios::binary | std::ios::trunc);
+    if (!f)
+    {
+        set_err(errptr, std::string("export_ndjson: cannot open ") + out_path);
+        return -1;
+    }
+
+    std::vector<float> row(static_cast<size_t>(dim));
+    for (uint64_t id = start_id; id < end_id_exclusive; ++id)
+    {
+        if (db->meta.is_deleted(id))
+            continue;
+        db->vectors.row_to_float32(id, row.data());
+
+        auto* m = db->meta.row(id);
+        nlohmann::json j;
+        j["id"] = id;
+        j["vector"] = base64_encode_floats(row.data(), dim);
+        j["text"] = (m && !m->text.empty()) ? m->text : "";
+        j["timestamp"] = (m && !m->timestamp.empty()) ? m->timestamp : "";
+        f << j.dump() << '\n';
+        if (!f)
+        {
+            set_err(errptr, "export_ndjson: write failed");
+            return -1;
+        }
+    }
+    f.flush();
+    if (!f)
+    {
+        set_err(errptr, "export_ndjson: flush failed");
+        return -1;
+    }
+    return 0;
+}
+
+int logosdb_import_ndjson(logosdb_t* db,
+                          const char* in_path,
+                          int chunk_size,
+                          const char* checkpoint_path,
+                          int resume,
+                          char** errptr)
+{
+    if (!db || !in_path)
+    {
+        set_err(errptr, "import_ndjson: null db or in_path");
+        return -1;
+    }
+    if (chunk_size <= 0)
+        chunk_size = 1024;
+
+    std::ifstream f(in_path, std::ios::binary);
+    if (!f)
+    {
+        set_err(errptr, std::string("import_ndjson: cannot open ") + in_path);
+        return -1;
+    }
+
+    uint64_t start_byte = 0;
+    uint64_t rows_imported = 0;
+    if (resume && checkpoint_path)
+    {
+        std::ifstream cp(checkpoint_path);
+        if (cp)
+        {
+            try
+            {
+                nlohmann::json j;
+                cp >> j;
+                if (j.contains("byte_offset"))
+                    start_byte = j["byte_offset"].get<uint64_t>();
+                if (j.contains("rows_imported"))
+                    rows_imported = j["rows_imported"].get<uint64_t>();
+            }
+            catch (const std::exception& e)
+            {
+                set_err(errptr,
+                        std::string("import_ndjson: bad checkpoint json: ") + e.what());
+                return -1;
+            }
+        }
+    }
+    if (start_byte > 0)
+    {
+        f.seekg(static_cast<std::streamoff>(start_byte), std::ios::beg);
+        if (!f)
+        {
+            set_err(errptr, "import_ndjson: cannot seek to checkpoint offset");
+            return -1;
+        }
+    }
+
+    int dim = db->dim;
+    std::vector<float> chunk_vecs;
+    std::vector<std::string> chunk_texts;
+    std::vector<std::string> chunk_ts;
+    chunk_vecs.reserve(static_cast<size_t>(chunk_size) * static_cast<size_t>(dim));
+    chunk_texts.reserve(static_cast<size_t>(chunk_size));
+    chunk_ts.reserve(static_cast<size_t>(chunk_size));
+    std::vector<uint64_t> out_ids(static_cast<size_t>(chunk_size));
+
+    auto flush_chunk = [&](int n) -> int
+    {
+        if (n <= 0)
+            return 0;
+        std::vector<const char*> text_ptrs(static_cast<size_t>(n));
+        std::vector<const char*> ts_ptrs(static_cast<size_t>(n));
+        for (int i = 0; i < n; ++i)
+        {
+            text_ptrs[i] = chunk_texts[i].empty() ? nullptr : chunk_texts[i].c_str();
+            ts_ptrs[i] = chunk_ts[i].empty() ? nullptr : chunk_ts[i].c_str();
+        }
+        char* berr = nullptr;
+        int rc = logosdb_put_batch(db,
+                                   chunk_vecs.data(),
+                                   n,
+                                   dim,
+                                   text_ptrs.data(),
+                                   ts_ptrs.data(),
+                                   out_ids.data(),
+                                   &berr);
+        if (rc != 0)
+        {
+            set_err(errptr, berr ? berr : "import_ndjson: put_batch failed");
+            free(berr);
+            return -1;
+        }
+        free(berr);
+        chunk_vecs.clear();
+        chunk_texts.clear();
+        chunk_ts.clear();
+        return 0;
+    };
+
+    auto write_checkpoint = [&](uint64_t byte_off) -> int
+    {
+        if (!checkpoint_path)
+            return 0;
+        nlohmann::json cp;
+        cp["version"] = 1;
+        cp["byte_offset"] = byte_off;
+        cp["rows_imported"] = rows_imported;
+        std::string tmp = std::string(checkpoint_path) + ".tmp";
+        {
+            std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+            if (!out)
+            {
+                set_err(errptr, "import_ndjson: cannot write checkpoint tmp");
+                return -1;
+            }
+            out << cp.dump() << '\n';
+        }
+        std::error_code ec;
+        std::filesystem::rename(tmp, checkpoint_path, ec);
+        if (ec)
+        {
+            set_err(errptr, std::string("import_ndjson: rename checkpoint: ") + ec.message());
+            return -1;
+        }
+        return 0;
+    };
+
+    std::string line;
+    int n_in_chunk = 0;
+    std::vector<float> vec_buf;
+    while (std::getline(f, line))
+    {
+        if (line.empty())
+            continue;
+        // Strip an optional trailing CR (Windows line endings).
+        if (line.back() == '\r')
+            line.pop_back();
+        if (line.empty())
+            continue;
+
+        nlohmann::json j;
+        try
+        {
+            j = nlohmann::json::parse(line);
+        }
+        catch (const std::exception& e)
+        {
+            set_err(errptr,
+                    std::string("import_ndjson: parse error at line: ") + e.what());
+            return -1;
+        }
+        if (!j.contains("vector") || !j["vector"].is_string())
+        {
+            set_err(errptr, "import_ndjson: missing or non-string 'vector' field");
+            return -1;
+        }
+        std::string b64 = j["vector"].get<std::string>();
+        std::string ebuf;
+        if (!base64_decode_floats(b64, dim, vec_buf, ebuf))
+        {
+            set_err(errptr, std::string("import_ndjson: ") + ebuf);
+            return -1;
+        }
+        chunk_vecs.insert(chunk_vecs.end(), vec_buf.begin(), vec_buf.end());
+        chunk_texts.push_back(j.value("text", std::string{}));
+        chunk_ts.push_back(j.value("timestamp", std::string{}));
+        ++n_in_chunk;
+
+        if (n_in_chunk >= chunk_size)
+        {
+            if (flush_chunk(n_in_chunk) != 0)
+                return -1;
+            rows_imported += static_cast<uint64_t>(n_in_chunk);
+            n_in_chunk = 0;
+            auto pos = f.tellg();
+            uint64_t byte_off = pos >= 0 ? static_cast<uint64_t>(pos) : 0u;
+            if (write_checkpoint(byte_off) != 0)
+                return -1;
+        }
+    }
+    if (n_in_chunk > 0)
+    {
+        if (flush_chunk(n_in_chunk) != 0)
+            return -1;
+        rows_imported += static_cast<uint64_t>(n_in_chunk);
+    }
+    if (checkpoint_path)
+    {
+        // EOF: write the input file size so a subsequent --resume becomes a no-op.
+        std::error_code ec;
+        uint64_t byte_off = static_cast<uint64_t>(std::filesystem::file_size(in_path, ec));
+        if (ec)
+            byte_off = 0;
+        if (write_checkpoint(byte_off) != 0)
+            return -1;
+    }
+    return 0;
 }
 
 /* ── Vector utilities ──────────────────────────────────────────────── */

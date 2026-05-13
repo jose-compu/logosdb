@@ -63,28 +63,12 @@ Target versions and issue assignment match **[GitHub milestones](https://github.
 
 ## Milestones → issues
 
-### **SHIPPED** [0.7.7](https://github.com/jose-compu/logosdb/milestone/7) — patch (`0.x.Z`) **SHIPPED**
-
-  * [#74](https://github.com/jose-compu/logosdb/issues/74) — security: harden encoding and injection surfaces across MCP, CLI, and integrations
-  * [#9](https://github.com/jose-compu/logosdb/issues/9) — libFuzzer JSON harness in CI; local ASan/UBSan builds possible; full-tree sanitizer CI not enabled (vendored hnswlib noise)
-
-### **SHIPPED** [0.7.8](https://github.com/jose-compu/logosdb/milestone/14) — patch (`0.x.Z`) **SHIPPED**
-
-  * [#94](https://github.com/jose-compu/logosdb/issues/94) — feat(mcp): expose timestamp-range search (`search_ts_range` / `from_ts`, `to_ts`)
-  * [#95](https://github.com/jose-compu/logosdb/issues/95) — docs: document Claude Code slash commands (/index, /search, /forget) in main README
-  * [#96](https://github.com/jose-compu/logosdb/issues/96) — feat(mcp) or docs: semantic delete / forget-by-query vs ID-only `logosdb_delete`
-
-### **SHIPPED** [0.8.0](https://github.com/jose-compu/logosdb/milestone/5) — minor — operations and durability **SHIPPED**
-
-  * [#88](https://github.com/jose-compu/logosdb/issues/88) — DB doctor/upgrade: compatibility checks and guided migrations
-  * [#83](https://github.com/jose-compu/logosdb/issues/83) — Snapshots and backup: consistent point-in-time export/restore
-  * [#82](https://github.com/jose-compu/logosdb/issues/82) — Metrics and observability: expose query/ingest/index health counters
-  * [#81](https://github.com/jose-compu/logosdb/issues/81) — Compaction/vacuum: reclaim space from tombstones and fragmented files
+Past releases are summarized in the [CHANGELOG](CHANGELOG) and the [closed milestones](https://github.com/jose-compu/logosdb/milestones?state=closed).
 
 ### [0.9.0](https://github.com/jose-compu/logosdb/milestone/8) — minor — throughput and scale
 
-  * [#87](https://github.com/jose-compu/logosdb/issues/87) — Streaming import/export for very large corpora
-  * [#80](https://github.com/jose-compu/logosdb/issues/80) — Batch ingest v2: high-throughput put_batch with WAL-aware commit
+  * [#87](https://github.com/jose-compu/logosdb/issues/87) — Streaming NDJSON import/export (`logosdb_export_ndjson` / `logosdb_import_ndjson` in C / C++ / Python) with `chunk_size`, byte-offset `--checkpoint`, and `--resume`. Parquet output is a follow-up.
+  * [#80](https://github.com/jose-compu/logosdb/issues/80) — Batch ingest v2: `logosdb_put_batch` is now chunked and WAL-aware (`LOGOSDB_BATCH_CHUNK_SIZE`, default 1024). Durability matches per-row `logosdb_put`; speed-up vs single put is workload-dependent (≈1.4× at dim=64 on the bench; HNSW per-row cost dominates at larger dims).
 
 ### [0.10.0](https://github.com/jose-compu/logosdb/milestone/9) — minor — search and metadata
 
@@ -359,6 +343,25 @@ query = np.random.randn(128).astype(np.float32)
 hits = db.search(query, top_k=5)
 ```
 
+## Python: Batch ingest and streaming NDJSON (0.9.0)
+
+```python
+import numpy as np
+import logosdb
+
+db = logosdb.DB("/tmp/mydb", dim=128, distance=logosdb.DIST_COSINE)
+
+# Chunked, WAL-aware batch insert (LOGOSDB_BATCH_CHUNK_SIZE controls fsync cadence).
+embeddings = np.random.randn(10_000, 128).astype(np.float32)
+ids = db.put_batch(embeddings, texts=[f"row {i}" for i in range(10_000)])
+
+# Bounded-memory NDJSON export/import; --resume from a checkpoint on interruption.
+db.export_ndjson("/tmp/rows.ndjson")
+restored = logosdb.DB("/tmp/restored", dim=128, distance=logosdb.DIST_COSINE)
+restored.import_ndjson("/tmp/rows.ndjson", chunk_size=1024,
+                      checkpoint_path="/tmp/rows.cp", resume=False)
+```
+
 Run the Python tests and examples:
 
 ```bash
@@ -479,6 +482,11 @@ logosdb-cli info /tmp/mydb
 
 # Search with a binary query vector file
 logosdb-cli search /tmp/mydb --query-file q.bin --top-k 5
+
+# Streaming NDJSON export / import (#87) — bounded memory, optional resume
+logosdb-cli export /tmp/mydb --output rows.ndjson [--start-id N --end-id M]
+logosdb-cli import /tmp/mydb --dim 768 --input rows.ndjson \
+    --chunk-size 1024 --checkpoint rows.cp [--resume]
 ```
 
 # Node.js
@@ -727,9 +735,9 @@ Here is a performance report from the included `logosdb-bench` program. The resu
 
 We use databases with 1K, 10K, and 100K vectors. Each vector has 2048 dimensions (matching typical LLM embedding sizes). Vectors are L2-normalized random unit vectors.
 
-*(Report below was produced with an older `logosdb-bench` binary labeled 0.5.0; scaling and relative HNSW vs brute-force behavior are still representative of current builds.)*
+*(Numbers below are illustrative ballparks; absolute values depend on hardware and build flags. Relative HNSW vs brute-force behavior is what to focus on.)*
 
-    LogosDB:    version 0.8.0
+    LogosDB:    version 0.9.0
     CPU:        Apple M-series (ARM64)
     Dim:        2048
     HNSW M:     16, ef_construction: 200, ef_search: 50
@@ -784,7 +792,8 @@ LogosDB uses the same HNSW implementation as ChromaDB (hnswlib) but eliminates P
     src/hnsw_index.h / .cpp       Thin wrapper around hnswlib
     tools/logosdb-cli.cpp         Command-line interface
     tools/logosdb-bench.cpp       Benchmark tool
-    tests/test_basic.cpp          C++ unit tests
+    tests/test_doctest.cpp        C++ unit tests (doctest, incl. CLI integration)
+    tests/test_stress.cpp         Stress/property tests (opt-in via --test-suite=stress)
     tests/python/test_smoke.py    Python smoke tests (pytest)
     python/src/bindings.cpp       pybind11 Python bindings
     python/logosdb/               Python package (logosdb._core + stubs)

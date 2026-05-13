@@ -47,6 +47,28 @@ class DB:
         timestamp: str = "",
     ) -> int: ...
 
+    def put_batch(
+        self,
+        embeddings: NDArray[np.float32],
+        texts: Optional[List[str]] = None,
+        timestamps: Optional[List[str]] = None,
+    ) -> List[int]: ...
+
+    def export_ndjson(
+        self,
+        out_path: str,
+        start_id: int = 0,
+        end_id_exclusive: int = 0,
+    ) -> None: ...
+
+    def import_ndjson(
+        self,
+        in_path: str,
+        chunk_size: int = 1024,
+        checkpoint_path: str = "",
+        resume: bool = False,
+    ) -> None: ...
+
     def delete(self, id: int) -> None: ...
 
     def update(

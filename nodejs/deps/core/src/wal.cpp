@@ -309,6 +309,125 @@ bool WriteAheadLog::mark_committed(int64_t offset, std::string& err)
     return sync(err);
 }
 
+bool WriteAheadLog::mark_committed_batch(const std::vector<int64_t>& offsets, std::string& err)
+{
+    if (fd_ < 0)
+    {
+        err = "wal not open";
+        return false;
+    }
+    for (int64_t off : offsets)
+    {
+        if (!write_state_at(off, WALState::COMMITTED, err))
+            return false;
+        if (pending_count_ > 0)
+            --pending_count_;
+    }
+    return sync(err);
+}
+
+// Append n pending entries; one fsync at the end. Writes are byte-identical to
+// repeated append_pending() calls so existing replay/scan logic is unchanged.
+int WriteAheadLog::append_pending_batch(const float* embeddings,
+                                        int n,
+                                        int dim,
+                                        const char* const* texts,
+                                        const char* const* timestamps,
+                                        uint64_t start_expected_id,
+                                        std::vector<int64_t>& out_offsets,
+                                        std::string& err)
+{
+    if (fd_ < 0)
+    {
+        err = "wal not open";
+        return -1;
+    }
+    if (n <= 0)
+    {
+        out_offsets.clear();
+        return 0;
+    }
+    if (!embeddings || dim <= 0)
+    {
+        err = "wal append_pending_batch: invalid args";
+        return -1;
+    }
+
+    out_offsets.clear();
+    out_offsets.reserve(static_cast<size_t>(n));
+
+    const uint32_t vec_bytes = static_cast<uint32_t>(dim) * sizeof(float);
+
+    auto write_all = [&](const void* buf, size_t len, const char* what) -> bool
+    {
+#ifdef _WIN32
+        auto w = _write(fd_, buf, static_cast<unsigned int>(len));
+#else
+        auto w = ::write(fd_, buf, len);
+#endif
+        if (w != static_cast<decltype(w)>(len))
+        {
+            err = std::string("wal write ") + what + ": " + strerror(errno);
+            return false;
+        }
+        return true;
+    };
+
+    for (int i = 0; i < n; ++i)
+    {
+#ifdef _WIN32
+        int64_t offset = _lseeki64(fd_, 0, SEEK_END);
+#else
+        off_t offset = ::lseek(fd_, 0, SEEK_END);
+#endif
+        if (offset < 0)
+        {
+            err = std::string("wal lseek: ") + strerror(errno);
+            return -1;
+        }
+
+        uint8_t state = static_cast<uint8_t>(WALState::PENDING);
+        if (!write_all(&state, 1, "state"))
+            return -1;
+
+        uint32_t dim_u32 = static_cast<uint32_t>(dim);
+        if (!write_all(&dim_u32, 4, "dim"))
+            return -1;
+
+        if (!write_all(&vec_bytes, 4, "vec len"))
+            return -1;
+        const float* vec = embeddings + static_cast<size_t>(i) * static_cast<size_t>(dim);
+        if (vec_bytes > 0 && !write_all(vec, vec_bytes, "vec data"))
+            return -1;
+
+        const char* text = (texts && texts[i]) ? texts[i] : "";
+        uint32_t text_len = static_cast<uint32_t>(std::strlen(text));
+        if (!write_all(&text_len, 4, "text len"))
+            return -1;
+        if (text_len > 0 && !write_all(text, text_len, "text"))
+            return -1;
+
+        const char* ts = (timestamps && timestamps[i]) ? timestamps[i] : "";
+        uint32_t ts_len = static_cast<uint32_t>(std::strlen(ts));
+        if (!write_all(&ts_len, 4, "ts len"))
+            return -1;
+        if (ts_len > 0 && !write_all(ts, ts_len, "ts"))
+            return -1;
+
+        uint64_t expected_id = start_expected_id + static_cast<uint64_t>(i);
+        if (!write_all(&expected_id, 8, "expected_id"))
+            return -1;
+
+        out_offsets.push_back(static_cast<int64_t>(offset));
+        ++pending_count_;
+    }
+
+    // Single durability fence for the whole chunk.
+    if (!sync(err))
+        return -1;
+    return 0;
+}
+
 bool WriteAheadLog::write_state_at(int64_t offset, WALState state, std::string& err)
 {
     uint8_t state_byte = static_cast<uint8_t>(state);

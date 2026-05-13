@@ -1042,7 +1042,171 @@ TEST_SUITE("batch")
         std::filesystem::remove_all(path);
     }
 
+    TEST_CASE("batch: chunked WAL-aware put_batch crosses chunk boundary")
+    {
+        std::string path = "/tmp/logosdb_test_batch_chunked";
+        std::filesystem::remove_all(path);
+        // Force several small chunks to exercise the chunking path.
+        setenv("LOGOSDB_BATCH_CHUNK_SIZE", "64", 1);
+        {
+            logosdb::DB db(path, {.dim = 16});
+            const int n = 257;  // > 4 chunks of 64
+            std::vector<float> embeddings;
+            embeddings.reserve(n * 16);
+            std::vector<std::string> texts;
+            texts.reserve(n);
+            for (int i = 0; i < n; ++i)
+            {
+                auto v = unit_vec(16, 20000 + i);
+                embeddings.insert(embeddings.end(), v.begin(), v.end());
+                texts.push_back("row_" + std::to_string(i));
+            }
+            auto ids = db.put_batch(embeddings, n, texts);
+            CHECK((int)ids.size() == n);
+            for (int i = 0; i < n; ++i)
+                CHECK(ids[i] == (uint64_t)i);
+            CHECK(db.count() == (size_t)n);
+            auto s = db.get_stats();
+            // No PENDING entries should remain once put_batch returns success.
+            CHECK(s.wal_pending == 0u);
+        }
+        // Reopen — sanity-check WAL replay path did nothing on a clean batch.
+        {
+            logosdb::DB db(path, {.dim = 16});
+            CHECK(db.count() == 257u);
+            auto v = unit_vec(16, 20000 + 200);
+            auto hits = db.search(v, 1);
+            REQUIRE(!hits.empty());
+            CHECK(hits[0].id == 200u);
+            CHECK(hits[0].text == "row_200");
+        }
+        unsetenv("LOGOSDB_BATCH_CHUNK_SIZE");
+        std::filesystem::remove_all(path);
+    }
+
 }  // TEST_SUITE("batch")
+
+// ============================================================================
+// Test Suite: Streaming NDJSON import/export (#87)
+// ============================================================================
+
+TEST_SUITE("streaming")
+{
+    TEST_CASE("streaming: ndjson export then import round-trip")
+    {
+        std::string src = "/tmp/logosdb_test_stream_src";
+        std::string dst = "/tmp/logosdb_test_stream_dst";
+        std::string ndjson = "/tmp/logosdb_test_stream.ndjson";
+        std::filesystem::remove_all(src);
+        std::filesystem::remove_all(dst);
+        std::filesystem::remove(ndjson);
+
+        const int dim = 16;
+        const int n = 50;
+        {
+            logosdb::DB db(src, {.dim = dim});
+            for (int i = 0; i < n; ++i)
+            {
+                auto v = unit_vec(dim, 30000 + i);
+                db.put(v, "row_" + std::to_string(i), "2025-02-01T00:00:" + std::to_string(i) + "Z");
+            }
+            db.export_ndjson(ndjson);
+        }
+        // The exported file should have exactly n non-empty lines.
+        {
+            std::ifstream f(ndjson);
+            int lines = 0;
+            std::string line;
+            while (std::getline(f, line))
+                if (!line.empty())
+                    ++lines;
+            CHECK(lines == n);
+        }
+        {
+            logosdb::DB db(dst, {.dim = dim});
+            db.import_ndjson(ndjson, /*chunk_size=*/8);
+            CHECK(db.count() == (size_t)n);
+            auto v = unit_vec(dim, 30000 + 25);
+            auto hits = db.search(v, 1);
+            REQUIRE(!hits.empty());
+            CHECK(hits[0].id == 25u);
+            CHECK(hits[0].text == "row_25");
+        }
+
+        std::filesystem::remove_all(src);
+        std::filesystem::remove_all(dst);
+        std::filesystem::remove(ndjson);
+    }
+
+    TEST_CASE("streaming: import resume from checkpoint after partial run")
+    {
+        std::string src = "/tmp/logosdb_test_stream_src2";
+        std::string dst = "/tmp/logosdb_test_stream_dst2";
+        std::string ndjson = "/tmp/logosdb_test_stream2.ndjson";
+        std::string checkpoint = "/tmp/logosdb_test_stream2.checkpoint";
+        std::filesystem::remove_all(src);
+        std::filesystem::remove_all(dst);
+        std::filesystem::remove(ndjson);
+        std::filesystem::remove(checkpoint);
+
+        const int dim = 8;
+        const int n = 30;
+        {
+            logosdb::DB db(src, {.dim = dim});
+            for (int i = 0; i < n; ++i)
+            {
+                auto v = unit_vec(dim, 40000 + i);
+                db.put(v, "row_" + std::to_string(i));
+            }
+            db.export_ndjson(ndjson);
+        }
+        // Truncate the ndjson file so the first import sees half the rows and
+        // writes a checkpoint at its byte offset.
+        size_t total_size = std::filesystem::file_size(ndjson);
+        std::string truncated = ndjson + ".half";
+        {
+            std::ifstream in(ndjson, std::ios::binary);
+            std::ofstream out(truncated, std::ios::binary | std::ios::trunc);
+            std::vector<char> buf(total_size);
+            in.read(buf.data(), total_size);
+            // Write only the first 10 NDJSON rows by line count.
+            int written_lines = 0;
+            size_t offset = 0;
+            for (size_t i = 0; i < total_size; ++i)
+            {
+                if (buf[i] == '\n')
+                {
+                    ++written_lines;
+                    if (written_lines == 10)
+                    {
+                        offset = i + 1;
+                        break;
+                    }
+                }
+            }
+            out.write(buf.data(), static_cast<std::streamsize>(offset));
+        }
+        {
+            logosdb::DB db(dst, {.dim = dim});
+            db.import_ndjson(truncated, /*chunk_size=*/5, checkpoint, /*resume=*/false);
+            CHECK(db.count() == 10u);
+        }
+        // Now resume against the full file: importer should skip past the
+        // already-imported prefix using the checkpoint byte offset and only
+        // ingest the remaining rows.
+        {
+            logosdb::DB db(dst, {.dim = dim});
+            db.import_ndjson(ndjson, /*chunk_size=*/5, checkpoint, /*resume=*/true);
+            CHECK(db.count() == (size_t)n);
+        }
+
+        std::filesystem::remove_all(src);
+        std::filesystem::remove_all(dst);
+        std::filesystem::remove(ndjson);
+        std::filesystem::remove(truncated);
+        std::filesystem::remove(checkpoint);
+    }
+}  // TEST_SUITE("streaming")
 
 // ============================================================================
 // Test Suite: Timestamp Range Search
@@ -1368,7 +1532,7 @@ TEST_SUITE("cli")
         std::string output;
         int rc = run_cli("export " + path + " --output " + export_file, output);
         CHECK(rc == 0);
-        CHECK(output.find("Exported 2 rows") != std::string::npos);
+        CHECK(output.find("Exported rows to") != std::string::npos);
 
         std::ifstream check(export_file);
         CHECK(check.good());

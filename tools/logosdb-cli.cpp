@@ -15,115 +15,8 @@
 #include <string>
 #include <vector>
 
-// Base64 encoding/decoding for import/export
-static const char* BASE64_CHARS =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-static std::string base64_encode(const float* data, size_t n_floats)
-{
-    const unsigned char* bytes = reinterpret_cast<const unsigned char*>(data);
-    size_t len = n_floats * sizeof(float);
-    std::string ret;
-    ret.reserve(((len + 2) / 3) * 4);
-
-    for (size_t i = 0; i < len; i += 3)
-    {
-        unsigned char b[3] = {0, 0, 0};
-        size_t n = 0;
-        for (size_t j = 0; j < 3 && i + j < len; ++j)
-        {
-            b[j] = bytes[i + j];
-            n++;
-        }
-        unsigned char idx0 = b[0] >> 2;
-        unsigned char idx1 = ((b[0] & 0x03) << 4) | (b[1] >> 4);
-        unsigned char idx2 = ((b[1] & 0x0F) << 2) | (b[2] >> 6);
-        unsigned char idx3 = b[2] & 0x3F;
-
-        ret += BASE64_CHARS[idx0];
-        ret += BASE64_CHARS[idx1];
-        ret += (n > 1) ? BASE64_CHARS[idx2] : '=';
-        ret += (n > 2) ? BASE64_CHARS[idx3] : '=';
-    }
-    return ret;
-}
-
-static std::vector<float> base64_decode(const std::string& encoded, int dim)
-{
-    std::vector<float> result;
-    std::vector<unsigned char> bytes;
-
-    // Pre-calculate expected bytes (dim * sizeof(float))
-    size_t expected_bytes = dim * sizeof(float);
-    bytes.reserve(expected_bytes + 8);  // extra for padding
-
-    size_t len = encoded.size();
-
-    auto find_char = [](char c) -> int
-    {
-        if (c >= 'A' && c <= 'Z')
-            return c - 'A';
-        if (c >= 'a' && c <= 'z')
-            return c - 'a' + 26;
-        if (c >= '0' && c <= '9')
-            return c - '0' + 52;
-        if (c == '+')
-            return 62;
-        if (c == '/')
-            return 63;
-        if (c == '=')
-            return -2;  // padding
-        return -1;
-    };
-
-    for (size_t i = 0; i < len; i += 4)
-    {
-        if (i + 3 >= len)
-            break;
-
-        int b[4] = {-1, -1, -1, -1};
-        for (int j = 0; j < 4 && i + j < len; ++j)
-        {
-            b[j] = find_char(encoded[i + j]);
-        }
-
-        // Skip if we hit invalid characters
-        if (b[0] < 0 || b[0] == -2)
-            break;
-        if (b[1] < 0 || b[1] == -2)
-            break;
-
-        unsigned char o0 = (b[0] << 2) | (b[1] >> 4);
-        bytes.push_back(o0);
-
-        if (b[2] >= 0)
-        {
-            unsigned char o1 = ((b[1] & 0x0F) << 4) | (b[2] >> 2);
-            bytes.push_back(o1);
-        }
-        if (b[3] >= 0)
-        {
-            unsigned char o2 = ((b[2] & 0x03) << 6) | b[3];
-            bytes.push_back(o2);
-        }
-    }
-
-    // Convert bytes to floats - ensure we have enough bytes
-    if (bytes.size() < expected_bytes)
-    {
-        return result;  // Return empty if not enough data
-    }
-
-    result.reserve(dim);
-    for (int i = 0; i < dim; i++)
-    {
-        float f;
-        std::memcpy(&f, &bytes[i * sizeof(float)], sizeof(float));
-        result.push_back(f);
-    }
-
-    return result;
-}
+// NOTE: base64 encode/decode for NDJSON used to live here. They moved to
+// `src/logosdb.cpp` together with the streaming export/import helpers (#87).
 
 // On-disk vector storage header (must match `src/storage.h` StorageHeader, 32 bytes).
 struct StorageHeaderOnDisk
@@ -1127,13 +1020,17 @@ static void print_usage(const char* prog)
         "  --ts-to TIMESTAMP                 Filter to timestamp (inclusive)\n"
         "  --json                            Output results as JSON\n"
         "\n"
-        "Export Options:\n"
-        "  --output FILE                     Output file (default: stdout)\n"
-        "  --json                            Same as default (JSONL output)\n"
+        "Export Options (streaming NDJSON, bounded memory):\n"
+        "  --output FILE                     Output file (REQUIRED; NDJSON)\n"
+        "  --start-id N                      First row id (inclusive, default 0)\n"
+        "  --end-id N                        Stop before this row id (0 = until end)\n"
         "\n"
-        "Import Options:\n"
+        "Import Options (chunked, WAL-aware, resumable):\n"
         "  --dim N                           Vector dimension (required for new DB)\n"
-        "  --input FILE                      Input JSONL file (default: stdin)\n"
+        "  --input FILE                      Input NDJSON file (REQUIRED)\n"
+        "  --chunk-size N                    Rows per batch (default 1024)\n"
+        "  --checkpoint FILE                 Write byte-offset checkpoint after each chunk\n"
+        "  --resume                          Skip past existing checkpoint byte_offset\n"
         "\n"
         "Examples:\n"
         "  %s info /tmp/mydb                 Show database info\n"
@@ -1184,13 +1081,19 @@ static void print_cmd_help(const char* cmd)
     }
     else if (strcmp(cmd, "export") == 0)
     {
-        printf(
-            "Usage: logosdb-cli export <db-path> [--output FILE]\n\nExport database to JSONL.\n");
+        printf("Usage: logosdb-cli export <db-path> --output FILE [--start-id N] [--end-id N]\n\n"
+               "Streams live rows as NDJSON (one row per line) with bounded memory.\n"
+               "Tombstoned rows are skipped. Parquet output is not yet implemented.\n");
     }
     else if (strcmp(cmd, "import") == 0)
     {
-        printf("Usage: logosdb-cli import <db-path> [options]\n\nOptions:\n  --dim N (required for "
-               "new DB)\n  --input FILE\n");
+        printf("Usage: logosdb-cli import <db-path> --input FILE [options]\n\nOptions:\n"
+               "  --dim N            Required for a new database\n"
+               "  --chunk-size N     Rows per WAL-aware batch (default 1024)\n"
+               "  --checkpoint FILE  Rewrite byte-offset checkpoint after each chunk\n"
+               "  --resume           Skip past existing checkpoint byte_offset on restart\n\n"
+               "Reads NDJSON produced by `logosdb-cli export`. On any line/parse error the\n"
+               "import aborts; rows from earlier successful chunks remain durable.\n");
     }
     else if (strcmp(cmd, "doctor") == 0)
     {
@@ -1260,6 +1163,11 @@ struct Args
     std::string second_path;
     bool snapshot_overwrite = false;
     bool force_replace = false;
+    int chunk_size = 0;
+    const char* checkpoint_path = nullptr;
+    bool resume = false;
+    uint64_t export_start_id = 0;
+    uint64_t export_end_id = 0;
 };
 
 static Args parse_args(int argc, char** argv)
@@ -1340,6 +1248,25 @@ static Args parse_args(int argc, char** argv)
             args.snapshot_overwrite = true;
         else if (!strcmp(argv[i], "--force"))
             args.force_replace = true;
+        else if (!strcmp(argv[i], "--chunk-size") && i + 1 < argc)
+        {
+            long v = strtol(argv[++i], nullptr, 10);
+            args.chunk_size = (v > 0 && v <= 1000000) ? (int)v : 0;
+        }
+        else if (!strcmp(argv[i], "--checkpoint") && i + 1 < argc)
+            args.checkpoint_path = argv[++i];
+        else if (!strcmp(argv[i], "--resume"))
+            args.resume = true;
+        else if (!strcmp(argv[i], "--start-id") && i + 1 < argc)
+        {
+            long long v = strtoll(argv[++i], nullptr, 10);
+            args.export_start_id = (v >= 0) ? (uint64_t)v : 0;
+        }
+        else if (!strcmp(argv[i], "--end-id") && i + 1 < argc)
+        {
+            long long v = strtoll(argv[++i], nullptr, 10);
+            args.export_end_id = (v >= 0) ? (uint64_t)v : 0;
+        }
         else if (!strcmp(argv[i], "--distance") && i + 1 < argc)
         {
             const char* d = argv[++i];
@@ -1640,188 +1567,63 @@ int main(int argc, char** argv)
     }
     else if (args.cmd == "export")
     {
-        FILE* out = stdout;
-        if (args.output_file)
+        if (!args.output_file)
         {
-            out = fopen(args.output_file, "w");
-            if (!out)
-            {
-                fprintf(stderr, "error: cannot open output file %s\n", args.output_file);
-                rc = 1;
-                goto done;
-            }
+            fprintf(stderr,
+                    "error: export requires --output FILE (stream NDJSON to disk)\n");
+            rc = 1;
+            goto done;
         }
-
-        size_t n_rows = 0;
-        int dim = 0;
-        const float* raw = logosdb_raw_vectors(db, &n_rows, &dim);
-
-        for (size_t i = 0; i < n_rows; ++i)
+        char* err = nullptr;
+        int xrc = logosdb_export_ndjson(db,
+                                        args.output_file,
+                                        args.export_start_id,
+                                        args.export_end_id,
+                                        &err);
+        if (xrc != 0)
         {
-            // Get metadata
-            char tmp_err[256];
-            logosdb_search_result_t* tmp_res = logosdb_search(db, raw + i * dim, dim, 1, nullptr);
-            const char* text = "";
-            const char* ts = "";
-            if (tmp_res)
-            {
-                text = logosdb_result_text(tmp_res, 0);
-                if (!text)
-                    text = "";
-                ts = logosdb_result_timestamp(tmp_res, 0);
-                if (!ts)
-                    ts = "";
-            }
-
-            // Encode vector as base64
-            std::string b64 = base64_encode(raw + i * dim, dim);
-
-            // Output JSONL
-            fprintf(out,
-                    "{\"id\": %zu, \"vector\": \"%s\", \"text\": \"%s\", \"timestamp\": \"%s\"}\n",
-                    i,
-                    b64.c_str(),
-                    text,
-                    ts);
-
-            if (tmp_res)
-                logosdb_result_free(tmp_res);
+            fprintf(stderr, "export failed: %s\n", err ? err : "unknown error");
+            free(err);
+            rc = 1;
+            goto done;
         }
-
-        if (args.output_file)
-        {
-            fclose(out);
-            printf("Exported %zu rows to %s\n", n_rows, args.output_file);
-        }
+        free(err);
+        printf("Exported rows to %s (start_id=%llu end_id=%llu)\n",
+               args.output_file,
+               (unsigned long long)args.export_start_id,
+               (unsigned long long)args.export_end_id);
     }
     else if (args.cmd == "import")
     {
-        FILE* in = stdin;
-        if (args.input_file)
+        if (!args.input_file)
         {
-            in = fopen(args.input_file, "r");
-            if (!in)
-            {
-                fprintf(stderr, "error: cannot open input file %s\n", args.input_file);
-                rc = 1;
-                goto done;
-            }
+            fprintf(stderr,
+                    "error: import requires --input FILE (streaming NDJSON, no stdin)\n");
+            rc = 1;
+            goto done;
         }
-
-        size_t imported = 0;
-        size_t lines_read = 0;
-        char line[65536];
-        while (fgets(line, sizeof(line), in))
+        size_t before = logosdb_count(db);
+        char* err2 = nullptr;
+        int irc = logosdb_import_ndjson(db,
+                                        args.input_file,
+                                        args.chunk_size > 0 ? args.chunk_size : 1024,
+                                        args.checkpoint_path,
+                                        args.resume ? 1 : 0,
+                                        &err2);
+        if (irc != 0)
         {
-            lines_read++;
-
-            // Extract vector (base64)
-            char* vec_field = strstr(line, "\"vector\"");
-            if (!vec_field)
-                continue;
-
-            // Find the value after "vector":
-            char* vec_start = strchr(vec_field, ':');
-            if (!vec_start)
-                continue;
-            vec_start++;
-            while (*vec_start == ' ')
-                vec_start++;
-            if (*vec_start != '"')
-                continue;
-            vec_start++;  // skip opening quote
-
-            char* vec_end = strchr(vec_start, '"');
-            if (!vec_end)
-                continue;
-
-            // Temporarily null-terminate to extract
-            *vec_end = '\0';
-            std::string b64(vec_start);
-            *vec_end = '"';
-
-            auto vec = base64_decode(b64, logosdb_dim(db));
-            if ((int)vec.size() != logosdb_dim(db))
-            {
-                fprintf(stderr, "warning: skipping row with wrong dimension\n");
-                continue;
-            }
-
-            // Extract text
-            std::string text;
-            char* text_field = strstr(line, "\"text\"");
-            if (text_field)
-            {
-                char* text_start = strchr(text_field, ':');
-                if (text_start)
-                {
-                    text_start++;
-                    while (*text_start == ' ')
-                        text_start++;
-                    if (*text_start == '"')
-                    {
-                        text_start++;
-                        char* text_end = strchr(text_start, '"');
-                        if (text_end)
-                        {
-                            *text_end = '\0';
-                            text = text_start;
-                            *text_end = '"';
-                        }
-                    }
-                }
-            }
-
-            // Extract timestamp
-            std::string ts;
-            char* ts_field = strstr(line, "\"timestamp\"");
-            if (ts_field)
-            {
-                char* ts_start = strchr(ts_field, ':');
-                if (ts_start)
-                {
-                    ts_start++;
-                    while (*ts_start == ' ')
-                        ts_start++;
-                    if (*ts_start == '"')
-                    {
-                        ts_start++;
-                        char* ts_end = strchr(ts_start, '"');
-                        if (ts_end)
-                        {
-                            *ts_end = '\0';
-                            ts = ts_start;
-                            *ts_end = '"';
-                        }
-                    }
-                }
-            }
-
-            // Insert
-            uint64_t id = logosdb_put(db,
-                                      vec.data(),
-                                      logosdb_dim(db),
-                                      text.empty() ? nullptr : text.c_str(),
-                                      ts.empty() ? nullptr : ts.c_str(),
-                                      &err);
-            if (id != UINT64_MAX)
-            {
-                imported++;
-            }
-            else
-            {
-                if (err)
-                {
-                    fprintf(stderr, "warning: insert failed: %s\n", err);
-                    free(err);
-                    err = nullptr;
-                }
-            }
+            fprintf(stderr, "import failed: %s\n", err2 ? err2 : "unknown error");
+            free(err2);
+            rc = 1;
+            goto done;
         }
-
-        if (args.input_file)
-            fclose(in);
-        printf("Imported %zu rows\n", imported);
+        free(err2);
+        size_t after = logosdb_count(db);
+        printf("Imported %zu rows (chunk_size=%d%s%s)\n",
+               after - before,
+               args.chunk_size > 0 ? args.chunk_size : 1024,
+               args.checkpoint_path ? ", checkpoint=" : "",
+               args.checkpoint_path ? args.checkpoint_path : "");
     }
     else
     {
