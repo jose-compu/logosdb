@@ -1,8 +1,7 @@
 # ADR-002: Training-Free Quantization for HNSW Vector Storage
 
-**Status:** Proposed  
-**Date:** 2026-04-29  
-**Milestone:** 0.7.0  
+**Status:** Partially accepted — float16 / int8 storage shipped via `StorageDtype`; Python bindings still expose float32 primarily.
+**Date:** 2026-04-29
 **Related Issues:** [#25](https://github.com/jose-compu/logosdb/issues/25), [#26](https://github.com/jose-compu/logosdb/issues/26)
 
 ## Summary

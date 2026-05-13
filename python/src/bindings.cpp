@@ -4,6 +4,7 @@
 
 #include <logosdb/logosdb.h>
 
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -109,6 +110,90 @@ Args:
             py::arg("text") = "",
             py::arg("timestamp") = "",
             "Insert a vector. Returns the new row id.")
+
+        .def("put_batch",
+            [](logosdb::DB & self,
+               py::array_t<float, py::array::c_style | py::array::forcecast> embeddings,
+               py::object texts_obj,
+               py::object timestamps_obj) {
+                auto buf = embeddings.request();
+                if (buf.ndim != 2) {
+                    throw py::value_error("embeddings must be a 2-D float32 array (n, dim)");
+                }
+                int n = (int)buf.shape[0];
+                int dim = (int)buf.shape[1];
+                if (dim != self.dim()) {
+                    throw py::value_error("embeddings dim does not match DB.dim");
+                }
+                std::vector<float> flat(static_cast<size_t>(n) * static_cast<size_t>(dim));
+                std::memcpy(flat.data(), buf.ptr, flat.size() * sizeof(float));
+
+                std::vector<std::string> texts;
+                if (!texts_obj.is_none()) {
+                    texts = py::cast<std::vector<std::string>>(texts_obj);
+                    if ((int)texts.size() != n)
+                        throw py::value_error("len(texts) must equal embeddings.shape[0]");
+                }
+                std::vector<std::string> timestamps;
+                if (!timestamps_obj.is_none()) {
+                    timestamps = py::cast<std::vector<std::string>>(timestamps_obj);
+                    if ((int)timestamps.size() != n)
+                        throw py::value_error("len(timestamps) must equal embeddings.shape[0]");
+                }
+                std::vector<uint64_t> ids;
+                {
+                    py::gil_scoped_release release;
+                    ids = self.put_batch(flat, n, texts, timestamps);
+                }
+                return ids;
+            },
+            py::arg("embeddings"),
+            py::arg("texts") = py::none(),
+            py::arg("timestamps") = py::none(),
+            R"doc(Insert n vectors in one chunked, WAL-aware call.
+
+Args:
+    embeddings: 2-D float32 array of shape (n, dim).
+    texts: optional list[str] of length n (per-row metadata; "" allowed).
+    timestamps: optional list[str] of length n (ISO 8601 or empty).
+
+Returns:
+    list[int]: the n new row ids (contiguous).
+
+Durability matches per-row `put`: rows are WAL-protected before being
+written to the vector/metadata stores; the WAL is fsynced once per chunk
+(default chunk size 1024; override with `LOGOSDB_BATCH_CHUNK_SIZE`).
+)doc")
+
+        .def("export_ndjson",
+            [](logosdb::DB & self,
+               const std::string & out_path,
+               uint64_t start_id,
+               uint64_t end_id_exclusive) {
+                py::gil_scoped_release release;
+                self.export_ndjson(out_path, start_id, end_id_exclusive);
+            },
+            py::arg("out_path"),
+            py::arg("start_id") = 0,
+            py::arg("end_id_exclusive") = 0,
+            "Stream live rows in [start_id, end_id_exclusive) to `out_path` as NDJSON. "
+            "Bounded memory (O(dim) per row). Pass end_id_exclusive=0 for 'until count()'.")
+
+        .def("import_ndjson",
+            [](logosdb::DB & self,
+               const std::string & in_path,
+               int chunk_size,
+               const std::string & checkpoint_path,
+               bool resume) {
+                py::gil_scoped_release release;
+                self.import_ndjson(in_path, chunk_size, checkpoint_path, resume);
+            },
+            py::arg("in_path"),
+            py::arg("chunk_size") = 1024,
+            py::arg("checkpoint_path") = "",
+            py::arg("resume") = false,
+            "Stream NDJSON into the DB with chunked, WAL-aware put_batch. "
+            "Optional `checkpoint_path` lets a later call `--resume` past the byte_offset.")
 
         .def("delete",
             [](logosdb::DB & self, uint64_t id) { self.del(id); },

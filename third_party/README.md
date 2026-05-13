@@ -15,4 +15,4 @@ JSON for Modern C++ - a header-only JSON library.
 - Source: https://github.com/nlohmann/json
 - Version: 3.11.3
 - License: MIT
-- Used by: `src/metadata.cpp` for JSONL parsing and generation
+- Used by: `src/metadata.cpp` for JSONL parsing and generation; `src/logosdb.cpp` for NDJSON streaming export/import and checkpoint files

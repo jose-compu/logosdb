@@ -1,6 +1,40 @@
 logosdb change log
 ==================
 
+0.9.0  (unreleased)
+-------------------
+
+  * **#80 — Batch ingest v2 (WAL-aware, chunked):** `logosdb_put_batch` now writes
+    PENDING WAL entries with a single fsync per chunk, performs one bulk vector
+    append and one bulk metadata append per chunk, adds vectors to HNSW per row,
+    then stamps the chunk COMMITTED with a single fsync. Durability matches
+    per-row `logosdb_put` (crash anywhere in the chunk is replayed on next open).
+    Chunk size defaults to **1024** and can be overridden with
+    **`LOGOSDB_BATCH_CHUNK_SIZE`**. New WAL primitives `append_pending_batch` and
+    `mark_committed_batch` amortise fsync cost across the chunk.
+
+  * **#87 — Streaming import/export with checkpoints:** new public API
+    `logosdb_export_ndjson(db, out_path, start_id, end_id_exclusive, errptr)` and
+    `logosdb_import_ndjson(db, in_path, chunk_size, checkpoint_path, resume, errptr)`
+    (plus C++ wrappers `DB::export_ndjson` / `DB::import_ndjson`). Bounded
+    memory: one row at a time on export, `chunk_size` rows per WAL-aware batch
+    on import. Optional checkpoint file (`{"version":1,"byte_offset":N,
+    "rows_imported":M}`) is rewritten after every flushed chunk; `--resume`
+    skips past the recorded byte offset so an interrupted import can continue
+    without re-ingesting earlier rows. Tombstoned source rows are skipped on
+    export. `logosdb-cli export` / `import` rewritten to use these helpers with
+    `--chunk-size`, `--checkpoint`, `--resume`, `--start-id`, `--end-id` flags.
+    Parquet output is not yet implemented (planned follow-up).
+
+  * **Python bindings:** new `DB.put_batch(embeddings, texts=None, timestamps=None)`,
+    `DB.export_ndjson(out_path, start_id=0, end_id_exclusive=0)`, and
+    `DB.import_ndjson(in_path, chunk_size=1024, checkpoint_path="", resume=False)`.
+    GIL is released around the bulk paths. `_core.pyi` updated.
+
+  * **CLI:** `export` / `import` now stream NDJSON to disk and require explicit
+    `--output` / `--input` (no implicit stdin/stdout). The new flags above let
+    long-running migrations resume after a crash.
+
 0.8.0  (2026-05-12)
 -------------------
 

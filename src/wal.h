@@ -71,8 +71,29 @@ class WriteAheadLog
                            uint64_t expected_id,
                            std::string& err);
 
+    // Append `n` pending entries with a SINGLE fsync at the end (chunked WAL write).
+    // Returns 0 on success and fills `out_offsets` with one entry offset per row
+    // (size: n). On any per-row write error returns -1 with `err` set; entries that
+    // were partially written before the failure stay on disk and will be replayed
+    // or discarded on the next open (same recovery contract as single-row put).
+    //
+    // `embeddings` must contain n*dim floats. `texts` / `timestamps` may be NULL or
+    // arrays of size n with per-row NULLs allowed. `start_expected_id` is the row
+    // id assigned to the first entry; subsequent entries use start_expected_id+i.
+    int append_pending_batch(const float* embeddings,
+                             int n,
+                             int dim,
+                             const char* const* texts,
+                             const char* const* timestamps,
+                             uint64_t start_expected_id,
+                             std::vector<int64_t>& out_offsets,
+                             std::string& err);
+
     // Mark an entry as committed by its offset.
     bool mark_committed(int64_t offset, std::string& err);
+
+    // Mark `offsets.size()` entries as committed with a SINGLE fsync at the end.
+    bool mark_committed_batch(const std::vector<int64_t>& offsets, std::string& err);
 
     // Replay all pending entries, calling the provided function for each.
     // Entries are marked committed after successful replay.

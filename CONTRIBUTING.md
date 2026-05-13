@@ -46,7 +46,7 @@ npm run vendor-core -w logosdb
 npm run build -w logosdb
 ```
 
-### Publishing npm packages (`logosdb`, `logosdb-mcp-server`, `n8n-nodes-logosdb`, 0.8.x)
+### Publishing npm packages (`logosdb`, `logosdb-mcp-server`, `n8n-nodes-logosdb`)
 
 Versions are **`nodejs/package.json`** (`logosdb`) and **`mcp/package.json`** (`logosdb-mcp-server`). Keep them aligned for coordinated releases; summarize user-facing changes in repo root **`CHANGELOG`**.
 
@@ -75,7 +75,7 @@ npm publish -w logosdb --dry-run
 npm publish -w logosdb-mcp-server --dry-run
 ```
 
-**Order:** publish **`logosdb` first**, then **`logosdb-mcp-server`**, so the registry satisfies **`logosdb@^0.8.0`** for non-workspace installs.
+**Order:** publish **`logosdb` first**, then **`logosdb-mcp-server`** (and **`n8n-nodes-logosdb`** last), so the registry satisfies each `logosdb@^X.Y.Z` dependency for non-workspace installs.
 
 ```bash
 cd nodejs && npm publish
@@ -232,7 +232,7 @@ pytest tests/python/test_smoke.py -v
 ### C++ Tests
 
 - Add tests in `tests/` directory
-- Use existing test patterns in `tests/test_basic.cpp`
+- Use existing test patterns in `tests/test_doctest.cpp` (doctest); long-running cases live in `tests/test_stress.cpp` under the `stress` suite (opt-in via `--test-suite=stress`)
 - Tests run via CTest; add with `add_test()` in CMake
 
 ### Python Tests

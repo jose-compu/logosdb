@@ -139,6 +139,37 @@ def test_dtype_coercion(db_path: Path):
     assert hits[0].id == 0
 
 
+def test_put_batch_returns_ids(db_path: Path):
+    db = DB(str(db_path), dim=DIM)
+    n = 16
+    embeddings = np.vstack([unit(1000 + i) for i in range(n)]).astype(np.float32)
+    texts = [f"row_{i}" for i in range(n)]
+    ids = db.put_batch(embeddings, texts=texts)
+    assert ids == list(range(n))
+    assert db.count() == n
+    hits = db.search(embeddings[5], top_k=1)
+    assert hits[0].id == 5
+    assert hits[0].text == "row_5"
+
+
+def test_export_import_ndjson_roundtrip(db_path: Path, tmp_path: Path):
+    src = DB(str(db_path), dim=DIM)
+    n = 8
+    for i in range(n):
+        src.put(unit(2000 + i), f"row_{i}", f"2025-05-13T0{i}:00:00Z")
+    out = tmp_path / "rows.ndjson"
+    src.export_ndjson(str(out))
+    assert out.exists() and out.stat().st_size > 0
+
+    dst_path = tmp_path / "dst"
+    dst = DB(str(dst_path), dim=DIM)
+    dst.import_ndjson(str(out), chunk_size=4)
+    assert dst.count() == n
+    hits = dst.search(unit(2000 + 3), top_k=1)
+    assert hits[0].id == 3
+    assert hits[0].text == "row_3"
+
+
 def test_raw_vectors_zero_copy(db_path: Path):
     db = DB(str(db_path), dim=DIM)
     v0 = unit(500)

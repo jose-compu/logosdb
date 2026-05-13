@@ -46,7 +46,7 @@ What actually happened, including error messages, stack traces, or output.
 - OS: [e.g., Ubuntu 22.04, macOS 14, Windows 11]
 - Compiler: [e.g., GCC 12, Clang 15, MSVC 2022]
 - CMake version: [e.g., 3.27]
-- LogosDB version or commit: [e.g., v0.7.0 or commit hash]
+- LogosDB version or commit: [e.g., v0.9.0 or commit hash]
 - Python version (if using bindings): [e.g., 3.11]
 
 ## Additional context
