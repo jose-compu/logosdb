@@ -70,7 +70,7 @@ Past releases are summarized in the [CHANGELOG](CHANGELOG) and the [closed miles
   * [#87](https://github.com/jose-compu/logosdb/issues/87) — Streaming NDJSON import/export (`logosdb_export_ndjson` / `logosdb_import_ndjson` in C / C++ / Python) with `chunk_size`, byte-offset `--checkpoint`, and `--resume`. Parquet output is a follow-up.
   * [#80](https://github.com/jose-compu/logosdb/issues/80) — Batch ingest v2: `logosdb_put_batch` is now chunked and WAL-aware (`LOGOSDB_BATCH_CHUNK_SIZE`, default 1024). Durability matches per-row `logosdb_put`; speed-up vs single put is workload-dependent (≈1.4× at dim=64 on the bench; HNSW per-row cost dominates at larger dims).
 
-### [0.10.0](https://github.com/jose-compu/logosdb/milestone/9) — minor — search and metadata
+### **SHIPPED** [0.10.0](https://github.com/jose-compu/logosdb/milestone/9) — minor — search and metadata
 
   * [#85](https://github.com/jose-compu/logosdb/issues/85) — Hybrid retrieval mode: ANN score + lexical score fusion
   * [#84](https://github.com/jose-compu/logosdb/issues/84) — Filter API v2: structured metadata predicates beyond timestamp range
