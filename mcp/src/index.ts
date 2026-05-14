@@ -411,13 +411,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           firstVecLen = allVecs[0].length;
           openDb(firstVecLen);
 
-          const ids: number[] = [];
-          for (let i = 0; i < texts.length; i++) {
-            let label = `[file:${filePath}][chunk:${i}/${texts.length}] ${texts[i]}`;
+          const n = texts.length;
+          const labels: string[] = new Array(n);
+          for (let i = 0; i < n; i++) {
+            let label = `[file:${filePath}][chunk:${i}/${n}] ${texts[i]}`;
             if (fileTags) label = serializeTags(label, fileTags);
-            const id = db!.put(allVecs[i]!, label, ts);
-            ids.push(id);
+            labels[i] = label;
           }
+
+          // Flatten [[f0,f1,...], [f0,f1,...], ...] → [f0,f1,...,f0,f1,...] for putBatch
+          const flatVecs = new Array<number>(n * firstVecLen);
+          for (let i = 0; i < n; i++) {
+            const vec = allVecs[i]!;
+            for (let d = 0; d < firstVecLen; d++) {
+              flatVecs[i * firstVecLen + d] = vec[d]!;
+            }
+          }
+          const timestamps: string[] = new Array(n).fill(ts);
+          const ids = db!.putBatch(flatVecs, n, labels, timestamps);
           totalChunks += texts.length;
           indexedFiles++;
 

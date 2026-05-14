@@ -70,6 +70,21 @@ export class DB {
   put(embedding: number[], text?: string, timestamp?: string): number;
 
   /**
+   * Batch-insert N vectors with a single WAL fsync — ~N× faster than N individual put() calls.
+   * @param embeddings - Flat row-major array of n×dim floats
+   * @param n - Number of vectors
+   * @param texts - Per-row text labels; null/undefined entries are stored without a label
+   * @param timestamps - Per-row ISO 8601 timestamps; null/undefined entries omit the timestamp
+   * @returns Array of n assigned row IDs in insertion order
+   */
+  putBatch(
+    embeddings: number[],
+    n: number,
+    texts?: (string | null | undefined)[],
+    timestamps?: (string | null | undefined)[],
+  ): number[];
+
+  /**
    * Search for similar vectors
    * @param queryEmbedding - Query vector
    * @param topK - Number of results (default: 10)

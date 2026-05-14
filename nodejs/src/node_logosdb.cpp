@@ -51,6 +51,7 @@ public:
     static Napi::Object Init(Napi::Env env, Napi::Object exports) {
         Napi::Function func = DefineClass(env, "DB", {
             InstanceMethod("put", &DBWrapper::Put),
+            InstanceMethod("putBatch", &DBWrapper::PutBatch),
             InstanceMethod("search", &DBWrapper::Search),
             InstanceMethod("searchTsRange", &DBWrapper::SearchTsRange),
             InstanceMethod("update", &DBWrapper::Update),
@@ -183,6 +184,94 @@ private:
     // Storage for string references during put calls
     std::string text_str_;
     std::string ts_str_;
+
+    // putBatch(embeddings: number[], n: number, texts?: (string|null)[], timestamps?: (string|null)[])
+    // Inserts n vectors in a single WAL fsync — O(N) faster than N individual put() calls.
+    // embeddings must be a flat array of n*dim numbers (row-major).
+    // Returns a JS array of n assigned row IDs.
+    Napi::Value PutBatch(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
+
+        if (info.Length() < 2 || !info[0].IsArray() || !info[1].IsNumber()) {
+            throw Napi::TypeError::New(env,
+                "putBatch(embeddings: number[], n: number, texts?: (string|null)[], timestamps?: (string|null)[])");
+        }
+
+        int n = info[1].As<Napi::Number>().Int32Value();
+        if (n <= 0) {
+            return Napi::Array::New(env, 0);
+        }
+
+        Napi::Array embArr = info[0].As<Napi::Array>();
+        if (static_cast<int>(embArr.Length()) < n * dim_) {
+            throw Napi::RangeError::New(env,
+                "embeddings array length must be >= n * dim");
+        }
+
+        std::vector<float> embeddings(n * dim_);
+        for (int i = 0; i < n * dim_; i++) {
+            embeddings[i] = embArr.Get(i).As<Napi::Number>().FloatValue();
+        }
+
+        std::vector<std::string> text_storage;
+        std::vector<const char*> text_ptrs;
+        bool has_texts = info.Length() > 2 && info[2].IsArray();
+        if (has_texts) {
+            Napi::Array textsArr = info[2].As<Napi::Array>();
+            text_storage.resize(n);
+            text_ptrs.resize(n, nullptr);
+            for (int i = 0; i < n; i++) {
+                Napi::Value v = textsArr.Get(static_cast<uint32_t>(i));
+                if (v.IsString()) {
+                    text_storage[i] = v.As<Napi::String>().Utf8Value();
+                    text_ptrs[i] = text_storage[i].c_str();
+                }
+            }
+        }
+
+        std::vector<std::string> ts_storage;
+        std::vector<const char*> ts_ptrs;
+        bool has_timestamps = info.Length() > 3 && info[3].IsArray();
+        if (has_timestamps) {
+            Napi::Array tsArr = info[3].As<Napi::Array>();
+            ts_storage.resize(n);
+            ts_ptrs.resize(n, nullptr);
+            for (int i = 0; i < n; i++) {
+                Napi::Value v = tsArr.Get(static_cast<uint32_t>(i));
+                if (v.IsString()) {
+                    ts_storage[i] = v.As<Napi::String>().Utf8Value();
+                    ts_ptrs[i] = ts_storage[i].c_str();
+                }
+            }
+        }
+
+        std::vector<uint64_t> out_ids(n);
+        char* err = nullptr;
+        int rc = logosdb_put_batch(
+            db_,
+            embeddings.data(),
+            n,
+            dim_,
+            has_texts ? text_ptrs.data() : nullptr,
+            has_timestamps ? ts_ptrs.data() : nullptr,
+            out_ids.data(),
+            &err
+        );
+
+        if (rc != 0) {
+            std::string error_msg = err ? err : "put_batch failed";
+            if (err) free(err);
+            throw Napi::Error::New(env, error_msg);
+        }
+        if (err) free(err);
+
+        Napi::Array result = Napi::Array::New(env, static_cast<size_t>(n));
+        for (int i = 0; i < n; i++) {
+            result.Set(static_cast<uint32_t>(i),
+                       Napi::Number::New(env, static_cast<double>(out_ids[i])));
+        }
+        return result;
+    }
 
     Napi::Value Search(const Napi::CallbackInfo& info) {
         Napi::Env env = info.Env();

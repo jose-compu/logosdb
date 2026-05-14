@@ -62,18 +62,31 @@ static BenchResult run_bench(int dim, int n, int n_queries, int top_k)
     std::string tmp = "/tmp/logosdb_bench_" + std::to_string(n);
     std::filesystem::remove_all(tmp);
 
+    // Scale efSearch with corpus size so HNSW recall stays representative.
+    // Floor is 50 (5× the default top_k=10) — using top_k as the floor
+    // guarantees terrible recall because HNSW must explore >> top_k candidates.
+    int ef_search = std::max(50, std::min(500, n / 50));
+
     logosdb::Options opts;
     opts.dim = dim;
     opts.max_elements = (size_t)(n * 1.2);
+    opts.ef_search = ef_search;
+    // Higher construction params give better graph quality at the cost of build time;
+    // these are ceiling values for a recall benchmark — production defaults are M=16, efc=200.
+    opts.M = 32;
+    opts.ef_construction = 400;
     logosdb::DB db(tmp, opts);
 
-    // Generate and insert vectors.
+    // Generate and insert vectors; capture the WAL row IDs returned by put().
+    // The benchmark recall check compares HNSW hit IDs against these real IDs —
+    // using the loop index directly was wrong when WAL IDs have any offset.
     std::vector<std::vector<float>> vecs(n);
+    std::vector<uint64_t> inserted_ids(n);
     double t0 = now_ms();
     for (int i = 0; i < n; ++i)
     {
         vecs[i] = random_unit_vec(dim, rng);
-        db.put(vecs[i], "row_" + std::to_string(i));
+        inserted_ids[i] = (uint64_t)db.put(vecs[i], "row_" + std::to_string(i));
     }
     result.put_ms = now_ms() - t0;
 
@@ -103,7 +116,8 @@ static BenchResult run_bench(int dim, int n, int n_queries, int top_k)
         std::vector<std::pair<float, uint64_t>> scores(n);
         for (int i = 0; i < n; ++i)
         {
-            scores[i] = {dot(queries[q].data(), vecs[i].data(), dim), (uint64_t)i};
+            // Use the actual WAL row ID, not the loop index.
+            scores[i] = {dot(queries[q].data(), vecs[i].data(), dim), inserted_ids[i]};
         }
         std::partial_sort(scores.begin(),
                           scores.begin() + top_k,
@@ -173,15 +187,27 @@ int main(int argc, char** argv)
         }
     }
 
-    printf("LogosDB Benchmark — dim=%d top_k=%d queries=%d\n", dim, top_k, n_queries);
-    printf("%-10s %12s %14s %14s %10s\n", "N", "put(ms)", "HNSW(ms/q)", "brute(ms/q)", "recall@k");
-    printf("---------- ------------ -------------- -------------- ----------\n");
+    printf("LogosDB Benchmark — dim=%d top_k=%d queries=%d  M=32 efConstruction=400\n",
+           dim,
+           top_k,
+           n_queries);
+    printf("  efSearch scales with N: max(50, min(500, N/50))\n");
+    printf("%-10s %8s %12s %14s %14s %10s\n",
+           "N",
+           "efSearch",
+           "put(ms)",
+           "HNSW(ms/q)",
+           "brute(ms/q)",
+           "recall@k");
+    printf("---------- -------- ------------ -------------- -------------- ----------\n");
 
     for (int n : counts)
     {
         auto r = run_bench(dim, n, n_queries, top_k);
-        printf("%-10d %12.1f %14.3f %14.3f %9.1f%%\n",
+        int ef = std::max(50, std::min(500, n / 50));
+        printf("%-10d %8d %12.1f %14.3f %14.3f %9.1f%%\n",
                r.n,
+               ef,
                r.put_ms,
                r.hnsw_search_ms,
                r.brute_search_ms,

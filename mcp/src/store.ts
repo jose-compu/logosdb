@@ -44,6 +44,12 @@ export interface SearchHit {
 
 interface LogosDB {
   put(embedding: number[], text?: string, timestamp?: string): number;
+  putBatch(
+    embeddings: number[],
+    n: number,
+    texts?: (string | null | undefined)[],
+    timestamps?: (string | null | undefined)[],
+  ): number[];
   search(queryEmbedding: number[], topK?: number): SearchHit[];
   searchTsRange(
     queryEmbedding: number[],
