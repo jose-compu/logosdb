@@ -108,6 +108,19 @@ export class NamespaceStore {
     }
   }
 
+  /**
+   * Return live vector count and dim for every currently-open namespace.
+   * Namespaces that have never been opened return no entry — callers can
+   * present them as "not yet accessed" without forcing a DB open.
+   */
+  openStatsSnapshot(): Record<string, { countLive: number; dim: number }> {
+    const out: Record<string, { countLive: number; dim: number }> = {};
+    for (const [ns, db] of this.dbs.entries()) {
+      out[ns] = { countLive: db.countLive(), dim: db.dim() };
+    }
+    return out;
+  }
+
   closeAll(): void {
     for (const db of this.dbs.values()) db.close();
     this.dbs.clear();

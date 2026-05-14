@@ -1,6 +1,26 @@
 logosdb change log
 ==================
 
+0.11.0  (unreleased) — `logosdb-mcp-server` + bench tool
+----------------------------------------------------------
+
+  * **#86 — Multi-tenant namespaces: quota and isolation** (`logosdb-mcp-server`).
+    New environment variables:
+    - `LOGOSDB_QUOTA_MAX_VECTORS` — max live vectors per namespace (0 = unlimited).
+    - `LOGOSDB_QUOTA_MAX_NAMESPACES` — max distinct namespaces under `LOGOSDB_PATH` (0 = unlimited).
+    Quota checks are O(1) (`db.countLive()` counter read) and are only evaluated on
+    index write operations — search and list carry zero overhead.
+    `logosdb_list` response now includes per-namespace `count_live`/`dim` for
+    open namespaces and a `quota` summary block. New module `mcp/src/quota.ts`
+    with 13 unit tests.
+
+  * **#89 — Recall benchmarking utility** (`logosdb-bench --recall-sweep`).
+    New mode builds one HNSW index then sweeps a configurable set of `efSearch`
+    values (default: 10, 20, 50, 100, 200, 500), measuring recall@k and search
+    latency for each.  Outputs a ranked table with `vs brute-force` speedup
+    column — ideal for choosing `efSearch` for a given accuracy/speed target.
+    Options: `--sweep-n`, `--sweep-M`, `--sweep-efc`, `--sweep-ef`, `--sweep-queries`.
+
 0.10.1  (unreleased) — `logosdb` (Node.js + Python bindings) + `logosdb-mcp-server`
 --------------------------------------------------------------------------
 

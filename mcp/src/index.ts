@@ -14,7 +14,9 @@
  *   OLLAMA_EMBEDDING_DIM  Default 768 for nomic — must match actual model output
  *   OPENAI_API_KEY        Required when EMBEDDING_PROVIDER=openai
  *   VOYAGE_API_KEY        Required when EMBEDDING_PROVIDER=voyage
- *   LOGOSDB_CHUNK_SIZE    Target characters per chunk for file indexing (default: 800)
+ *   LOGOSDB_CHUNK_SIZE             Target characters per chunk for file indexing (default: 800)
+ *   LOGOSDB_QUOTA_MAX_VECTORS      Max live vectors per namespace, 0 = unlimited (default 0)
+ *   LOGOSDB_QUOTA_MAX_NAMESPACES   Max namespaces under LOGOSDB_PATH, 0 = unlimited (default 0)
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -58,6 +60,7 @@ import {
   type Tags,
   type FilterPredicate,
 } from './metadata-filter.js';
+import { loadQuotaConfig, checkVectorQuota, checkNsQuota } from './quota.js';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -78,6 +81,7 @@ try {
 }
 
 const store = new NamespaceStore(LOGOSDB_PATH);
+const quotaCfg = loadQuotaConfig();
 
 // ── Tool definitions ───────────────────────────────────────────────────────────
 
@@ -260,7 +264,7 @@ const TOOLS: Tool[] = [
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
-const server = new Server({ name: 'logosdb', version: '0.10.0' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'logosdb', version: '0.11.0' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
@@ -282,8 +286,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!namespace) throw new Error('"namespace" is required');
 
         ensureEmbeddingsConfigured();
+        // Namespace quota: store.list() (readdirSync) is only paid when the limit is set
+        if (quotaCfg.maxNamespaces > 0) checkNsQuota(store.list(), namespace, quotaCfg);
         const vec = await embed(text, embCfg);
         const db = store.open(namespace, vec.length);
+        // Vector quota: O(1) counter check before the put
+        checkVectorQuota(db.countLive(), 1, namespace, quotaCfg);
         let stored = metadata ? `${text}\n[${metadata}]` : text;
         if (tags) stored = serializeTags(stored, tags);
         const id = db.put(vec, stored, new Date().toISOString());
@@ -311,6 +319,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!namespace) throw new Error('"namespace" is required');
 
         ensureEmbeddingsConfigured();
+        // Namespace quota: store.list() (readdirSync) is only paid when the limit is set
+        if (quotaCfg.maxNamespaces > 0) checkNsQuota(store.list(), namespace, quotaCfg);
 
         const absPath = resolveIndexablePath(inputPath);
         const stat = fs.statSync(absPath);
@@ -428,6 +438,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }
           }
           const timestamps: string[] = new Array(n).fill(ts);
+          // Vector quota: check before committing this file's chunks
+          checkVectorQuota(db!.countLive(), n, namespace, quotaCfg);
           const ids = db!.putBatch(flatVecs, n, labels, timestamps);
           totalChunks += texts.length;
           indexedFiles++;
@@ -571,7 +583,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // ── logosdb_list ───────────────────────────────────────────────────────
       case 'logosdb_list': {
         const namespaces = store.list();
-        return ok({ namespaces, count: namespaces.length, path: LOGOSDB_PATH });
+        const stats = store.openStatsSnapshot();
+        const quota = {
+          max_vectors_per_ns: quotaCfg.maxVectorsPerNs || null,
+          max_namespaces: quotaCfg.maxNamespaces || null,
+        };
+        return ok({
+          namespaces: namespaces.map((ns) => ({
+            name: ns,
+            ...(stats[ns] !== undefined
+              ? { count_live: stats[ns]!.countLive, dim: stats[ns]!.dim }
+              : {}),
+          })),
+          count: namespaces.length,
+          path: LOGOSDB_PATH,
+          quota,
+        });
       }
 
       // ── logosdb_info ───────────────────────────────────────────────────────
