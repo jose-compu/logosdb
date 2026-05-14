@@ -48,6 +48,16 @@ import {
   saveManifest,
   type FileIndexManifest,
 } from './file-index-manifest.js';
+import { hybridRerank, type FusionStrategy } from './hybrid.js';
+import {
+  serializeTags,
+  parseTags,
+  matchesFilter,
+  validateTags,
+  validateFilter,
+  type Tags,
+  type FilterPredicate,
+} from './metadata-filter.js';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -76,7 +86,9 @@ const TOOLS: Tool[] = [
     name: 'logosdb_index',
     description:
       'Store a piece of text in a LogosDB namespace for later semantic retrieval. ' +
-      'Use this to persist knowledge, code snippets, notes, or any textual context across sessions.',
+      'Use this to persist knowledge, code snippets, notes, or any textual context across sessions. ' +
+      'Optional `tags` attach structured key/value metadata (strings, numbers, booleans) that can be ' +
+      'filtered at search time using the `filter` parameter of logosdb_search.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -87,7 +99,15 @@ const TOOLS: Tool[] = [
         },
         metadata: {
           type: 'string',
-          description: 'Optional extra label stored alongside the text',
+          description: 'Optional extra label stored alongside the text (legacy flat string)',
+        },
+        tags: {
+          type: 'object',
+          description:
+            'Optional structured metadata: key/value pairs where values are strings, numbers, or booleans. ' +
+            'Searchable via the `filter` predicate in logosdb_search. ' +
+            'Example: {"lang":"typescript","priority":2,"reviewed":true}',
+          additionalProperties: { type: ['string', 'number', 'boolean'] },
         },
       },
       required: ['text', 'namespace'],
@@ -123,6 +143,14 @@ const TOOLS: Tool[] = [
           description:
             'Skip files matched by `.gitignore` rules of the enclosing Git working tree (root + nested + `.git/info/exclude` + global excludes). Default: true when `.git` is detected, else no-op. Set false to fall back to the legacy SKIP_DIRS + extension filters only. Env override: `LOGOSDB_RESPECT_GITIGNORE=0`.',
         },
+        tags: {
+          type: 'object',
+          description:
+            'Optional structured metadata applied to every chunk indexed from this path. ' +
+            'Values must be strings, numbers, or booleans. ' +
+            'Example: {"project":"my-app","lang":"typescript"}',
+          additionalProperties: { type: ['string', 'number', 'boolean'] },
+        },
       },
       required: ['path', 'namespace'],
     },
@@ -131,7 +159,9 @@ const TOOLS: Tool[] = [
     name: 'logosdb_search',
     description:
       'Semantic search over a LogosDB namespace. Returns the most relevant stored texts ranked by similarity. ' +
-      'Optional ISO 8601 bounds (`ts_from` / `ts_to`, inclusive) restrict candidates to a timestamp window (same semantics as the C `logosdb_search_ts_range` API).',
+      'Optional ISO 8601 bounds (`ts_from` / `ts_to`, inclusive) restrict candidates to a timestamp window. ' +
+      'Optional `hybrid: true` blends ANN vector similarity with BM25-lite lexical matching (see `fusion`, `lexical_weight`). ' +
+      'Optional `filter` applies structured metadata predicates to post-filter results (requires rows indexed with `tags`).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -151,7 +181,33 @@ const TOOLS: Tool[] = [
         candidate_k: {
           type: 'number',
           description:
-            'When using timestamp bounds: internal candidate pool size (default: 10 × top_k). Increase if recall within the window is poor.',
+            'Internal candidate pool size for timestamp-windowed or filter/hybrid search (default: 10 × top_k). Increase if recall is poor.',
+        },
+        hybrid: {
+          type: 'boolean',
+          description:
+            'Enable hybrid retrieval: combine ANN vector score with BM25-lite lexical score. ' +
+            'Default: false (pure ANN). When true, retrieves `candidate_k` ANN candidates then re-ranks using fusion.',
+        },
+        fusion: {
+          type: 'string',
+          enum: ['rrf', 'weighted'],
+          description:
+            '"rrf" (default): Reciprocal Rank Fusion — rank-based, score-distribution-free. ' +
+            '"weighted": linear interpolation combined = (1−lexical_weight)·ann + lexical_weight·lexical.',
+        },
+        lexical_weight: {
+          type: 'number',
+          description:
+            'Weight of the lexical score in "weighted" fusion mode. 0 = pure ANN, 1 = pure lexical. Default: 0.5.',
+        },
+        filter: {
+          type: 'object',
+          description:
+            'Structured metadata predicate applied after ANN (and optional hybrid re-rank). ' +
+            'Only rows indexed with matching `tags` are returned. ' +
+            'Supports: equality {"key":"val"}, $eq, $ne, $in, $nin, $gt, $gte, $lt, $lte, $exists. ' +
+            'Multiple keys are ANDed. Example: {"lang":"typescript","priority":{"$gte":2}}',
         },
       },
       required: ['query', 'namespace'],
@@ -204,7 +260,7 @@ const TOOLS: Tool[] = [
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
-const server = new Server({ name: 'logosdb', version: '0.7.14' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'logosdb', version: '0.10.0' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
@@ -220,16 +276,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const text = validateUserText(rawText, 'text');
         const namespace = String(args.namespace ?? '');
         const metadata = validateMetadata(args.metadata ? String(args.metadata) : undefined);
+        const tags: Tags | undefined =
+          args.tags != null ? validateTags(args.tags) : undefined;
 
         if (!namespace) throw new Error('"namespace" is required');
 
         ensureEmbeddingsConfigured();
         const vec = await embed(text, embCfg);
         const db = store.open(namespace, vec.length);
-        const stored = metadata ? `${text}\n[${metadata}]` : text;
+        let stored = metadata ? `${text}\n[${metadata}]` : text;
+        if (tags) stored = serializeTags(stored, tags);
         const id = db.put(vec, stored, new Date().toISOString());
 
-        return ok({ id, indexed: true, namespace, chars: text.length });
+        return ok({ id, indexed: true, namespace, chars: text.length, tags: tags ?? null });
       }
 
       // ── logosdb_index_file ─────────────────────────────────────────────────
@@ -245,6 +304,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args.respect_gitignore === undefined
             ? respectGitignoreDefault()
             : Boolean(args.respect_gitignore);
+        const fileTags: Tags | undefined =
+          args.tags != null ? validateTags(args.tags) : undefined;
 
         if (!inputPath) throw new Error('"path" is required');
         if (!namespace) throw new Error('"namespace" is required');
@@ -352,8 +413,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
           const ids: number[] = [];
           for (let i = 0; i < texts.length; i++) {
-            const label = `[file:${filePath}][chunk:${i}/${texts.length}] ${texts[i]}`;
-            const id = db!.put(allVecs[i], label, ts);
+            let label = `[file:${filePath}][chunk:${i}/${texts.length}] ${texts[i]}`;
+            if (fileTags) label = serializeTags(label, fileTags);
+            const id = db!.put(allVecs[i]!, label, ts);
             ids.push(id);
           }
           totalChunks += texts.length;
@@ -378,6 +440,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           skipped_files: incremental ? skippedFiles : 0,
           indexed_files: indexedFiles,
           pruned_files: incremental ? prunedFiles : 0,
+          tags: fileTags ?? null,
         });
       }
 
@@ -393,11 +456,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const tsFrom = tsFromRaw || undefined;
         const tsTo = tsToRaw || undefined;
         const useTsWindow = tsFrom !== undefined || tsTo !== undefined;
+
+        const useHybrid = Boolean(args.hybrid);
+        const fusion = (args.fusion === 'weighted' ? 'weighted' : 'rrf') as FusionStrategy;
+        const lexicalWeight =
+          typeof args.lexical_weight === 'number'
+            ? Math.min(1, Math.max(0, args.lexical_weight))
+            : 0.5;
+
+        const filter: FilterPredicate | undefined =
+          args.filter != null ? validateFilter(args.filter) : undefined;
+
+        // When hybrid or filter is active, fetch a larger candidate pool first.
+        const needsPool = useHybrid || filter !== undefined;
         let candidateK =
           typeof args.candidate_k === 'number' && Number.isFinite(args.candidate_k)
             ? Math.trunc(args.candidate_k)
             : topK * 10;
         if (candidateK < topK) candidateK = topK * 10;
+        // Number of ANN results to retrieve before re-ranking / filtering.
+        const annK = needsPool ? candidateK : topK;
+        // Internal ts-range candidate pool must be strictly larger than the ANN output count
+        // so the timestamp filter has room to reject candidates.  When needsPool is active
+        // annK == candidateK, so multiply by 10; otherwise use candidateK as-is.
+        const tsCandidateK = needsPool ? annK * 10 : candidateK;
 
         if (!namespace) throw new Error('"namespace" is required');
 
@@ -408,7 +490,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         try {
           db = store.get(namespace);
         } catch {
-          // Namespace not opened yet — try to open from disk
           const nsPath = path.join(LOGOSDB_PATH, namespace);
           if (!fs.existsSync(nsPath)) {
             return ok({ results: [], message: `Namespace "${namespace}" does not exist.` });
@@ -416,15 +497,52 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           db = store.open(namespace, vec.length);
         }
 
-        const hits = useTsWindow
-          ? db.searchTsRange(vec, { topK, tsFrom, tsTo, candidateK })
-          : db.search(vec, topK);
-        const results = hits.map((h) => ({
-          id: h.id,
-          score: Math.round(h.score * 10000) / 10000,
-          text: h.text,
-          timestamp: h.timestamp,
-        }));
+        // 1. ANN retrieval
+        let hits = useTsWindow
+          ? db.searchTsRange(vec, { topK: annK, tsFrom, tsTo, candidateK: tsCandidateK })
+          : db.search(vec, annK);
+
+        // 2. Hybrid re-rank (operates on the full candidate pool, trims to topK)
+        const isHybridResult = useHybrid && hits.length > 0;
+        if (isHybridResult) {
+          hits = hybridRerank(hits, query, filter ? annK : topK, {
+            fusion,
+            lexical_weight: lexicalWeight,
+          });
+        }
+
+        // 3. Filter by metadata predicates (post-ANN / post-hybrid)
+        if (filter !== undefined) {
+          hits = hits
+            .filter((h) => matchesFilter(parseTags(h.text), filter))
+            .slice(0, topK);
+        }
+
+        // 4. Final trim (in case neither hybrid nor filter trimmed to topK)
+        if (!isHybridResult && filter === undefined) {
+          hits = hits.slice(0, topK);
+        }
+
+        const results = hits.map((h) => {
+          const tags = parseTags(h.text);
+          const base = {
+            id: h.id,
+            score: Math.round(h.score * 10000) / 10000,
+            text: h.text,
+            timestamp: h.timestamp,
+            tags: tags ?? undefined,
+          };
+          if (isHybridResult && 'hybrid_score' in h) {
+            const hh = h as unknown as { ann_score: number; lexical_score: number; hybrid_score: number };
+            return {
+              ...base,
+              ann_score: hh.ann_score,
+              lexical_score: hh.lexical_score,
+              hybrid_score: hh.hybrid_score,
+            };
+          }
+          return base;
+        });
 
         return ok({
           results,
@@ -433,6 +551,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ts_from: tsFrom ?? null,
           ts_to: tsTo ?? null,
           timestamp_filter: useTsWindow,
+          hybrid: useHybrid,
+          fusion: useHybrid ? fusion : null,
+          filter: filter ?? null,
         });
       }
 
