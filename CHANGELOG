@@ -1,6 +1,32 @@
 logosdb change log
 ==================
 
+0.10.0  (unreleased) — `logosdb-mcp-server` only
+-------------------------------------------------
+
+  * **#85 — Hybrid retrieval: ANN score + lexical score fusion** (`logosdb_search`).
+    New optional parameters `hybrid: true`, `fusion` (`"rrf"` | `"weighted"`), and
+    `lexical_weight` (0–1). When `hybrid` is enabled the search retrieves a larger
+    ANN candidate pool (`candidate_k`, default 10×top_k), scores each hit with a
+    BM25-lite lexical scorer against the stored text, then fuses the two ranked
+    lists via Reciprocal Rank Fusion (default, rank-based and score-distribution-
+    free) or weighted linear interpolation. Results expose `ann_score`,
+    `lexical_score`, and `hybrid_score` alongside the standard `score` field.
+    New module `mcp/src/hybrid.ts`.
+
+  * **#84 — Filter API v2: structured metadata predicates** (`logosdb_index`,
+    `logosdb_index_file`, `logosdb_search`). New optional `tags` parameter on both
+    index tools accepts a plain object (string/number/boolean values, ≤32 keys)
+    serialised as a `\n[tags:{...}]` suffix in the stored text — fully backward-
+    compatible (existing rows without a suffix are not affected). New optional
+    `filter` parameter on `logosdb_search` accepts MongoDB-style predicates
+    (`$eq`, `$ne`, `$in`, `$nin`, `$gt`, `$gte`, `$lt`, `$lte`, `$exists`); multiple
+    top-level keys are ANDed. Filtering is applied after ANN (and optional hybrid
+    re-rank) with `candidate_k` as the pre-filter pool. New module
+    `mcp/src/metadata-filter.ts`.
+
+  * Server self-reported version corrected from `"0.7.14"` to `"0.10.0"`.
+
 0.9.1  (unreleased) — `logosdb-mcp-server` only
 -----------------------------------------------
 
