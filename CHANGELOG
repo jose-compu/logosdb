@@ -1,7 +1,7 @@
 logosdb change log
 ==================
 
-0.10.1  (unreleased) — `logosdb` (Node.js binding) + `logosdb-mcp-server`
+0.10.1  (unreleased) — `logosdb` (Node.js + Python bindings) + `logosdb-mcp-server`
 --------------------------------------------------------------------------
 
   * **`putBatch` exposed to Node.js binding** (`nodejs/src/node_logosdb.cpp`,
@@ -15,6 +15,10 @@ logosdb change log
     in one `putBatch` call instead of one `put()` per chunk, directly improving
     folder-indexing throughput for both `claude-code-semantic-memory` and
     `pi-semantic-memory` plugins.
+
+  * **Python package version aligned to 0.10.1** (`pyproject.toml`). The Python
+    binding already exposed `put_batch` (via `python/src/bindings.cpp`); this
+    release brings the PyPI version in sync with the Node.js track.
 
   * **Benchmark `efSearch` floor and construction params corrected**
     (`tools/logosdb-bench.cpp`). Previous formula `max(top_k, N/100)` bottomed
