@@ -1,6 +1,27 @@
 logosdb change log
 ==================
 
+0.10.1  (unreleased) — `logosdb` (Node.js binding) + `logosdb-mcp-server`
+--------------------------------------------------------------------------
+
+  * **`putBatch` exposed to Node.js binding** (`nodejs/src/node_logosdb.cpp`,
+    `nodejs/types/index.d.ts`). New `db.putBatch(embeddings, n, texts?, timestamps?)`
+    method wraps the existing C++ `logosdb_put_batch` API — inserts N vectors with a
+    single WAL `fsync`, delivering ~N× throughput improvement over N individual
+    `put()` calls for bulk inserts.
+
+  * **`logosdb_index_file` MCP handler uses `putBatch`** (`mcp/src/index.ts`,
+    `mcp/src/store.ts`). Per-file chunk embeddings are now flattened and inserted
+    in one `putBatch` call instead of one `put()` per chunk, directly improving
+    folder-indexing throughput for both `claude-code-semantic-memory` and
+    `pi-semantic-memory` plugins.
+
+  * **Benchmark `efSearch` floor and construction params corrected**
+    (`tools/logosdb-bench.cpp`). Previous formula `max(top_k, N/100)` bottomed
+    out at `efSearch=top_k=10`, producing artificially low recall (44% at N=1000).
+    New formula `max(50, min(500, N/50))` with `M=32`, `efConstruction=400` yields
+    96.5% recall@10 at N=1000 and 93.4% at N=10000 (dim=384).
+
 0.10.0  (unreleased) — `logosdb-mcp-server` only
 -------------------------------------------------
 
