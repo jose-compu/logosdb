@@ -154,6 +154,141 @@ static BenchResult run_bench(int dim, int n, int n_queries, int top_k)
     return result;
 }
 
+// ── Recall sweep ─────────────────────────────────────────────────────────────
+//
+// Builds one HNSW index and sweeps efSearch to show the recall / latency
+// trade-off.  Useful for tuning HNSW parameters for a specific workload.
+//
+// Usage:  logosdb-bench --recall-sweep [options]
+//   --sweep-n N              Corpus size            (default 10000)
+//   --sweep-M N              HNSW M                 (default 16)
+//   --sweep-efc N            HNSW efConstruction    (default 200)
+//   --sweep-ef 10,20,...     efSearch values        (default 10,20,50,100,200,500)
+//   --sweep-queries N        Queries per ef value   (default 200)
+//   --dim D                  Vector dimension       (default 384)
+//   --top-k K                top-k                  (default 10)
+// ---------------------------------------------------------------------------
+
+static void run_recall_sweep(
+    int dim, int n, int M, int efc, const std::vector<int>& ef_values, int n_queries, int top_k)
+{
+    std::mt19937 rng(42);
+    std::string tmp = "/tmp/logosdb_bench_sweep";
+    std::filesystem::remove_all(tmp);
+
+    // ── 1. Build index once ──────────────────────────────────────────────────
+    printf("Building HNSW index: dim=%d N=%d M=%d efConstruction=%d …\n", dim, n, M, efc);
+    fflush(stdout);
+
+    std::vector<std::vector<float>> corpus(n);
+    std::vector<uint64_t> corpus_ids(n);
+    {
+        logosdb::Options opts;
+        opts.dim = dim;
+        opts.max_elements = (size_t)(n * 1.2);
+        opts.M = M;
+        opts.ef_construction = efc;
+        opts.ef_search = ef_values.back();  // irrelevant for build
+        logosdb::DB db(tmp, opts);
+
+        double t0 = now_ms();
+        for (int i = 0; i < n; ++i)
+        {
+            corpus[i] = random_unit_vec(dim, rng);
+            corpus_ids[i] = db.put(corpus[i]);
+        }
+        printf("  Insert: %.0f ms  (%.0f vec/s)\n", now_ms() - t0, n / ((now_ms() - t0) / 1000.0));
+    }
+
+    // ── 2. Query vectors ─────────────────────────────────────────────────────
+    std::vector<std::vector<float>> queries(n_queries);
+    for (int q = 0; q < n_queries; ++q)
+        queries[q] = random_unit_vec(dim, rng);
+
+    // ── 3. Brute-force ground truth ──────────────────────────────────────────
+    std::vector<std::vector<uint64_t>> gt(n_queries);
+    double t0_brute = now_ms();
+    for (int q = 0; q < n_queries; ++q)
+    {
+        std::vector<std::pair<float, uint64_t>> scores(n);
+        for (int i = 0; i < n; ++i)
+            scores[i] = {dot(queries[q].data(), corpus[i].data(), dim), corpus_ids[i]};
+        std::partial_sort(scores.begin(),
+                          scores.begin() + top_k,
+                          scores.end(),
+                          [](auto& a, auto& b) { return a.first > b.first; });
+        for (int k = 0; k < top_k; ++k)
+            gt[q].push_back(scores[k].second);
+    }
+    double brute_ms_per_q = (now_ms() - t0_brute) / n_queries;
+
+    // ── 4. Sweep ─────────────────────────────────────────────────────────────
+    printf("\nHNSW Recall Sweep — dim=%d N=%d M=%d efConstruction=%d top_k=%d queries=%d\n",
+           dim,
+           n,
+           M,
+           efc,
+           top_k,
+           n_queries);
+    printf("%-10s %10s %14s %12s\n", "efSearch", "recall@k", "HNSW(ms/q)", "vs brute");
+    printf("---------- ---------- -------------- ------------\n");
+
+    for (int ef : ef_values)
+    {
+        // Reopen the same DB directory with the new efSearch value.
+        // No rebuild — only the search parameter changes.
+        logosdb::Options opts;
+        opts.dim = dim;
+        opts.max_elements = (size_t)(n * 1.2);
+        opts.M = M;
+        opts.ef_construction = efc;
+        opts.ef_search = ef;
+        logosdb::DB db(tmp, opts);
+
+        // Warm-up pass
+        for (int q = 0; q < std::min(5, n_queries); ++q)
+            db.search(queries[q], top_k);
+
+        // Timed search
+        double t0 = now_ms();
+        std::vector<std::vector<uint64_t>> hnsw_results(n_queries);
+        for (int q = 0; q < n_queries; ++q)
+        {
+            auto hits = db.search(queries[q], top_k);
+            for (auto& h : hits)
+                hnsw_results[q].push_back(h.id);
+        }
+        double hnsw_ms = (now_ms() - t0) / n_queries;
+
+        // Recall@k
+        double total_recall = 0.0;
+        for (int q = 0; q < n_queries; ++q)
+        {
+            int found = 0;
+            for (uint64_t hid : hnsw_results[q])
+                for (uint64_t bid : gt[q])
+                    if (hid == bid)
+                    {
+                        ++found;
+                        break;
+                    }
+            total_recall += (double)found / top_k;
+        }
+        double recall = total_recall / n_queries;
+
+        printf("%-10d %9.1f%% %13.3f %10.1fx\n",
+               ef,
+               recall * 100.0,
+               hnsw_ms,
+               brute_ms_per_q / hnsw_ms);
+    }
+
+    printf("\nBrute-force reference: %.3f ms/query\n", brute_ms_per_q);
+    std::filesystem::remove_all(tmp);
+}
+
+// ── main ─────────────────────────────────────────────────────────────────────
+
 int main(int argc, char** argv)
 {
     int dim = 2048;
@@ -162,6 +297,14 @@ int main(int argc, char** argv)
     int top_k = 10;
     int batch_n = 100000;
     int batch_dim = 256;
+
+    // Recall-sweep options
+    bool recall_sweep = false;
+    int sweep_n = 10000;
+    int sweep_M = 16;
+    int sweep_efc = 200;
+    int sweep_queries = 200;
+    std::vector<int> sweep_ef_values = {10, 20, 50, 100, 200, 500};
 
     for (int i = 1; i < argc; ++i)
     {
@@ -185,6 +328,34 @@ int main(int argc, char** argv)
                 tok = strtok(nullptr, ",");
             }
         }
+        // ── recall-sweep flags ──────────────────────────────────────────────
+        else if (!strcmp(argv[i], "--recall-sweep"))
+            recall_sweep = true;
+        else if (!strcmp(argv[i], "--sweep-n") && i + 1 < argc)
+            sweep_n = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--sweep-M") && i + 1 < argc)
+            sweep_M = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--sweep-efc") && i + 1 < argc)
+            sweep_efc = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--sweep-queries") && i + 1 < argc)
+            sweep_queries = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--sweep-ef") && i + 1 < argc)
+        {
+            sweep_ef_values.clear();
+            char* tok = strtok(argv[++i], ",");
+            while (tok)
+            {
+                sweep_ef_values.push_back(atoi(tok));
+                tok = strtok(nullptr, ",");
+            }
+        }
+    }
+
+    // ── Recall-sweep mode: run sweep only and exit ───────────────────────────
+    if (recall_sweep)
+    {
+        run_recall_sweep(dim, sweep_n, sweep_M, sweep_efc, sweep_ef_values, sweep_queries, top_k);
+        return 0;
     }
 
     printf("LogosDB Benchmark — dim=%d top_k=%d queries=%d  M=32 efConstruction=400\n",
