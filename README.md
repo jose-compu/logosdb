@@ -1,4 +1,4 @@
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/b90c7a46-7992-4bbf-a021-69f1c89a1062" />
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/f89d3d66-10f0-4af1-aafe-b59d82b43548" />
 
 [![CI](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml)
 [![Python](https://github.com/jose-compu/logosdb/actions/workflows/python.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/python.yml)
@@ -75,7 +75,7 @@ Past releases are summarized in the [CHANGELOG](CHANGELOG) and the [closed miles
   * [#85](https://github.com/jose-compu/logosdb/issues/85) — Hybrid retrieval mode: ANN score + lexical score fusion
   * [#84](https://github.com/jose-compu/logosdb/issues/84) — Filter API v2: structured metadata predicates beyond timestamp range
 
-### [0.11.0](https://github.com/jose-compu/logosdb/milestone/10) — minor — multi-tenancy and tooling
+### **SHIPPED** [0.11.0](https://github.com/jose-compu/logosdb/milestone/10) — minor — multi-tenancy and tooling
 
   * [#86](https://github.com/jose-compu/logosdb/issues/86) — Multi-tenant namespaces: quota and isolation within one DB root
   * [#89](https://github.com/jose-compu/logosdb/issues/89) — Recall benchmarking utility for HNSW tuning
