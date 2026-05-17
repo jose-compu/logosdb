@@ -3,9 +3,15 @@
 
 #include <logosdb/logosdb.h>
 
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <sys/stat.h>
+#else
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 #include <cmath>
 #include <cstdio>
@@ -21,6 +27,13 @@ using namespace std::string_literals;
 // ============================================================================
 // Test Helpers
 // ============================================================================
+
+// Returns a platform-specific temp directory prefix, e.g. "/tmp/" on POSIX
+// and the system temp path (with trailing separator) on Windows.
+static std::string tmp_path(const std::string& name)
+{
+    return (std::filesystem::temp_directory_path() / name).string();
+}
 
 static std::vector<float> unit_vec(int dim, int seed)
 {
@@ -41,8 +54,13 @@ static std::vector<float> unit_vec(int dim, int seed)
 
 static int run_cli(const std::string& args, std::string& output)
 {
+#ifdef _WIN32
+    std::string cmd = "logosdb-cli.exe " + args + " 2>&1";
+    FILE* pipe = _popen(cmd.c_str(), "r");
+#else
     std::string cmd = "./logosdb-cli " + args + " 2>&1";
     FILE* pipe = popen(cmd.c_str(), "r");
+#endif
     if (!pipe)
         return -1;
     char buffer[4096];
@@ -51,7 +69,11 @@ static int run_cli(const std::string& args, std::string& output)
     {
         output += buffer;
     }
+#ifdef _WIN32
+    return _pclose(pipe);
+#else
     return pclose(pipe);
+#endif
 }
 
 // ============================================================================
@@ -62,7 +84,7 @@ TEST_SUITE("core")
 {
     TEST_CASE("core: open and close")
     {
-        std::string path = "/tmp/logosdb_test_oc";
+        std::string path = tmp_path("logosdb_test_oc");
         std::filesystem::remove_all(path);
 
         char* err = nullptr;
@@ -82,7 +104,7 @@ TEST_SUITE("core")
 
     TEST_CASE("core: logosdb_sync")
     {
-        std::string path = "/tmp/logosdb_test_sync_api";
+        std::string path = tmp_path("logosdb_test_sync_api");
         std::filesystem::remove_all(path);
 
         char* err = nullptr;
@@ -125,7 +147,7 @@ TEST_SUITE("core")
 
     TEST_CASE("core: put and search")
     {
-        std::string path = "/tmp/logosdb_test_ps";
+        std::string path = tmp_path("logosdb_test_ps");
         std::filesystem::remove_all(path);
 
         logosdb::DB db(path, {.dim = 64});
@@ -155,7 +177,7 @@ TEST_SUITE("core")
 
     TEST_CASE("core: persistence across reopen")
     {
-        std::string path = "/tmp/logosdb_test_persist";
+        std::string path = tmp_path("logosdb_test_persist");
         std::filesystem::remove_all(path);
 
         auto v0 = unit_vec(64, 400);
@@ -184,7 +206,7 @@ TEST_SUITE("core")
 
     TEST_CASE("core: raw vectors bulk access")
     {
-        std::string path = "/tmp/logosdb_test_raw";
+        std::string path = tmp_path("logosdb_test_raw");
         std::filesystem::remove_all(path);
 
         int dim = 32;
@@ -217,7 +239,7 @@ TEST_SUITE("core")
 
     TEST_CASE("core: many vectors self-retrieval")
     {
-        std::string path = "/tmp/logosdb_test_many";
+        std::string path = tmp_path("logosdb_test_many");
         std::filesystem::remove_all(path);
 
         int dim = 128;
@@ -246,7 +268,7 @@ TEST_SUITE("core")
 
     TEST_CASE("core: search ordering")
     {
-        std::string path = "/tmp/logosdb_test_order";
+        std::string path = tmp_path("logosdb_test_order");
         std::filesystem::remove_all(path);
 
         int dim = 64;
@@ -280,7 +302,7 @@ TEST_SUITE("core")
 
     TEST_CASE("core: top_k limit and clamping")
     {
-        std::string path = "/tmp/logosdb_test_topk";
+        std::string path = tmp_path("logosdb_test_topk");
         std::filesystem::remove_all(path);
 
         int dim = 32;
@@ -303,7 +325,7 @@ TEST_SUITE("core")
 
     TEST_CASE("core: empty database search")
     {
-        std::string path = "/tmp/logosdb_test_empty_search";
+        std::string path = tmp_path("logosdb_test_empty_search");
         std::filesystem::remove_all(path);
 
         logosdb::DB db(path, {.dim = 32});
@@ -315,7 +337,7 @@ TEST_SUITE("core")
 
     TEST_CASE("core: put without metadata")
     {
-        std::string path = "/tmp/logosdb_test_nometa";
+        std::string path = tmp_path("logosdb_test_nometa");
         std::filesystem::remove_all(path);
 
         logosdb::DB db(path, {.dim = 32});
@@ -333,7 +355,7 @@ TEST_SUITE("core")
 
     TEST_CASE("core: persistence append after reopen")
     {
-        std::string path = "/tmp/logosdb_test_append_reopen";
+        std::string path = tmp_path("logosdb_test_append_reopen");
         std::filesystem::remove_all(path);
 
         int dim = 32;
@@ -368,7 +390,7 @@ TEST_SUITE("core")
 
     TEST_CASE("core: large dimension (2048)")
     {
-        std::string path = "/tmp/logosdb_test_largedim";
+        std::string path = tmp_path("logosdb_test_largedim");
         std::filesystem::remove_all(path);
 
         int dim = 2048;
@@ -399,7 +421,7 @@ TEST_SUITE("metadata")
 {
     TEST_CASE("metadata: special characters round-trip")
     {
-        std::string path = "/tmp/logosdb_test_special";
+        std::string path = tmp_path("logosdb_test_special");
         std::filesystem::remove_all(path);
 
         logosdb::DB db(path, {.dim = 32});
@@ -420,7 +442,7 @@ TEST_SUITE("metadata")
 
     TEST_CASE("metadata: unicode and escapes")
     {
-        std::string path = "/tmp/logosdb_test_unicode";
+        std::string path = tmp_path("logosdb_test_unicode");
         std::filesystem::remove_all(path);
 
         logosdb::DB db(path, {.dim = 32});
@@ -456,7 +478,7 @@ TEST_SUITE("metadata")
 
     TEST_CASE("metadata: JSON edge cases")
     {
-        std::string path = "/tmp/logosdb_test_jsonedge";
+        std::string path = tmp_path("logosdb_test_jsonedge");
         std::filesystem::remove_all(path);
 
         {
@@ -508,7 +530,7 @@ TEST_SUITE("errors")
 
         logosdb_options_t* opts = logosdb_options_create();
         logosdb_options_set_dim(opts, 0);
-        logosdb_t* db = logosdb_open("/tmp/logosdb_test_err", opts, &err);
+        logosdb_t* db = logosdb_open(tmp_path("logosdb_test_err").c_str(), opts, &err);
         CHECK(db == nullptr);
         CHECK(err != nullptr);
         free(err);
@@ -528,7 +550,7 @@ TEST_SUITE("errors")
         bool caught = false;
         try
         {
-            logosdb::DB db("/tmp/logosdb_test_exc", {.dim = 0});
+            logosdb::DB db(tmp_path("logosdb_test_exc"), {.dim = 0});
         }
         catch (const std::runtime_error& e)
         {
@@ -540,7 +562,7 @@ TEST_SUITE("errors")
 
     TEST_CASE("errors: dimension mismatch on put")
     {
-        std::string path = "/tmp/logosdb_test_dim_put";
+        std::string path = tmp_path("logosdb_test_dim_put");
         std::filesystem::remove_all(path);
 
         char* err = nullptr;
@@ -564,7 +586,7 @@ TEST_SUITE("errors")
 
     TEST_CASE("errors: dimension mismatch on search")
     {
-        std::string path = "/tmp/logosdb_test_dim_search";
+        std::string path = tmp_path("logosdb_test_dim_search");
         std::filesystem::remove_all(path);
 
         char* err = nullptr;
@@ -588,7 +610,7 @@ TEST_SUITE("errors")
 
     TEST_CASE("errors: result accessor bounds")
     {
-        std::string path = "/tmp/logosdb_test_bounds";
+        std::string path = tmp_path("logosdb_test_bounds");
         std::filesystem::remove_all(path);
 
         char* err = nullptr;
@@ -628,7 +650,7 @@ TEST_SUITE("delete_update")
 {
     TEST_CASE("delete_update: basic delete")
     {
-        std::string path = "/tmp/logosdb_test_delete_basic";
+        std::string path = tmp_path("logosdb_test_delete_basic");
         std::filesystem::remove_all(path);
 
         int dim = 64;
@@ -664,7 +686,7 @@ TEST_SUITE("delete_update")
 
     TEST_CASE("delete_update: delete errors")
     {
-        std::string path = "/tmp/logosdb_test_delete_err";
+        std::string path = tmp_path("logosdb_test_delete_err");
         std::filesystem::remove_all(path);
 
         logosdb::DB db(path, {.dim = 32});
@@ -692,7 +714,7 @@ TEST_SUITE("delete_update")
 
     TEST_CASE("delete_update: delete persistence")
     {
-        std::string path = "/tmp/logosdb_test_delete_persist";
+        std::string path = tmp_path("logosdb_test_delete_persist");
         std::filesystem::remove_all(path);
 
         int dim = 32;
@@ -730,7 +752,7 @@ TEST_SUITE("delete_update")
 
     TEST_CASE("delete_update: tombstone replay on index rebuild")
     {
-        std::string path = "/tmp/logosdb_test_delete_rebuild";
+        std::string path = tmp_path("logosdb_test_delete_rebuild");
         std::filesystem::remove_all(path);
 
         int dim = 32;
@@ -765,7 +787,7 @@ TEST_SUITE("delete_update")
 
     TEST_CASE("delete_update: basic update")
     {
-        std::string path = "/tmp/logosdb_test_update";
+        std::string path = tmp_path("logosdb_test_update");
         std::filesystem::remove_all(path);
 
         int dim = 64;
@@ -802,7 +824,7 @@ TEST_SUITE("delete_update")
 
     TEST_CASE("delete_update: update errors")
     {
-        std::string path = "/tmp/logosdb_test_update_err";
+        std::string path = tmp_path("logosdb_test_update_err");
         std::filesystem::remove_all(path);
 
         logosdb::DB db(path, {.dim = 32});
@@ -837,7 +859,7 @@ TEST_SUITE("delete_update")
 
     TEST_CASE("delete_update: delete and reput independence")
     {
-        std::string path = "/tmp/logosdb_test_delete_reput";
+        std::string path = tmp_path("logosdb_test_delete_reput");
         std::filesystem::remove_all(path);
 
         int dim = 32;
@@ -871,7 +893,7 @@ TEST_SUITE("wal")
 {
     TEST_CASE("wal: crash recovery replay")
     {
-        std::string path = "/tmp/logosdb_test_wal";
+        std::string path = tmp_path("logosdb_test_wal");
         std::filesystem::remove_all(path);
 
         {
@@ -884,37 +906,59 @@ TEST_SUITE("wal")
         }
 
         {
+#ifdef _WIN32
+            int fd = _open((path + "/wal.log").c_str(), O_RDWR | O_BINARY);
+#else
             int fd = ::open((path + "/wal.log").c_str(), O_RDWR);
+#endif
             CHECK(fd >= 0);
 
+#ifdef _WIN32
+            _lseeki64(fd, 0, SEEK_END);
+#else
             ::lseek(fd, 0, SEEK_END);
+#endif
+
+            auto raw_write = [&](const void* buf, unsigned int len)
+            {
+#ifdef _WIN32
+                return _write(fd, buf, len);
+#else
+                return static_cast<int>(::write(fd, buf, len));
+#endif
+            };
 
             uint8_t state = 0;
-            ::write(fd, &state, 1);
+            raw_write(&state, 1);
 
             uint32_t dim = 32;
-            ::write(fd, &dim, 4);
+            raw_write(&dim, 4);
 
             auto v2 = unit_vec(32, 7200);
             uint32_t vec_bytes = 32 * sizeof(float);
-            ::write(fd, &vec_bytes, 4);
-            ::write(fd, v2.data(), vec_bytes);
+            raw_write(&vec_bytes, 4);
+            raw_write(v2.data(), vec_bytes);
 
             std::string text = "third (from wal)";
-            uint32_t text_len = text.size();
-            ::write(fd, &text_len, 4);
-            ::write(fd, text.data(), text_len);
+            uint32_t text_len = static_cast<uint32_t>(text.size());
+            raw_write(&text_len, 4);
+            raw_write(text.data(), text_len);
 
             std::string ts = "2025-03-01T00:00:00Z";
-            uint32_t ts_len = ts.size();
-            ::write(fd, &ts_len, 4);
-            ::write(fd, ts.data(), ts_len);
+            uint32_t ts_len = static_cast<uint32_t>(ts.size());
+            raw_write(&ts_len, 4);
+            raw_write(ts.data(), ts_len);
 
             uint64_t expected_id = 2;
-            ::write(fd, &expected_id, 8);
+            raw_write(&expected_id, 8);
 
+#ifdef _WIN32
+            _commit(fd);
+            _close(fd);
+#else
             ::fsync(fd);
             ::close(fd);
+#endif
         }
 
         {
@@ -951,7 +995,7 @@ TEST_SUITE("batch")
 {
     TEST_CASE("batch: basic put_batch")
     {
-        std::string path = "/tmp/logosdb_test_batch";
+        std::string path = tmp_path("logosdb_test_batch");
         std::filesystem::remove_all(path);
 
         {
@@ -1006,7 +1050,7 @@ TEST_SUITE("batch")
 
     TEST_CASE("batch: empty and edge cases")
     {
-        std::string path = "/tmp/logosdb_test_batch_empty";
+        std::string path = tmp_path("logosdb_test_batch_empty");
         std::filesystem::remove_all(path);
 
         {
@@ -1044,7 +1088,7 @@ TEST_SUITE("batch")
 
     TEST_CASE("batch: chunked WAL-aware put_batch crosses chunk boundary")
     {
-        std::string path = "/tmp/logosdb_test_batch_chunked";
+        std::string path = tmp_path("logosdb_test_batch_chunked");
         std::filesystem::remove_all(path);
         // Force several small chunks to exercise the chunking path.
         setenv("LOGOSDB_BATCH_CHUNK_SIZE", "64", 1);
@@ -1094,9 +1138,9 @@ TEST_SUITE("streaming")
 {
     TEST_CASE("streaming: ndjson export then import round-trip")
     {
-        std::string src = "/tmp/logosdb_test_stream_src";
-        std::string dst = "/tmp/logosdb_test_stream_dst";
-        std::string ndjson = "/tmp/logosdb_test_stream.ndjson";
+        std::string src = tmp_path("logosdb_test_stream_src");
+        std::string dst = tmp_path("logosdb_test_stream_dst");
+        std::string ndjson = tmp_path("logosdb_test_stream.ndjson");
         std::filesystem::remove_all(src);
         std::filesystem::remove_all(dst);
         std::filesystem::remove(ndjson);
@@ -1141,10 +1185,10 @@ TEST_SUITE("streaming")
 
     TEST_CASE("streaming: import resume from checkpoint after partial run")
     {
-        std::string src = "/tmp/logosdb_test_stream_src2";
-        std::string dst = "/tmp/logosdb_test_stream_dst2";
-        std::string ndjson = "/tmp/logosdb_test_stream2.ndjson";
-        std::string checkpoint = "/tmp/logosdb_test_stream2.checkpoint";
+        std::string src = tmp_path("logosdb_test_stream_src2");
+        std::string dst = tmp_path("logosdb_test_stream_dst2");
+        std::string ndjson = tmp_path("logosdb_test_stream2.ndjson");
+        std::string checkpoint = tmp_path("logosdb_test_stream2.checkpoint");
         std::filesystem::remove_all(src);
         std::filesystem::remove_all(dst);
         std::filesystem::remove(ndjson);
@@ -1217,7 +1261,7 @@ TEST_SUITE("ts_range")
 {
     TEST_CASE("ts_range: basic functionality")
     {
-        std::string path = "/tmp/logosdb_test_ts_range";
+        std::string path = tmp_path("logosdb_test_ts_range");
         std::filesystem::remove_all(path);
 
         int dim = 64;
@@ -1258,7 +1302,7 @@ TEST_SUITE("ts_range")
 
     TEST_CASE("ts_range: edge cases and C API")
     {
-        std::string path = "/tmp/logosdb_test_ts_range_edge";
+        std::string path = tmp_path("logosdb_test_ts_range_edge");
         std::filesystem::remove_all(path);
 
         int dim = 32;
@@ -1310,7 +1354,7 @@ TEST_SUITE("ts_range")
 
     TEST_CASE("ts_range: recall with alternating timestamps")
     {
-        std::string path = "/tmp/logosdb_test_ts_range_recall";
+        std::string path = tmp_path("logosdb_test_ts_range_recall");
         std::filesystem::remove_all(path);
 
         int dim = 64;
@@ -1368,7 +1412,7 @@ TEST_SUITE("distance")
 {
     TEST_CASE("distance: cosine auto-normalization")
     {
-        std::string path = "/tmp/logosdb_test_cosine";
+        std::string path = tmp_path("logosdb_test_cosine");
         std::filesystem::remove_all(path);
 
         int dim = 64;
@@ -1402,7 +1446,7 @@ TEST_SUITE("distance")
 
     TEST_CASE("distance: L2 (Euclidean)")
     {
-        std::string path = "/tmp/logosdb_test_l2";
+        std::string path = tmp_path("logosdb_test_l2");
         std::filesystem::remove_all(path);
 
         int dim = 64;
@@ -1425,7 +1469,7 @@ TEST_SUITE("distance")
 
     TEST_CASE("distance: persistence across reopen")
     {
-        std::string path = "/tmp/logosdb_test_dist_persist";
+        std::string path = tmp_path("logosdb_test_dist_persist");
         std::filesystem::remove_all(path);
 
         int dim = 32;
@@ -1449,7 +1493,7 @@ TEST_SUITE("distance")
 
     TEST_CASE("distance: mismatch error")
     {
-        std::string path = "/tmp/logosdb_test_dist_mismatch";
+        std::string path = tmp_path("logosdb_test_dist_mismatch");
         std::filesystem::remove_all(path);
 
         int dim = 32;
@@ -1493,7 +1537,7 @@ TEST_SUITE("cli")
 {
     TEST_CASE("cli: info reads dim from header")
     {
-        std::string path = "/tmp/logosdb_test_cli_info";
+        std::string path = tmp_path("logosdb_test_cli_info");
         std::filesystem::remove_all(path);
 
         logosdb::DB db(path, {.dim = 64});
@@ -1517,9 +1561,9 @@ TEST_SUITE("cli")
 
     TEST_CASE("cli: export/import roundtrip")
     {
-        std::string path = "/tmp/logosdb_test_cli_export";
-        std::string import_path = "/tmp/logosdb_test_cli_import";
-        std::string export_file = "/tmp/test_export.jsonl";
+        std::string path = tmp_path("logosdb_test_cli_export");
+        std::string import_path = tmp_path("logosdb_test_cli_import");
+        std::string export_file = tmp_path("test_export.jsonl");
         std::filesystem::remove_all(path);
         std::filesystem::remove_all(import_path);
         std::remove(export_file.c_str());
@@ -1553,7 +1597,7 @@ TEST_SUITE("cli")
 
     TEST_CASE("cli: search with timestamp range")
     {
-        std::string path = "/tmp/logosdb_test_cli_ts";
+        std::string path = tmp_path("logosdb_test_cli_ts");
         std::filesystem::remove_all(path);
 
         logosdb::DB db(path, {.dim = 32});
@@ -1563,13 +1607,14 @@ TEST_SUITE("cli")
         db.put(v1, "late", "2025-01-15T18:00:00Z");
 
         {
-            std::ofstream qf("/tmp/query_vec.bin", std::ios::binary);
+            std::ofstream qf(tmp_path("query_vec.bin"), std::ios::binary);
             qf.write(reinterpret_cast<const char*>(v0.data()), 32 * sizeof(float));
             qf.close();
         }
 
         std::string output;
-        int rc = run_cli("search " + path + " --query-file /tmp/query_vec.bin --top-k 10 --json",
+        int rc = run_cli("search " + path + " --query-file " + tmp_path("query_vec.bin") +
+                             " --top-k 10 --json",
                          output);
         CHECK(rc == 0);
         int results = 0;
@@ -1582,8 +1627,8 @@ TEST_SUITE("cli")
         CHECK(results == 2);
 
         output.clear();
-        rc = run_cli("search " + path +
-                         " --query-file /tmp/query_vec.bin --ts-from 2025-01-01T00:00:00Z --ts-to "
+        rc = run_cli("search " + path + " --query-file " + tmp_path("query_vec.bin") +
+                         " --ts-from 2025-01-01T00:00:00Z --ts-to "
                          "2025-01-12T00:00:00Z --top-k 10 --json",
                      output);
         CHECK(rc == 0);
@@ -1591,12 +1636,12 @@ TEST_SUITE("cli")
         CHECK(output.find("late") == std::string::npos);
 
         std::filesystem::remove_all(path);
-        std::remove("/tmp/query_vec.bin");
+        std::remove(tmp_path("query_vec.bin").c_str());
     }
 
     TEST_CASE("cli: doctor reports healthy database")
     {
-        std::string path = "/tmp/logosdb_test_cli_doctor";
+        std::string path = tmp_path("logosdb_test_cli_doctor");
         std::filesystem::remove_all(path);
 
         logosdb::DB db(path, {.dim = 32});
@@ -1620,7 +1665,7 @@ TEST_SUITE("cli")
 
     TEST_CASE("cli: upgrade dry-run and apply on legacy vectors header")
     {
-        std::string path = "/tmp/logosdb_test_cli_upgrade_hdr";
+        std::string path = tmp_path("logosdb_test_cli_upgrade_hdr");
         std::filesystem::remove_all(path);
         std::filesystem::create_directories(path);
         const std::string vec = path + "/vectors.bin";
@@ -1660,9 +1705,9 @@ TEST_SUITE("cli")
 
     TEST_CASE("cli: snapshot and restore roundtrip")
     {
-        std::string src = "/tmp/logosdb_test_snap_src";
-        std::string snap = "/tmp/logosdb_test_snap_out";
-        std::string dst = "/tmp/logosdb_test_snap_dst";
+        std::string src = tmp_path("logosdb_test_snap_src");
+        std::string snap = tmp_path("logosdb_test_snap_out");
+        std::string dst = tmp_path("logosdb_test_snap_dst");
         std::filesystem::remove_all(src);
         std::filesystem::remove_all(snap);
         std::filesystem::remove_all(dst);
@@ -1697,8 +1742,8 @@ TEST_SUITE("cli")
 
     TEST_CASE("cli: restore rejects missing manifest")
     {
-        std::string snap = "/tmp/logosdb_test_restore_bad";
-        std::string dst = "/tmp/logosdb_test_restore_dst";
+        std::string snap = tmp_path("logosdb_test_restore_bad");
+        std::string dst = tmp_path("logosdb_test_restore_dst");
         std::filesystem::remove_all(snap);
         std::filesystem::remove_all(dst);
         std::filesystem::create_directories(snap);
@@ -1709,8 +1754,8 @@ TEST_SUITE("cli")
 
     TEST_CASE("cli: stats and compact")
     {
-        std::string src = "/tmp/logosdb_test_cli_stats_src";
-        std::string dst = "/tmp/logosdb_test_cli_stats_dst";
+        std::string src = tmp_path("logosdb_test_cli_stats_src");
+        std::string dst = tmp_path("logosdb_test_cli_stats_dst");
         std::filesystem::remove_all(src);
         std::filesystem::remove_all(dst);
 
@@ -1755,7 +1800,7 @@ TEST_SUITE("storage")
 {
     TEST_CASE("storage: float16 basic")
     {
-        std::string path = "/tmp/logosdb_test_float16";
+        std::string path = tmp_path("logosdb_test_float16");
         std::filesystem::remove_all(path);
 
         int dim = 64;
@@ -1790,7 +1835,7 @@ TEST_SUITE("storage")
 
     TEST_CASE("storage: int8 basic")
     {
-        std::string path = "/tmp/logosdb_test_int8";
+        std::string path = tmp_path("logosdb_test_int8");
         std::filesystem::remove_all(path);
 
         int dim = 64;
@@ -1825,7 +1870,7 @@ TEST_SUITE("storage")
 
     TEST_CASE("storage: dtype persistence")
     {
-        std::string path = "/tmp/logosdb_test_dtype_persist";
+        std::string path = tmp_path("logosdb_test_dtype_persist");
         std::filesystem::remove_all(path);
 
         int dim = 32;
@@ -1850,7 +1895,7 @@ TEST_SUITE("storage")
 
     TEST_CASE("storage: pointers stable across appends")
     {
-        std::string path = "/tmp/logosdb_test_stable_pointers";
+        std::string path = tmp_path("logosdb_test_stable_pointers");
         std::filesystem::remove_all(path);
 
         int dim = 32;
@@ -2035,7 +2080,7 @@ TEST_SUITE("scoring")
 {
     TEST_CASE("scoring: self-similarity is ~1.0")
     {
-        std::string path = "/tmp/logosdb_test_selfscore";
+        std::string path = tmp_path("logosdb_test_selfscore");
         std::filesystem::remove_all(path);
 
         int dim = 64;
