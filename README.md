@@ -802,6 +802,20 @@ From a VectorDB Bench tree with the LogosDB client installed (`pip install -e '.
 
 Use a fresh `--uri` directory per run. Set `OPENAI_API_KEY` (or the embedding provider your case expects) before starting.
 
+## Results — `glove-25-angular` (qdrant/vector-db-benchmark)
+
+Standard [qdrant/vector-db-benchmark](https://github.com/qdrant/vector-db-benchmark) harness, **1.18M × 25** vectors, **cosine** distance (angular). Serial search.
+
+| Metric | Value |
+|--------|-------|
+| Upload time | 345 s |
+| Mean precision@10 | 0.939 |
+| RPS | 9,401 |
+| Mean latency | 0.092 ms |
+| p99 latency | 0.146 ms |
+
+Source: [qdrant/vector-db-benchmark](https://github.com/qdrant/vector-db-benchmark).
+
 ## Benchmark vs ChromaDB
 
 ```bash
