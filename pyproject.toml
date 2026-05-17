@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "logosdb"
-version = "0.12.0"
+version = "1.0.0"
 description = "Fast semantic vector database (HNSW + mmap) with Python bindings"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -12,7 +12,7 @@ authors = [{ name = "Jose", email = "jose-compu@users.noreply.github.com" }]
 requires-python = ">=3.9"
 keywords = ["vector-database", "hnsw", "embeddings", "semantic-search", "nearest-neighbor"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",
