@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         build_type: [Debug, Release]
 
     steps:
@@ -37,6 +37,14 @@ jobs:
         run: |
           brew update
           brew install cmake ninja
+
+      - name: Install build tools (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Ninja (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja --no-progress -y
 
       - name: Report toolchain versions
         run: |
@@ -58,28 +66,54 @@ jobs:
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel
 
-      - name: List built targets
+      - name: List built targets (POSIX)
+        if: runner.os != 'Windows'
         run: ls -la build
+
+      - name: List built targets (Windows)
+        if: runner.os == 'Windows'
+        run: dir build
 
       - name: Run tests (CTest)
         working-directory: build
         run: ctest --output-on-failure --build-config ${{ matrix.build_type }}
 
-      - name: Run tests (verbose)
+      - name: Run tests (verbose, POSIX)
+        if: runner.os != 'Windows'
         working-directory: build
         run: ./logosdb-test --test-suite-exclude=stress
 
-      - name: List test suites
+      - name: Run tests (verbose, Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: .\logosdb-test.exe --test-suite-exclude=stress
+
+      - name: List test suites (POSIX)
+        if: runner.os != 'Windows'
         working-directory: build
         run: ./logosdb-test --list-test-suites
 
-      - name: Smoke-test CLI
+      - name: List test suites (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: .\logosdb-test.exe --list-test-suites
+
+      - name: Smoke-test CLI (POSIX)
+        if: runner.os != 'Windows'
         working-directory: build
         run: |
           rm -rf /tmp/ci-smoke-db
           ./logosdb-cli info /tmp/ci-smoke-db --dim 16
 
-  # libFuzzer smoke (short run)
+      - name: Smoke-test CLI (Windows)
+        if: runner.os == 'Windows'
+        working-directory: build
+        run: |
+          $smoke = "$env:RUNNER_TEMP\ci-smoke-db"
+          if (Test-Path $smoke) { Remove-Item -Recurse -Force $smoke }
+          .\logosdb-cli.exe info $smoke --dim 16
+
+  # libFuzzer smoke (short run) — Linux + Clang only
   fuzz-smoke-jsonl:
     name: Fuzz smoke (JSONL parse harness)
     runs-on: ubuntu-latest

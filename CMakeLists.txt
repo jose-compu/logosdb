@@ -1,8 +1,20 @@
 cmake_minimum_required(VERSION 3.15)
 project(logosdb VERSION 0.9.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# MSVC-specific compile flags
+if(MSVC)
+    add_compile_options(
+        /utf-8        # Source and execution charset: UTF-8
+        /EHsc         # C++ exception handling
+        /W3           # Warning level 3
+        /wd4068       # Suppress unknown pragma warnings (for clang pragmas in vendored headers)
+    )
+    # Suppress deprecation warnings for POSIX-named functions (_open, _write, etc.)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
+endif()
 
 option(LOGOSDB_BUILD_TOOLS  "Build CLI and benchmark tools" ON)
 option(LOGOSDB_BUILD_TESTS  "Build unit tests"              ON)
@@ -43,6 +55,11 @@ endif()
 if(LOGOSDB_BUILD_TOOLS)
     add_executable(logosdb-cli tools/logosdb-cli.cpp)
     target_link_libraries(logosdb-cli PRIVATE logosdb)
+    # MSVC's format-string checker cannot parse "%" PRIu64 macro concatenation
+    # and emits false-positive C4474/C4477.  Suppress only for this target.
+    if(MSVC)
+        target_compile_options(logosdb-cli PRIVATE /wd4474 /wd4477)
+    endif()
 
     add_executable(logosdb-bench tools/logosdb-bench.cpp)
     target_link_libraries(logosdb-bench PRIVATE logosdb)
@@ -67,6 +84,11 @@ if(LOGOSDB_BUILD_FUZZ)
         message(
             WARNING
                 "LOGOSDB_BUILD_FUZZ skipped: Apple Clang does not ship libFuzzer here. Use Linux + Clang (see CI)."
+        )
+    elseif(WIN32)
+        message(
+            WARNING
+                "LOGOSDB_BUILD_FUZZ skipped: libFuzzer is not available on Windows. Use Linux + Clang (see CI)."
         )
     else()
         add_executable(logosdb-fuzz-jsonl tools/fuzz_jsonl_metadata.cpp)

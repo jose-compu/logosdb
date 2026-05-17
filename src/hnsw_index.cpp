@@ -1,6 +1,14 @@
 #include "hnsw_index.h"
 
+// Suppress MSVC narrowing/conversion warnings from vendored hnswlib headers
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4244 4267)
+#endif
 #include <hnswlib/hnswlib/hnswlib.h>
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 #include <cstring>
 #include <fstream>
