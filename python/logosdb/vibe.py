@@ -35,12 +35,33 @@ CLI entry point (``logosdb-vibe``)::
 from __future__ import annotations
 
 import os
+import os.path
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from .mistral import MistralVectorStore
+
+
+def _resolve_confined(raw_path: str, index_root: Optional[Path] = None) -> Path:
+    """Resolve *raw_path* to a real absolute path.
+
+    If *index_root* is set, the resolved path must be inside it (prevents
+    symlink escapes and path-traversal strings like ``../../sensitive``).
+    Raises ``ValueError`` on confinement violation.
+    """
+    target = Path(raw_path).expanduser().resolve()
+    if index_root is not None:
+        root = index_root.resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            raise ValueError(
+                f"Path '{target}' is outside the allowed index root '{root}'. "
+                "Set index_root=None to disable confinement (caller is responsible)."
+            )
+    return target
 
 
 # ---------------------------------------------------------------------------
@@ -109,9 +130,11 @@ class VibeMemory:
         chunk_size: int = 800,
         overlap_chars: int = 100,
         dim: int = 1024,
+        index_root: Optional[str] = None,
     ) -> None:
         self._root = Path(uri)
         self._root.mkdir(parents=True, exist_ok=True)
+        self._index_root: Optional[Path] = Path(index_root).resolve() if index_root else None
         self._api_key = api_key or os.getenv("MISTRAL_API_KEY", "")
         if not self._api_key:
             raise ValueError(
@@ -168,19 +191,32 @@ class VibeMemory:
         """
         self._validate_namespace(namespace)
         store = self._store(namespace)
-        target = Path(path).expanduser()
+        target = _resolve_confined(path, self._index_root)
         cs = chunk_size or self._chunk_size
         exts = set(extensions) if extensions else _DEFAULT_EXTENSIONS
         ts = datetime.now(timezone.utc).isoformat()
 
         files: List[Path] = []
         if target.is_file():
-            files = [target]
+            if not target.is_symlink():
+                files = [target]
         elif target.is_dir():
-            files = [
-                p for p in target.rglob("*")
-                if p.is_file() and p.suffix in exts
-            ]
+            # os.walk with followlinks=False avoids traversing directory symlinks
+            # that could point outside the intended root.
+            for dirpath, _, filenames in os.walk(str(target), followlinks=False):
+                for fname in filenames:
+                    raw = Path(dirpath) / fname
+                    if raw.is_symlink():
+                        continue
+                    if raw.suffix not in exts:
+                        continue
+                    real = raw.resolve()
+                    if self._index_root is not None:
+                        try:
+                            real.relative_to(self._index_root.resolve())
+                        except ValueError:
+                            continue
+                    files.append(real)
         else:
             raise FileNotFoundError(f"Path not found: {target}")
 
