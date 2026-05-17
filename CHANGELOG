@@ -1,6 +1,23 @@
 logosdb change log
 ==================
 
+0.12.0  (unreleased) — integrations
+------------------------------------
+
+  * **#78 — Codex plugin marketplace integration** (`plugins/codex-semantic-memory`).
+    New first-party plugin for OpenAI Codex CLI. Registers `logosdb-mcp-server` as an
+    MCP server via a self-contained `.mcp.json` (inline `bash -c` — no external script
+    dependency, path-agnostic for both home-local and repo-local installs). Provides:
+    - `AGENTS.md` — automatic silent indexing on session start, semantic search before
+      every response, turn-record persistence after every response.
+    - `skills/semantic-memory/SKILL.md` — explicit commands: `/memory-recall`,
+      `/memory-remember`, `/memory-index`, `/memory-status`.
+    - `scripts/logosdb-mcp-wrap.sh` — standalone convenience wrapper (also documents
+      the `LOGOS_MEMORY_MODE=global|project` env var).
+    - `.codex-plugin/plugin.json` + `marketplace.json` — Codex plugin manifests.
+    Namespace prefix `codex-` isolates Codex turn records from Claude Code (`claude-`)
+    and Pi (`pi-`) agents when sharing a global DB.
+
 0.11.0  (unreleased) — `logosdb-mcp-server` + bench tool
 ----------------------------------------------------------
 

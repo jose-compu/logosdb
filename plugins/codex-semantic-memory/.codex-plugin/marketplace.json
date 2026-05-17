@@ -1,0 +1,21 @@
+{
+  "name": "codex-semantic-memory",
+  "interface": {
+    "displayName": "Semantic Memory (LogosDB)",
+    "description": "Local-first semantic memory for Codex. Auto-indexes your project, recalls relevant context from past sessions, and stores turn records — fully on-device, zero cloud.",
+    "icon": "🧠",
+    "version": "0.1.0",
+    "author": "Jose Ignacio",
+    "homepage": "https://github.com/jose-compu/codex-semantic-memory",
+    "license": "MIT"
+  },
+  "source": {
+    "source": "local",
+    "path": "."
+  },
+  "policy": {
+    "installation": "AVAILABLE",
+    "authentication": "NONE"
+  },
+  "category": "Productivity"
+}

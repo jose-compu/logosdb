@@ -1,6 +1,6 @@
 {
   "name": "logosdb",
-  "version": "0.10.1",
+  "version": "0.12.0",
   "description": "Fast semantic vector database (HNSW + mmap) - Node.js bindings",
   "main": "lib/index.js",
   "types": "types/index.d.ts",

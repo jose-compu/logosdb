@@ -1,0 +1,22 @@
+{
+  "name": "codex-semantic-memory",
+  "version": "0.1.0",
+  "description": "Local-first semantic memory for Codex powered by LogosDB. Auto-indexes the project, injects relevant past context silently before every response, and persists turn records across sessions — no cloud, no API keys.",
+  "author": "Jose Ignacio",
+  "license": "MIT",
+  "homepage": "https://github.com/jose-compu/codex-semantic-memory",
+  "keywords": [
+    "memory",
+    "semantic-search",
+    "logosdb",
+    "mcp",
+    "local-first",
+    "vector-search",
+    "rag",
+    "context"
+  ],
+  "mcpConfig": "../.mcp.json",
+  "skills": [
+    "../skills/semantic-memory/SKILL.md"
+  ]
+}
