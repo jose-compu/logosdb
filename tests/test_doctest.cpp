@@ -1091,7 +1091,11 @@ TEST_SUITE("batch")
         std::string path = tmp_path("logosdb_test_batch_chunked");
         std::filesystem::remove_all(path);
         // Force several small chunks to exercise the chunking path.
+#ifdef _WIN32
+        _putenv_s("LOGOSDB_BATCH_CHUNK_SIZE", "64");
+#else
         setenv("LOGOSDB_BATCH_CHUNK_SIZE", "64", 1);
+#endif
         {
             logosdb::DB db(path, {.dim = 16});
             const int n = 257;  // > 4 chunks of 64
@@ -1124,7 +1128,11 @@ TEST_SUITE("batch")
             CHECK(hits[0].id == 200u);
             CHECK(hits[0].text == "row_200");
         }
+#ifdef _WIN32
+        _putenv_s("LOGOSDB_BATCH_CHUNK_SIZE", "");
+#else
         unsetenv("LOGOSDB_BATCH_CHUNK_SIZE");
+#endif
         std::filesystem::remove_all(path);
     }
 
