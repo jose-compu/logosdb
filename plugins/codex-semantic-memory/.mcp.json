@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "logosdb": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "MODE=${LOGOS_MEMORY_MODE:-global}; if [ \"$MODE\" = project ]; then export LOGOSDB_PATH=$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.logosdb; else export LOGOSDB_PATH=$HOME/.codex/.logosdb; fi; command -v logosdb-mcp-server >/dev/null 2>&1 && exec logosdb-mcp-server || exec npx --yes logosdb-mcp-server"
+      ]
+    }
+  }
+}
