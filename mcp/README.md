@@ -319,7 +319,8 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 | `OLLAMA_EMBEDDING_DIM` | `768` | Must match the model’s embedding size |
 | `OPENAI_API_KEY` | — | Required when `EMBEDDING_PROVIDER=openai` |
 | `VOYAGE_API_KEY` | — | Required when `EMBEDDING_PROVIDER=voyage` |
-| `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk when indexing files |
+| `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk for `"legacy"` and `"section"` modes (ignored in `"line"` mode) |
+| `LOGOSDB_CHUNK_MODE` | `auto` | Default chunking strategy: `auto` \| `line` \| `section` \| `legacy`. See [Chunking strategies](#chunking-strategies). |
 | `LOGOSDB_RESPECT_GITIGNORE` | `1` (auto-on inside a Git working tree) | `0` / `false` / `no` / `off` disables `.gitignore`-aware filtering globally (0.9.1+) |
 
 **Important:** Use one embedding backend consistently for a given namespace on disk. Mixing dimensions or models on the same `LOGOSDB_PATH` namespace will produce invalid search results.
@@ -329,13 +330,55 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 | Tool | Inputs | Description |
 |---|---|---|
 | `logosdb_index` | `text`, `namespace`, `metadata?` | Embed and store a text snippet |
-| `logosdb_index_file` | `path`, `namespace`, `chunk_size?`, `incremental?`, `respect_gitignore?` | Chunk, embed, and store a file or tree; **`incremental: true`** skips unchanged files, replaces chunks for changed files, and prunes removed files under a directory (state in `LOGOSDB_PATH/_logosdb_mcp_manifests/`). When the path lives inside a Git working tree, `.gitignore` rules are applied by default (override per call with `respect_gitignore: false` or globally with `LOGOSDB_RESPECT_GITIGNORE=0`; see [`.gitignore`-aware walking](#gitignore-aware-walking-091)) |
+| `logosdb_index_file` | `path`, `namespace`, `chunk_size?`, `chunking?`, `incremental?`, `respect_gitignore?` | Chunk, embed, and store a file or tree; **`incremental: true`** skips unchanged files, replaces chunks for changed files, and prunes removed files under a directory (state in `LOGOSDB_PATH/_logosdb_mcp_manifests/`). When the path lives inside a Git working tree, `.gitignore` rules are applied by default (override per call with `respect_gitignore: false` or globally with `LOGOSDB_RESPECT_GITIGNORE=0`; see [`.gitignore`-aware walking](#gitignore-aware-walking-091)). `chunking` selects the splitting strategy — see [Chunking strategies](#chunking-strategies). |
 | `logosdb_search` | `query`, `namespace`, `top_k?`, `ts_from?`, `ts_to?`, `candidate_k?` | Semantic search; optional inclusive ISO 8601 time window (maps to `search_ts_range`) |
 | `logosdb_list` | — | List all namespaces |
 | `logosdb_info` | `namespace` | Stats: count, live count, dimension |
 | `logosdb_delete` | `namespace`, `id?` **or** `query?`, `search_top_k?`, `match_rank?` | Delete by row id, or embed `query` and delete the `match_rank` hit (default 0) among `search_top_k` neighbors |
 
 Timestamp-filtered search matches the core library: when `ts_from` and/or `ts_to` are set, results are drawn from that window; `candidate_k` defaults to `10 × top_k` if omitted.
+
+## Chunking strategies
+
+`logosdb_index_file` splits each file into chunks before embedding. The strategy is chosen automatically per file type (`"auto"`, the default) or can be forced per-call or globally.
+
+| Mode | Files (auto) | How it splits | When to use |
+|------|-------------|---------------|-------------|
+| `auto` | — | Delegates to `line`, `section`, or `legacy` based on extension | Default — best choice for mixed repositories |
+| `line` | `.ts` `.tsx` `.js` `.jsx` `.mjs` `.cjs` `.py` `.go` `.rs` `.java` `.c` `.cpp` `.h` `.cs` `.rb` `.php` `.swift` `.kt` `.scala` `.sh` `.sql` | Sliding **~50-line windows**, **~10-line overlap**. Prefers blank-line boundaries at window edges to avoid cutting mid-function. | Code; improves recall on function/class-level queries |
+| `section` | `.md` `.rst` | **Heading-aware**: splits on ATX (`# … ######`) and Setext (`=== / ---`) boundaries. Small consecutive sections are merged up to `chunk_size`. Large sections are sub-split with the paragraph chunker. | Documentation, READMEs, RST manuals |
+| `legacy` | `.json` `.yaml` `.toml` `.txt` `.cfg` `.ini` `.graphql` `.proto` and anything else | **Paragraph / character merge**: splits on blank lines, merges short paragraphs up to `chunk_size` (default 800 chars), carries `overlapChars` (100 chars) into the next chunk. Long single-paragraph blocks are sub-split by character window. | Config files, plain text, and **compatibility with namespaces indexed before the smart chunker was introduced** |
+
+### Selecting a strategy
+
+**Per call** — pass `chunking` to `logosdb_index_file`:
+
+```
+logosdb_index_file(path="src/", namespace="code", chunking="line")
+logosdb_index_file(path="docs/", namespace="docs", chunking="section")
+logosdb_index_file(path="configs/", namespace="cfg", chunking="legacy")
+```
+
+**Globally** — set `LOGOSDB_CHUNK_MODE` in the MCP server env:
+
+```json
+"env": {
+  "LOGOSDB_PATH": "./.logosdb",
+  "LOGOSDB_CHUNK_MODE": "legacy"
+}
+```
+
+Valid values: `auto` (default), `line`, `section`, `legacy`.
+
+### Using `"legacy"` mode for compatibility
+
+If you have an **existing namespace** that was indexed before the smart chunker was introduced (pre-1.0.0 or with `LOGOSDB_CHUNK_MODE` unset on an older server), its chunks were produced by the legacy paragraph/char chunker. Continuing to use `"legacy"` for that namespace keeps results consistent — or reindex it fresh with `incremental: false` to switch strategies.
+
+The `chunking` setting is part of the **incremental cache fingerprint**: changing the mode on an existing incremental namespace causes all previously-indexed files to be re-chunked automatically on the next run.
+
+### `chunk_size` and overlap
+
+`chunk_size` controls the target character count for the `"legacy"` and `"section"` modes (default `800`; env `LOGOSDB_CHUNK_SIZE`). It is ignored in `"line"` mode (which uses `linesPerChunk` / `lineOverlap`, not exposed as tool parameters but configurable programmatically via the `ChunkOptions` API).
 
 ## Development
 

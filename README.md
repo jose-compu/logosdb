@@ -640,7 +640,8 @@ The **logosdb** MCP server is configured. Data lives on disk under `LOGOSDB_PATH
 | `OLLAMA_*` | — | See `mcp/README.md` when using Ollama |
 | `OPENAI_API_KEY` | — | Required when `EMBEDDING_PROVIDER=openai` |
 | `VOYAGE_API_KEY` | — | Required when `EMBEDDING_PROVIDER=voyage` |
-| `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk for file indexing |
+| `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk for `"legacy"` and `"section"` chunking modes |
+| `LOGOSDB_CHUNK_MODE` | `auto` | Chunking strategy: `auto` (per-extension), `line` (code), `section` (markdown/rst), `legacy` (original paragraph/char). See [`mcp/README.md` — Chunking strategies](mcp/README.md#chunking-strategies). |
 
 Voyage AI (`voyage-3`, dim=1024) is Anthropic's recommended cloud embedding model:
 

@@ -31,7 +31,7 @@ import * as path from 'path';
 
 import { resolveConfig, embed, embedBatch, type EmbeddingConfig } from './embeddings.js';
 import { NamespaceStore } from './store.js';
-import { chunk } from './chunker.js';
+import { chunk, type ChunkMode } from './chunker.js';
 import {
   clampChunkSize,
   clampTopK,
@@ -66,6 +66,13 @@ import { loadQuotaConfig, checkVectorQuota, checkNsQuota } from './quota.js';
 
 const LOGOSDB_PATH = process.env.LOGOSDB_PATH ?? path.join(process.cwd(), '.logosdb');
 const CHUNK_SIZE = clampChunkSize(parseInt(process.env.LOGOSDB_CHUNK_SIZE ?? '800', 10), 800);
+
+/** Global default chunk mode; overridable per-call via the `chunking` parameter. */
+const CHUNK_MODE_DEFAULT: ChunkMode = (() => {
+  const raw = (process.env.LOGOSDB_CHUNK_MODE ?? 'auto').trim().toLowerCase();
+  if (raw === 'line' || raw === 'section' || raw === 'legacy') return raw as ChunkMode;
+  return 'auto';
+})();
 
 let embCfg: EmbeddingConfig;
 try {
@@ -124,7 +131,8 @@ const TOOLS: Tool[] = [
       'When given a directory it walks recursively, skipping hidden paths and node_modules. ' +
       'When a Git working tree is detected the walker honours `.gitignore` (root + nested + `.git/info/exclude` + global excludes); disable with `respect_gitignore=false` or `LOGOSDB_RESPECT_GITIGNORE=0`. ' +
       'Supports any UTF-8 text file (source code, markdown, plain text). ' +
-      'With incremental=true, skips files unchanged since last index (mtime+size+chunk_size), re-indexes modified files after deleting their previous chunk rows, and when indexing a directory removes DB rows for files that disappeared from disk.',
+      'With incremental=true, skips files unchanged since last index (mtime+size+chunk_size+chunking), re-indexes modified files after deleting their previous chunk rows, and when indexing a directory removes DB rows for files that disappeared from disk. ' +
+      'Chunking strategy is selected automatically per file type ("auto"): code → line-window (~50 lines, 10-line overlap), markdown/rst → section-aware, everything else → paragraph/char. Override with `chunking`.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -135,7 +143,15 @@ const TOOLS: Tool[] = [
         namespace: { type: 'string', description: 'Collection name' },
         chunk_size: {
           type: 'number',
-          description: `Target characters per chunk (default: ${CHUNK_SIZE})`,
+          description: `Target characters per chunk for "legacy" and "section" modes (default: ${CHUNK_SIZE}). Ignored in "line" mode.`,
+        },
+        chunking: {
+          type: 'string',
+          enum: ['auto', 'line', 'section', 'legacy'],
+          description:
+            'Chunking strategy. "auto" (default) picks per file type: code → "line" (sliding ~50-line windows, 10-line overlap); .md/.rst → "section" (heading-aware); everything else → "legacy" (paragraph/char). ' +
+            '"line": force line-window for all files. "section": force heading-split for all files. "legacy": original 800-char paragraph merge. ' +
+            'Env override: LOGOSDB_CHUNK_MODE.',
         },
         incremental: {
           type: 'boolean',
@@ -307,6 +323,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           typeof args.chunk_size === 'number' ? args.chunk_size : CHUNK_SIZE,
           CHUNK_SIZE,
         );
+        const chunkingRaw = typeof args.chunking === 'string' ? args.chunking.trim().toLowerCase() : null;
+        const chunkMode: ChunkMode =
+          chunkingRaw === 'line' || chunkingRaw === 'section' || chunkingRaw === 'legacy'
+            ? (chunkingRaw as ChunkMode)
+            : CHUNK_MODE_DEFAULT;
         const incremental = Boolean(args.incremental);
         const respectGitignore =
           args.respect_gitignore === undefined
@@ -382,7 +403,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             prev &&
             prev.mtimeMs === mtimeMs &&
             prev.size === fileSize &&
-            prev.chunkSize === chunkSize
+            prev.chunkSize === chunkSize &&
+            (prev.chunkMode ?? 'auto') === chunkMode
           ) {
             skippedFiles++;
             continue;
@@ -407,7 +429,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             continue;
           }
 
-          const fileChunks = chunk(content, chunkSize);
+          const fileChunks = chunk(content, {
+            targetChars: chunkSize,
+            mode: chunkMode,
+            filePath,
+          });
           const texts = fileChunks.map((c) => c.text);
 
           const allVecs: number[][] = [];
@@ -445,7 +471,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           indexedFiles++;
 
           if (incremental) {
-            manifest.files[filePath] = { mtimeMs, size: fileSize, chunkSize, ids };
+            manifest.files[filePath] = { mtimeMs, size: fileSize, chunkSize, chunkMode, ids };
           }
         }
 
@@ -459,6 +485,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           namespace,
           path: absPath,
           incremental,
+          chunking: chunkMode,
           respect_gitignore: respectGitignore,
           skipped_files: incremental ? skippedFiles : 0,
           indexed_files: indexedFiles,

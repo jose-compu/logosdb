@@ -12,6 +12,8 @@ export type FileIndexEntry = {
   mtimeMs: number;
   size: number;
   chunkSize: number;
+  /** Chunking strategy used when this file was indexed ("auto" | "line" | "section" | "legacy"). */
+  chunkMode?: string;
   ids: number[];
 };
 
@@ -38,6 +40,7 @@ function sanitizeEntry(raw: unknown): FileIndexEntry | null {
     typeof o.chunkSize === 'number' && Number.isFinite(o.chunkSize) && o.chunkSize > 0
       ? o.chunkSize
       : NaN;
+  const chunkMode = typeof o.chunkMode === 'string' ? o.chunkMode : undefined;
   const idsRaw = o.ids;
   const ids: number[] = [];
   if (Array.isArray(idsRaw)) {
@@ -48,7 +51,11 @@ function sanitizeEntry(raw: unknown): FileIndexEntry | null {
   }
   if (!Number.isFinite(mtimeMs) || !Number.isFinite(size) || !Number.isFinite(chunkSize))
     return null;
-  return { mtimeMs, size, chunkSize, ids };
+  // Only include chunkMode when present — omitting it keeps backward-compatible
+  // deep-equality for entries written before the field was introduced.
+  return chunkMode !== undefined
+    ? { mtimeMs, size, chunkSize, chunkMode, ids }
+    : { mtimeMs, size, chunkSize, ids };
 }
 
 export function loadManifest(filePath: string): FileIndexManifest {
