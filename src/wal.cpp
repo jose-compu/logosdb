@@ -16,6 +16,7 @@
 
 #ifdef _WIN32
 #include <io.h>
+#include <share.h>
 #endif
 
 namespace logosdb
@@ -37,11 +38,14 @@ bool WriteAheadLog::open(const std::string& path, std::string& err)
     path_ = path;
 
 #ifdef _WIN32
-    int flags = O_RDWR | O_CREAT | O_BINARY;
+    {
+        int fd = -1;
+        _sopen_s(&fd, path.c_str(), O_RDWR | O_CREAT | O_BINARY, _SH_DENYNO, _S_IREAD | _S_IWRITE);
+        fd_ = fd;
+    }
 #else
-    int flags = O_RDWR | O_CREAT;
+    fd_ = ::open(path.c_str(), O_RDWR | O_CREAT, 0644);
 #endif
-    fd_ = ::open(path.c_str(), flags, 0644);
     if (fd_ < 0)
     {
         err = std::string("wal open: ") + strerror(errno);

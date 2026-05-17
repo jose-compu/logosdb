@@ -89,7 +89,7 @@ bool mmap_open(const std::string& path, size_t& out_size, MappedFile& out_map, s
 
     HANDLE fh = CreateFileA(path.c_str(),
                             GENERIC_READ,
-                            FILE_SHARE_READ,
+                            FILE_SHARE_READ | FILE_SHARE_DELETE,
                             nullptr,
                             OPEN_EXISTING,
                             FILE_ATTRIBUTE_NORMAL,
@@ -156,7 +156,7 @@ bool mmap_reserve(const std::string& path,
 
     HANDLE fh = CreateFileA(path.c_str(),
                             GENERIC_READ,
-                            FILE_SHARE_READ | FILE_SHARE_WRITE,
+                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                             nullptr,
                             OPEN_EXISTING,
                             FILE_ATTRIBUTE_NORMAL,
