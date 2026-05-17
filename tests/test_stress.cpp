@@ -205,7 +205,7 @@ TEST_SUITE("stress")
         for (int t = 0; t < n_threads; ++t)
         {
             workers.emplace_back(
-                [db, t, &fail_count]()
+                [db, t, &fail_count, per_thread]()
                 {
                     for (int i = 0; i < per_thread; ++i)
                     {
@@ -264,7 +264,7 @@ TEST_SUITE("stress")
         for (int t = 0; t < n_threads; ++t)
         {
             workers.emplace_back(
-                [db, t, &fail_count]()
+                [db, t, &fail_count, queries_per_thread]()
                 {
                     for (int q = 0; q < queries_per_thread; ++q)
                     {
@@ -325,7 +325,7 @@ TEST_SUITE("stress")
         for (int t = 0; t < n_putters; ++t)
         {
             workers.emplace_back(
-                [db, t, &fail_count]()
+                [db, t, &fail_count, put_iters]()
                 {
                     for (int i = 0; i < put_iters; ++i)
                     {
@@ -344,7 +344,7 @@ TEST_SUITE("stress")
         for (int t = 0; t < n_searchers; ++t)
         {
             workers.emplace_back(
-                [db, t, &fail_count]()
+                [db, t, &fail_count, search_iters]()
                 {
                     for (int q = 0; q < search_iters; ++q)
                     {
