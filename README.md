@@ -80,7 +80,7 @@ Past releases are summarized in the [CHANGELOG](CHANGELOG) and the [closed miles
   * [#86](https://github.com/jose-compu/logosdb/issues/86) — Multi-tenant namespaces: quota and isolation within one DB root
   * [#89](https://github.com/jose-compu/logosdb/issues/89) — Recall benchmarking utility for HNSW tuning
 
-### [0.12.0](https://github.com/jose-compu/logosdb/milestone/11) — minor — integrations
+### **SHIPPED** [0.12.0](https://github.com/jose-compu/logosdb/milestone/11) — minor — integrations
 
   * [#78](https://github.com/jose-compu/logosdb/issues/78) — Feature: Codex plugin marketplace integration for LogosDB
 
