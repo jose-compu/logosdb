@@ -32,67 +32,82 @@ bool file_exists(const std::string& path)
 }
 
 #ifdef _WIN32
-// Windows memory mapping implementation
+// Windows memory mapping implementation.
+//
+// Design notes:
+//  - CreateFileMapping returns NULL on failure (not INVALID_HANDLE_VALUE).
+//  - PAGE_READONLY mappings cannot exceed the current file size, so the Linux
+//    MAP_NORESERVE over-reservation trick is not available.  Instead we simply
+//    map the current file size and re-create the mapping object whenever the
+//    file grows (mmap_commit).  The file_handle is kept open across commits so
+//    that GetFileSizeEx always returns the live size written by the POSIX fd.
+
+// Helper: create a mapping + view for the current size of an already-open file.
+// Returns true on success; map_handle / data / size are filled in out_map.
+// Caller must pre-set out_map.file_handle before calling.
+static bool win_map_current(MappedFile& out_map, std::string& err)
+{
+    LARGE_INTEGER fs;
+    if (!GetFileSizeEx(out_map.file_handle, &fs))
+    {
+        err = "GetFileSizeEx failed: " + std::to_string(GetLastError());
+        return false;
+    }
+
+    if (fs.QuadPart == 0)
+    {
+        out_map.map_handle = INVALID_HANDLE_VALUE;
+        out_map.data = nullptr;
+        out_map.size = 0;
+        return true;
+    }
+
+    HANDLE mh = CreateFileMapping(out_map.file_handle, nullptr, PAGE_READONLY, 0, 0, nullptr);
+    if (mh == NULL)
+    {
+        err = "CreateFileMapping failed: " + std::to_string(GetLastError());
+        return false;
+    }
+
+    void* data = MapViewOfFile(mh, FILE_MAP_READ, 0, 0, 0);
+    if (!data)
+    {
+        err = "MapViewOfFile failed: " + std::to_string(GetLastError());
+        CloseHandle(mh);
+        return false;
+    }
+
+    out_map.map_handle = mh;
+    out_map.data = static_cast<uint8_t*>(data);
+    out_map.size = static_cast<size_t>(fs.QuadPart);
+    return true;
+}
 
 bool mmap_open(const std::string& path, size_t& out_size, MappedFile& out_map, std::string& err)
 {
-    out_map = {};  // Clear
+    out_map = {};
 
-    HANDLE file_handle = CreateFileA(path.c_str(),
-                                     GENERIC_READ,
-                                     FILE_SHARE_READ,
-                                     nullptr,
-                                     OPEN_EXISTING,
-                                     FILE_ATTRIBUTE_NORMAL,
-                                     nullptr);
-
-    if (file_handle == INVALID_HANDLE_VALUE)
+    HANDLE fh = CreateFileA(path.c_str(),
+                            GENERIC_READ,
+                            FILE_SHARE_READ,
+                            nullptr,
+                            OPEN_EXISTING,
+                            FILE_ATTRIBUTE_NORMAL,
+                            nullptr);
+    if (fh == INVALID_HANDLE_VALUE)
     {
         err = "CreateFileA failed: " + std::to_string(GetLastError());
         return false;
     }
 
-    LARGE_INTEGER file_size;
-    if (!GetFileSizeEx(file_handle, &file_size))
+    out_map.file_handle = fh;
+    if (!win_map_current(out_map, err))
     {
-        err = "GetFileSizeEx failed: " + std::to_string(GetLastError());
-        CloseHandle(file_handle);
+        CloseHandle(fh);
+        out_map = {};
         return false;
     }
 
-    if (file_size.QuadPart == 0)
-    {
-        // Empty file - no mapping needed
-        out_map.file_handle = file_handle;
-        out_map.data = nullptr;
-        out_map.size = 0;
-        out_size = 0;
-        return true;
-    }
-
-    HANDLE map_handle = CreateFileMapping(file_handle, nullptr, PAGE_READONLY, 0, 0, nullptr);
-
-    if (map_handle == INVALID_HANDLE_VALUE)
-    {
-        err = "CreateFileMapping failed: " + std::to_string(GetLastError());
-        CloseHandle(file_handle);
-        return false;
-    }
-
-    void* data = MapViewOfFile(map_handle, FILE_MAP_READ, 0, 0, 0);
-
-    if (!data)
-    {
-        err = "MapViewOfFile failed: " + std::to_string(GetLastError());
-        CloseHandle(map_handle);
-        CloseHandle(file_handle);
-        return false;
-    }
-
-    out_map.file_handle = file_handle;
-    out_map.map_handle = map_handle;
-    out_map.data = static_cast<uint8_t*>(data);
-    out_map.size = static_cast<size_t>(file_size.QuadPart);
     out_size = out_map.size;
     return true;
 }
@@ -119,117 +134,90 @@ void mmap_close(MappedFile& map)
 
 bool mmap_resize(MappedFile& map, size_t new_size, std::string& err)
 {
-    // On Windows, we need to close and reopen the mapping
-    // This is used when the file grows
+    // On Windows, close and reopen the whole mapping.
+    // (mmap_commit is the preferred path for growth; this is a fallback.)
+    (void)new_size;
     mmap_close(map);
-
-    // For simplicity on Windows, we don't remap here - the caller
-    // should use mmap_open again after closing the file
-    err = "mmap_resize not implemented for Windows - use close/reopen pattern";
+    err = "mmap_resize: use mmap_commit for in-place growth on Windows";
     return false;
 }
 
+// mmap_reserve: open the file keeping it share-writable so that the POSIX fd
+// owned by VectorStorage can append data while the mapping stays open.
+// True VA over-reservation is not supported for read-only mappings on Windows;
+// we simply map the current file contents and re-map on each commit.
 bool mmap_reserve(const std::string& path,
                   size_t reserve_size,
                   MappedFile& out_map,
                   std::string& err)
 {
-    out_map = {};  // Clear
+    out_map = {};
+    (void)reserve_size;  // cannot over-reserve with PAGE_READONLY on Windows
 
-    // First, get the current file size
-    HANDLE file_handle =
-        CreateFileA(path.c_str(),
-                    GENERIC_READ,
-                    FILE_SHARE_READ | FILE_SHARE_WRITE,  // Allow others to write (file growth)
-                    nullptr,
-                    OPEN_EXISTING,
-                    FILE_ATTRIBUTE_NORMAL,
-                    nullptr);
-
-    if (file_handle == INVALID_HANDLE_VALUE)
+    HANDLE fh = CreateFileA(path.c_str(),
+                            GENERIC_READ,
+                            FILE_SHARE_READ | FILE_SHARE_WRITE,
+                            nullptr,
+                            OPEN_EXISTING,
+                            FILE_ATTRIBUTE_NORMAL,
+                            nullptr);
+    if (fh == INVALID_HANDLE_VALUE)
     {
         err = "CreateFileA failed: " + std::to_string(GetLastError());
         return false;
     }
 
-    LARGE_INTEGER file_size;
-    if (!GetFileSizeEx(file_handle, &file_size))
+    out_map.file_handle = fh;
+    if (!win_map_current(out_map, err))
     {
-        err = "GetFileSizeEx failed: " + std::to_string(GetLastError());
-        CloseHandle(file_handle);
+        CloseHandle(fh);
+        out_map = {};
         return false;
     }
-
-    // Create a file mapping that reserves virtual address space
-    // We use a large maximum size for reservation, but only commit what's needed
-    HANDLE map_handle =
-        CreateFileMapping(file_handle,
-                          nullptr,
-                          PAGE_READONLY,
-                          0,
-                          static_cast<DWORD>(reserve_size),  // Maximum size for reservation
-                          nullptr);
-
-    if (map_handle == INVALID_HANDLE_VALUE)
-    {
-        err = "CreateFileMapping failed: " + std::to_string(GetLastError());
-        CloseHandle(file_handle);
-        return false;
-    }
-
-    // Map only the current file size initially
-    void* data = MapViewOfFile(map_handle,
-                               FILE_MAP_READ,
-                               0,
-                               0,
-                               static_cast<size_t>(file_size.QuadPart)  // Initial view size
-    );
-
-    if (!data)
-    {
-        err = "MapViewOfFile failed: " + std::to_string(GetLastError());
-        CloseHandle(map_handle);
-        CloseHandle(file_handle);
-        return false;
-    }
-
-    out_map.file_handle = file_handle;
-    out_map.map_handle = map_handle;
-    out_map.data = static_cast<uint8_t*>(data);
-    out_map.size = static_cast<size_t>(file_size.QuadPart);
     return true;
 }
 
+// mmap_commit: re-create the mapping object so it covers the new (larger) file
+// size.  The file_handle stays open; only map_handle and the view are recycled.
 size_t mmap_commit(MappedFile& map, size_t file_size)
 {
-#ifdef _WIN32
-    // On Windows with file mapping, the view automatically extends
-    // when the file grows (as long as we're within the mapping's max size)
-    // We just need to unmap and remap to the new size
+    if (map.file_handle == INVALID_HANDLE_VALUE)
+        return 0;
+
+    // Release the old view and mapping object.
     if (map.data)
     {
         UnmapViewOfFile(map.data);
+        map.data = nullptr;
+    }
+    if (map.map_handle != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(map.map_handle);
+        map.map_handle = INVALID_HANDLE_VALUE;
     }
 
-    void* data = MapViewOfFile(map.map_handle,
-                               FILE_MAP_READ,
-                               0,
-                               0,
-                               file_size  // New view size
-    );
+    if (file_size == 0)
+    {
+        map.size = 0;
+        return 0;
+    }
 
+    // Create a fresh mapping covering the current (grown) file.
+    HANDLE mh = CreateFileMapping(map.file_handle, nullptr, PAGE_READONLY, 0, 0, nullptr);
+    if (mh == NULL)
+        return map.size;
+
+    void* data = MapViewOfFile(mh, FILE_MAP_READ, 0, 0, file_size);
     if (!data)
     {
-        return map.size;  // Failed, keep old size
+        CloseHandle(mh);
+        return map.size;
     }
 
+    map.map_handle = mh;
     map.data = static_cast<uint8_t*>(data);
     map.size = file_size;
-    return map.size;
-#else
-    (void)map;
     return file_size;
-#endif
 }
 
 #else
