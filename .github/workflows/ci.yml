@@ -66,8 +66,13 @@ jobs:
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel
 
-      - name: List built targets
-        run: ls -la build || dir build
+      - name: List built targets (POSIX)
+        if: runner.os != 'Windows'
+        run: ls -la build
+
+      - name: List built targets (Windows)
+        if: runner.os == 'Windows'
+        run: dir build
 
       - name: Run tests (CTest)
         working-directory: build
