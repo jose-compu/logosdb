@@ -762,6 +762,46 @@ Each "op" above corresponds to a write of a single vector + metadata + HNSW inde
 
 HNSW maintains sub-linear scaling while brute-force grows linearly with database size. At 100K vectors, HNSW is roughly 20x faster.
 
+## VectorDB Bench
+
+[VectorDB Bench](https://github.com/zilliztech/VectorDBBench) is the standard open-source harness for comparing vector databases at realistic scale (load, optimize, serial/concurrent search, recall). LogosDB is integrated as a first-class backend:
+
+| Location | Role |
+|----------|------|
+| `vectordb_bench/backend/clients/logosdb/` | Client: `config.py`, `logosdb.py`, `cli.py` |
+| `vectordb_bench/backend/clients/__init__.py` | `DB.LogosDB` enum + `init_cls` / `config_cls` / `case_config_cls` mappings |
+| `vectordb_bench/cli/vectordbbench.py` | CLI subcommand `logosdb` |
+| `pyproject.toml` | Optional extra `logosdb` (installs the Python bindings used by the client) |
+
+### Results — `Performance1536D50K` (2026-05-17)
+
+OpenAI embeddings, **50K** vectors, **1536** dimensions, **cosine** distance. Serial search only (`--skip-search-concurrent`). Absolute timings depend on hardware; recall/NDCG are the primary cross-database comparators.
+
+| Metric | Value |
+|--------|-------|
+| Load duration | 340.4 s |
+| Insert duration | 339.6 s |
+| Optimize duration | 0.8 s |
+| Serial latency p99 | 4.6 ms |
+| Serial latency p95 | 4.0 ms |
+| Recall@100 | **0.9347** |
+| NDCG | **0.9464** |
+
+Raw JSON: `vectordb_bench/results/LogosDB/result_20260517_*.json` (under your VectorDB Bench checkout).
+
+### Re-run
+
+From a VectorDB Bench tree with the LogosDB client installed (`pip install -e '.[logosdb]'` or equivalent):
+
+```bash
+.venv/bin/python3.12 -m vectordb_bench.cli.vectordbbench logosdb \
+  --uri /tmp/vectordbbench_logosdb \
+  --case-type Performance1536D50K \
+  --skip-search-concurrent
+```
+
+Use a fresh `--uri` directory per run. Set `OPENAI_API_KEY` (or the embedding provider your case expects) before starting.
+
 ## Benchmark vs ChromaDB
 
 ```bash
