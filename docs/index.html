@@ -240,9 +240,9 @@
         <h2>Quick start</h2>
         <p class="section-intro">Install from PyPI, open a database, embed with your model, and search.</p>
 
-        <pre class="code-block"><code>pip install logosdb</code></pre>
+        <pre class="code-block"><code class="language-bash">pip install logosdb</code></pre>
 
-        <pre class="code-block"><code>import logosdb
+        <pre class="code-block"><code class="language-python">import logosdb
 from sentence_transformers import SentenceTransformer
 
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
@@ -296,5 +296,9 @@ for h in hits:
       <p class="footer-copy">LogosDB 1.0.0 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
     </div>
   </footer>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+  <script>hljs.highlightAll();</script>
 </body>
 </html>

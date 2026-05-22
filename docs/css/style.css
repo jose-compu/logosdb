@@ -695,6 +695,23 @@ pre code {
   color: inherit;
 }
 
+/* Syntax highlighting (highlight.js) */
+pre.code-block code.hljs {
+  background: transparent;
+  padding: 0;
+}
+
+.hljs-keyword { color: var(--purple); }
+.hljs-built_in { color: var(--cyan); }
+.hljs-string { color: var(--green); }
+.hljs-number { color: var(--blue-bright); }
+.hljs-title.function_ { color: var(--cyan); }
+.hljs-title.class_ { color: var(--blue-bright); }
+.hljs-attr { color: var(--cyan-dim); }
+.hljs-comment { color: #6b7280; font-style: italic; }
+.hljs-meta { color: var(--muted); }
+.hljs-literal { color: var(--purple); }
+
 .links-row {
   display: flex;
   flex-wrap: wrap;
