@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="LogosDB — fast semantic vector database for local LLM memory, RAG, and agent tooling. C/C++ core, Python bindings, MCP server for Claude Code." />
+  <title>LogosDB — Semantic Memory</title>
+  <link rel="icon" href="assets/img/logo-small.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Orbitron:wght@500;600;700;800;900&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a class="logo-link" href="./">
+        <img src="assets/img/logo-small.png" alt="" width="36" height="36" />
+        <img class="logo-full" src="assets/img/logo-transparent.png" alt="LogosDB" />
+      </a>
+      <nav>
+        <a href="#concept">Concept</a>
+        <a href="#features">Features</a>
+        <a href="#integrations">Integrations</a>
+        <a href="#start">Quick start</a>
+        <a href="https://github.com/jose-compu/logosdb" target="_blank" rel="noopener">GitHub</a>
+        <a class="btn btn-primary" href="https://pypi.org/project/logosdb/" target="_blank" rel="noopener">pip install logosdb</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <p class="section-label">Semantic memory</p>
+          <p class="version-badge">1.0.0</p>
+          <h1>
+            <span class="word-cyan">Semantic.</span>
+            <span class="word-blue">Fast.</span>
+            <span class="word-purple">Local.</span>
+          </h1>
+          <p class="lead">
+            A fast semantic vector database written in <strong>C/C++</strong> for approximate nearest-neighbor search over embeddings with text metadata. Built for on-prem RAG, agent memory, and LLM inference — zero cloud dependency.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#start">Get started</a>
+            <a class="btn btn-ghost" href="https://github.com/jose-compu/logosdb" target="_blank" rel="noopener">View on GitHub</a>
+          </div>
+          <div class="badges">
+            <a href="https://pypi.org/project/logosdb/"><img src="https://img.shields.io/pypi/v/logosdb.svg?style=flat-square&amp;label=PyPI" alt="PyPI version" /></a>
+            <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="MIT License" />
+            <img src="https://img.shields.io/badge/Python-3.9%2B-green.svg?style=flat-square" alt="Python 3.9+" />
+            <a href="https://github.com/jose-compu/logosdb/actions"><img src="https://github.com/jose-compu/logosdb/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
+          </div>
+        </div>
+
+        <div class="hero-visual">
+          <div class="hero-logo-wrap">
+            <img src="assets/img/logo-transparent.png" alt="LogosDB logo" />
+          </div>
+          <p class="hero-tagline">
+            <span class="t-cyan">Built for scale.</span><br />
+            <span class="t-blue">Built for speed.</span><br />
+            <span class="t-purple">Built for you.</span>
+          </p>
+          <div class="diagram-card">
+            <h3>Semantic retrieval pipeline</h3>
+            <p class="diagram-sub">Text → embedding → HNSW search → ranked hits</p>
+            <div class="pipeline" aria-hidden="true">
+              <div class="pipe-step pipe-embed">
+                <span class="pipe-title">Embed</span>
+                <span class="pipe-sub">query vector</span>
+              </div>
+              <span class="pipe-arrow">→</span>
+              <div class="pipe-step pipe-store">
+                <span class="pipe-title">mmap</span>
+                <span class="pipe-sub">zero-copy</span>
+              </div>
+              <span class="pipe-arrow">→</span>
+              <div class="pipe-step pipe-index">
+                <span class="pipe-title">HNSW</span>
+                <span class="pipe-sub">O(log n)</span>
+              </div>
+              <span class="pipe-arrow">→</span>
+              <div class="pipe-step pipe-search">
+                <span class="pipe-title">Search</span>
+                <span class="pipe-sub">top-k hits</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="concept" class="alt">
+      <div class="container">
+        <span class="section-label">Concept</span>
+        <h2>What is semantic memory?</h2>
+        <p class="section-intro">
+          LLM agents and RAG pipelines need to recall relevant facts, code, and documents by meaning — not just keywords.
+          LogosDB stores embedding vectors with optional text and timestamps, then retrieves the closest matches in milliseconds using HNSW approximate nearest-neighbor search.
+        </p>
+
+        <div class="feature-grid">
+          <article class="feature-card cyan">
+            <div class="icon">⚡</div>
+            <h3>Fast &amp; local</h3>
+            <p>Pure C/C++ core with memory-mapped binary storage. No Python runtime overhead on the hot path. Cold start in under 10 ms.</p>
+          </article>
+          <article class="feature-card blue">
+            <div class="icon">🗄</div>
+            <h3>Simple storage model</h3>
+            <p>Flat binary vector files plus JSONL metadata sidecar. Crash recovery backfills the HNSW index from the append-only vector store on open.</p>
+          </article>
+          <article class="feature-card purple">
+            <div class="icon">🔍</div>
+            <h3>Rich retrieval</h3>
+            <p>Timestamp range filters, structured metadata predicates, hybrid ANN + lexical fusion, and multi-tenant namespaces with quotas.</p>
+          </article>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-card">
+            <span class="value">&lt;1 ms</span>
+            <span class="label">Search at 100K vectors</span>
+          </div>
+          <div class="stat-card">
+            <span class="value">mmap</span>
+            <span class="label">Zero-copy reads</span>
+          </div>
+          <div class="stat-card">
+            <span class="value">HNSW</span>
+            <span class="label">O(log n) queries</span>
+          </div>
+          <div class="stat-card">
+            <span class="value">MIT</span>
+            <span class="label">Open source</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="container">
+        <span class="section-label">Features</span>
+        <h2>1.0.0 — stable release</h2>
+        <p class="section-intro">
+          LogosDB 1.0.0 commits to stable semver for the public C API and supported on-disk formats.
+          Throughput, search, integrations, and tooling from the 0.x line — production-ready.
+        </p>
+
+        <div class="flyer-grid">
+          <article class="flyer-box cyan">
+            <h3>Streaming NDJSON import/export</h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">C / C++ / Python — bounded memory, checkpoint resume.</p>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> <code>chunk_size</code> for streaming reads/writes</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Byte-offset <code>--checkpoint</code> and <code>--resume</code></li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> CLI: <code>logosdb-cli export</code> / <code>import</code></li>
+            </ul>
+          </article>
+          <article class="flyer-box purple">
+            <h3>Batch ingest &amp; hybrid search</h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Chunked WAL-aware writes and advanced retrieval modes.</p>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> <code>put_batch</code> with <code>LOGOSDB_BATCH_CHUNK_SIZE</code></li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Hybrid ANN + lexical score fusion</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Filter API v2: metadata predicates</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="feature-grid" style="margin-top: 1.5rem;">
+          <article class="feature-card cyan">
+            <h3>Distance metrics</h3>
+            <p>Inner product (L2-normalized), cosine similarity (auto-normalized), or L2 Euclidean — pick what fits your embedding model.</p>
+          </article>
+          <article class="feature-card blue">
+            <h3>Timestamp filtering</h3>
+            <p>Search within ISO 8601 time windows — "last 24 hours", date ranges, or bounded recall for temporal RAG.</p>
+          </article>
+          <article class="feature-card purple">
+            <h3>Multi-tenant namespaces</h3>
+            <p>Isolated namespaces with quotas inside one DB root. Ideal for separating code, docs, and agent decisions.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="integrations" class="alt">
+      <div class="container">
+        <span class="section-label">Ecosystem</span>
+        <h2>Integrations &amp; tooling</h2>
+        <p class="section-intro">
+          Use LogosDB from C, C++, Python, Node.js, or directly inside Claude Code via MCP.
+          Framework adapters for LangChain, LlamaIndex, and more.
+        </p>
+
+        <div class="integrations-grid">
+          <article class="integration-card">
+            <div class="badge-icon">🧩</div>
+            <div>
+              <h3>MCP server — Claude Code</h3>
+              <p><code>logosdb-mcp-server</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default.</p>
+            </div>
+          </article>
+          <article class="integration-card">
+            <div class="badge-icon">🐍</div>
+            <div>
+              <h3>Python bindings</h3>
+              <p>PyPI wheels for Linux and macOS (CPython 3.9–3.13). pybind11 bindings with NumPy-friendly batch APIs and sizing calculator.</p>
+            </div>
+          </article>
+          <article class="integration-card">
+            <div class="badge-icon">🔗</div>
+            <div>
+              <h3>LangChain &amp; LlamaIndex</h3>
+              <p>VectorStore adapters with timestamp filtering, node add/delete, and similarity search compatible with existing RAG pipelines.</p>
+            </div>
+          </article>
+          <article class="integration-card">
+            <div class="badge-icon">📦</div>
+            <div>
+              <h3>Codex plugin marketplace</h3>
+              <p>Semantic memory plugin for Codex with bundled MCP config, slash commands, and agent skills for automatic indexing.</p>
+            </div>
+          </article>
+        </div>
+
+        <div class="callout">
+          <strong>Memory-efficient on-prem RAG:</strong> RAM scales with query patterns, not dataset size.
+          A 10M-vector index at dim=384 uses ~15 GB disk but typically &lt;200 MB query RAM thanks to mmap and OS page cache.
+        </div>
+      </div>
+    </section>
+
+    <section id="start">
+      <div class="container">
+        <span class="section-label">Developers</span>
+        <h2>Quick start</h2>
+        <p class="section-intro">Install from PyPI, open a database, embed with your model, and search.</p>
+
+        <pre class="code-block"><code>pip install logosdb</code></pre>
+
+        <pre class="code-block"><code>import logosdb
+from sentence_transformers import SentenceTransformer
+
+model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+dim = model.get_sentence_embedding_dimension()
+
+db = logosdb.DB("/tmp/agent_memory", dim=dim, distance=logosdb.DIST_COSINE)
+
+for text, ts in [
+    ("Retrying API calls with exponential backoff reduced failures by 42%.", "2026-05-06T09:00:00Z"),
+    ("Idempotency keys prevented duplicate writes during network retries.", "2026-05-06T09:10:00Z"),
+]:
+    emb = model.encode(text).astype("float32")
+    db.put(emb, text=text, timestamp=ts)
+
+question = "How can we avoid duplicate writes when retries happen?"
+hits = db.search(model.encode(question).astype("float32"), top_k=3)
+for h in hits:
+    print(f"{h.score:.4f}  {h.text}")</code></pre>
+
+        <pre class="code-block"><code><span class="prompt">&gt;</span> logosdb-cli info /tmp/agent_memory
+<span class="prompt">&gt;</span> logosdb-cli export /tmp/agent_memory --output rows.ndjson
+<span class="prompt">&gt;</span> logosdb-cli import /tmp/restored --dim 384 --input rows.ndjson --chunk-size 1024 --checkpoint rows.cp</code></pre>
+
+        <div class="links-row">
+          <a class="btn btn-primary" href="https://github.com/jose-compu/logosdb#building" target="_blank" rel="noopener">Build from source</a>
+          <a class="btn btn-ghost" href="https://github.com/jose-compu/logosdb" target="_blank" rel="noopener">GitHub</a>
+          <a class="btn btn-ghost" href="https://pypi.org/project/logosdb/" target="_blank" rel="noopener">PyPI</a>
+          <a class="btn btn-ghost" href="https://www.npmjs.com/package/logosdb-mcp-server" target="_blank" rel="noopener">npm (MCP)</a>
+          <a class="btn btn-ghost" href="https://github.com/jose-compu/logosdb/blob/main/docs/rag-on-prem.md" target="_blank" rel="noopener">RAG guide</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <img src="assets/img/logo-small.png" alt="" width="28" height="28" />
+        <span class="footer-tagline">
+          <span class="t-cyan">Semantic.</span>
+          <span class="t-blue">Fast.</span>
+          <span class="t-purple">Local.</span>
+        </span>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/jose-compu/logosdb">GitHub</a>
+        <a href="https://pypi.org/project/logosdb/">PyPI</a>
+        <a href="https://www.npmjs.com/package/logosdb-mcp-server">MCP server</a>
+        <a href="https://github.com/jose-compu/logosdb/blob/main/LICENSE">MIT License</a>
+      </div>
+      <p class="footer-copy">LogosDB 1.0.0 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
+    </div>
+  </footer>
+</body>
+</html>
