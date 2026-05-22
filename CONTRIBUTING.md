@@ -260,7 +260,8 @@ Aim for:
 
 - **Public headers**: Document in Doxygen style (brief, params, returns)
 - **README.md**: Update for user-facing changes
-- **docs/**: Long-form guides (sizing, RAG patterns, etc.)
+- **tutorials/**: Long-form guides (sizing, RAG patterns, etc.)
+- **docs/**: Static project website (GitHub Pages)
 - **Changelog**: Add entry under appropriate version in CHANGELOG
 
 ## Getting Help

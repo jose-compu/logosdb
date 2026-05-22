@@ -30,7 +30,7 @@ Authors: Jose ([@jose-compu](https://github.com/jose-compu))
 
 The public interface is in `include/logosdb/logosdb.h`. Callers should not include or rely on the details of any other header files in this package. Those internal APIs may be changed without warning.
 
-**Planning a deployment?** See [docs/sizing.md](docs/sizing.md) for disk/RAM estimates based on N×dim, or run `python -m logosdb.sizing --rows 1_000_000 --dim 768`.
+**Planning a deployment?** See [tutorials/sizing.md](tutorials/sizing.md) for disk/RAM estimates based on N×dim, or run `python -m logosdb.sizing --rows 1_000_000 --dim 768`.
 
 Guide to header files:
 
@@ -416,12 +416,12 @@ for hit in db.search(query_emb, top_k=3):
     print(f"{hit.score:.4f}  {hit.text}")
 ```
 
-See [docs/rag-on-prem.md](docs/rag-on-prem.md) for complete guide including:
+See [tutorials/rag-on-prem.md](tutorials/rag-on-prem.md) for complete guide including:
 - Time-sharding for infinite retention
 - External quantization patterns
 - Architecture patterns for production
 
-See [docs/sizing.md](docs/sizing.md) for detailed disk/RAM formulas and the `python -m logosdb.sizing` calculator.
+See [tutorials/sizing.md](tutorials/sizing.md) for detailed disk/RAM formulas and the `python -m logosdb.sizing` calculator.
 
 Run the memory-efficient RAG example:
 

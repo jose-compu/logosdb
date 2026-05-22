@@ -292,7 +292,7 @@ logosdb change log
   * C API: `logosdb_options_set_dtype(opts, LOGOSDB_DTYPE_FLOAT16/INT8)`.
   * C++ API: `Options.dtype` field (default `LOGOSDB_DTYPE_FLOAT32`).
   * Backward compatible: v1 files auto-upgraded to v2 in memory (float32 only).
-  * New ADR document: `docs/adr-002-training-free-quantization.md` describing
+  * New ADR document: `tutorials/adr-002-training-free-quantization.md` describing
     the architecture decision and trade-offs.
 
   Mistral AI embeddings integration (closes #54)
@@ -356,7 +356,7 @@ logosdb change log
 
   Docs + example: on-prem memory-efficient RAG (closes #27)
 
-  * New `docs/rag-on-prem.md` comprehensive guide for on-premises RAG:
+  * New `tutorials/rag-on-prem.md` comprehensive guide for on-premises RAG:
     - RAM model: explains mmap-based memory scaling with query patterns
     - Sizing guide: disk size and RAM estimates for 10K to 10M vectors
     - Architecture patterns: embed offline/query online, time-sharding
