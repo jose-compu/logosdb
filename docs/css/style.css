@@ -324,12 +324,20 @@ nav a:hover {
 }
 
 /* Pipeline diagram */
+.hero-visual .diagram-card {
+  padding: 1.65rem 1.5rem;
+}
+
 .diagram-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1.35rem;
   width: 100%;
+}
+
+.hero-visual .diagram-card h3 {
+  font-size: 0.88rem;
 }
 
 .diagram-card h3 {
@@ -342,10 +350,19 @@ nav a:hover {
   text-shadow: var(--neon-cyan);
 }
 
+.hero-visual .diagram-card .diagram-sub {
+  font-size: 0.92rem;
+  margin-bottom: 1.15rem;
+}
+
 .diagram-card .diagram-sub {
   font-size: 0.8rem;
   color: var(--muted);
   margin: 0 0 1rem;
+}
+
+.hero-visual .pipeline {
+  gap: 0.45rem;
 }
 
 .pipeline {
@@ -353,6 +370,11 @@ nav a:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem;
+}
+
+.hero-visual .pipe-step {
+  min-width: 4.25rem;
+  padding: 0.72rem 0.45rem;
 }
 
 .pipe-step {
@@ -364,6 +386,10 @@ nav a:hover {
   border: 1px solid transparent;
 }
 
+.hero-visual .pipe-title {
+  font-size: 0.78rem;
+}
+
 .pipe-title {
   display: block;
   font-family: var(--font-display);
@@ -373,11 +399,19 @@ nav a:hover {
   text-transform: uppercase;
 }
 
+.hero-visual .pipe-sub {
+  font-size: 0.72rem;
+}
+
 .pipe-sub {
   display: block;
   font-size: 0.62rem;
   color: var(--muted);
   margin-top: 0.15rem;
+}
+
+.hero-visual .pipe-arrow {
+  font-size: 1.05rem;
 }
 
 .pipe-arrow {
