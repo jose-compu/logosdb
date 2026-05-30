@@ -84,11 +84,11 @@ Past releases are summarized in the [CHANGELOG](CHANGELOG) and the [closed miles
 
   * [#78](https://github.com/jose-compu/logosdb/issues/78) — Feature: Codex plugin marketplace integration for LogosDB
 
-### [0.13.0](https://github.com/jose-compu/logosdb/milestone/12) — minor — platform
+### **SHIPPED** [0.13.0](https://github.com/jose-compu/logosdb/milestone/12) — minor — platform
 
   * [#10](https://github.com/jose-compu/logosdb/issues/10) — Windows support: abstract POSIX file I/O behind a portable layer
 
-### [1.0.0](https://github.com/jose-compu/logosdb/milestone/13) — stable release tag
+### **SHIPPED** [1.0.0](https://github.com/jose-compu/logosdb/milestone/13) — stable release tag
 
 No roadmap issues are assigned only to this milestone: it marks publishing **`1.0.0`** once the criteria below are satisfied; implementation work stays on the milestones above until shipped.
 
