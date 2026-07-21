@@ -92,6 +92,13 @@ test-command = "python -m pytest {project}/tests/python/test_smoke.py -v"
 # ubuntu-24.04-arm (native aarch64); default CIBW_ARCHS=auto builds one arch
 # per machine.
 
+[tool.cibuildwheel.linux]
+# manylinux2014 (default) ships GCC 10.2.1. NumPy ≥2.3 only publishes
+# manylinux_2_28 wheels, so pip would fall back to the sdist; NumPy 2.5 then
+# fails meson with "requires GCC >= 10.3". Force binary wheels so the test
+# install backtracks to the newest manylinux2014 NumPy (2.2.x).
+environment = { PIP_ONLY_BINARY = "numpy" }
+
 [tool.cibuildwheel.macos]
 archs = ["x86_64", "arm64"]
 # Pin a stable macOS deployment target so wheels run on older hosts.

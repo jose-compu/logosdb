@@ -4,6 +4,10 @@ logosdb change log
 1.0.1  (2026-07-21) — release hygiene
 -------------------------------------
 
+  * **cibuildwheel Linux test install:** set `PIP_ONLY_BINARY=numpy` so the
+    manylinux2014 test env does not try to build NumPy 2.5 from sdist (fails
+    with GCC 10.2.1 / "requires GCC >= 10.3").
+
   * **#116 — Post-1.0.0 version and docs sync.** Align library and package
     version metadata that lagged after the `1.0.0` tag:
     - `LOGOSDB_VERSION_*` / `LOGOSDB_VERSION_STRING` in
