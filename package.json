@@ -6,7 +6,11 @@
   "scripts": {
     "mcp:build": "npm run build -w logosdb-mcp-server",
     "npm:verify": "npm run vendor-core -w logosdb && npm run build -w logosdb && npm test -w logosdb && npm test -w logosdb-mcp-server",
-    "npm:pack": "npm pack -w logosdb --pack-destination /tmp && npm pack -w logosdb-mcp-server --pack-destination /tmp"
+    "npm:pack": "npm pack -w logosdb --pack-destination /tmp && npm pack -w logosdb-mcp-server --pack-destination /tmp",
+    "publish:logosdb": "npm publish -w logosdb",
+    "publish:mcp": "npm publish -w logosdb-mcp-server",
+    "publish:n8n": "npm publish -w n8n-nodes-logosdb",
+    "prepublishOnly": "node -e \"console.error('Do not publish the root logosdb-workspace. Use: npm run publish:logosdb  (or publish:mcp / publish:n8n)'); process.exit(1)\""
   },
   "engines": {
     "node": ">=18.0.0"
