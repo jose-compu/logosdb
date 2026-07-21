@@ -1,7 +1,45 @@
 logosdb change log
 ==================
 
-0.12.0  (unreleased) — integrations
+1.0.1  (2026-07-21) — release hygiene
+-------------------------------------
+
+  * **cibuildwheel Linux test install:** set `PIP_ONLY_BINARY=numpy` so the
+    manylinux2014 test env does not try to build NumPy 2.5 from sdist (fails
+    with GCC 10.2.1 / "requires GCC >= 10.3").
+
+  * **#116 — Post-1.0.0 version and docs sync.** Align library and package
+    version metadata that lagged after the `1.0.0` tag:
+    - `LOGOSDB_VERSION_*` / `LOGOSDB_VERSION_STRING` in
+      `include/logosdb/logosdb.h` (was still `0.9.0`)
+    - CMake `project(VERSION ...)`, Python `pyproject.toml`, and npm packages
+      `logosdb`, `logosdb-mcp-server`, `n8n-nodes-logosdb` → `1.0.1`
+    - MCP server self-reported version (was `0.11.0`) → `1.0.1`
+    - Workspace `logosdb` dependency ranges → `^1.0.1`
+  * **CHANGELOG catch-up:** date previously *(unreleased)* entries for shipped
+    `0.9.1`–`0.12.0` and record the `1.0.0` stable release.
+  * **Docs:** README post-1.0 semver / roadmap, `SECURITY.md` supported
+    versions, and `RELEASING.md` examples updated for the `1.x` line.
+
+1.0.0  (2026-05-17) — first stable release
+------------------------------------------
+
+  * **Smart chunking** (#98, #112): `auto` / `line` / `section` / `legacy`
+    modes for `logosdb_index_file`. `auto` picks strategy from file extension.
+    Configure via `LOGOSDB_CHUNK_MODE` or the `chunking` tool parameter.
+  * **Incremental index fingerprints `chunkMode`** (#112): changing chunking
+    strategy on an existing incremental namespace forces a clean re-index.
+    Old manifests without `chunkMode` compare equal to `auto`.
+  * **UTF-8 NFC normalization + bidi/invisible-char rejection** (#109, #112).
+  * **Path traversal hardening** for MCP (`security.ts`) and the Python
+    `vibe.py` adapter (#108, #111, #112).
+  * **Expanded fuzz/unit coverage** for chunker and security surfaces (#110).
+  * Package train bumped to **1.0.0** (Python, Node.js, MCP, n8n, CMake);
+    PyPI classifier set to Production/Stable.
+  * Bug fixes: `sanitizeEntry` omits `chunkMode: undefined`; `splitLongText`
+    correctly sub-splits oversized single paragraphs.
+
+0.12.0  (2026-05-17) — integrations
 ------------------------------------
 
   * **#78 — Codex plugin marketplace integration** (`plugins/codex-semantic-memory`).
@@ -18,7 +56,7 @@ logosdb change log
     Namespace prefix `codex-` isolates Codex turn records from Claude Code (`claude-`)
     and Pi (`pi-`) agents when sharing a global DB.
 
-0.11.0  (unreleased) — `logosdb-mcp-server` + bench tool
+0.11.0  (2026-05-14) — `logosdb-mcp-server` + bench tool
 ----------------------------------------------------------
 
   * **#86 — Multi-tenant namespaces: quota and isolation** (`logosdb-mcp-server`).
@@ -38,7 +76,7 @@ logosdb change log
     column — ideal for choosing `efSearch` for a given accuracy/speed target.
     Options: `--sweep-n`, `--sweep-M`, `--sweep-efc`, `--sweep-ef`, `--sweep-queries`.
 
-0.10.1  (unreleased) — `logosdb` (Node.js + Python bindings) + `logosdb-mcp-server`
+0.10.1  (2026-05-14) — `logosdb` (Node.js + Python bindings) + `logosdb-mcp-server`
 --------------------------------------------------------------------------
 
   * **`putBatch` exposed to Node.js binding** (`nodejs/src/node_logosdb.cpp`,
@@ -63,7 +101,7 @@ logosdb change log
     New formula `max(50, min(500, N/50))` with `M=32`, `efConstruction=400` yields
     96.5% recall@10 at N=1000 and 93.4% at N=10000 (dim=384).
 
-0.10.0  (unreleased) — `logosdb-mcp-server` only
+0.10.0  (2026-05-14) — `logosdb-mcp-server` only
 -------------------------------------------------
 
   * **#85 — Hybrid retrieval: ANN score + lexical score fusion** (`logosdb_search`).
@@ -89,7 +127,7 @@ logosdb change log
 
   * Server self-reported version corrected from `"0.7.14"` to `"0.10.0"`.
 
-0.9.1  (unreleased) — `logosdb-mcp-server` only
+0.9.1  (2026-05-13) — `logosdb-mcp-server` only
 -----------------------------------------------
 
   * **#101 — `.gitignore`-aware indexing in `logosdb_index_file`:** when the

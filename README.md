@@ -51,13 +51,13 @@ Guide to header files:
 
 # Roadmap
 
-Work is tracked in [open issues](https://github.com/jose-compu/logosdb/issues?q=is%3Aissue+is%3Aopen). Version bumps follow [Semantic Versioning](https://semver.org/) with these project conventions while the library is **pre-1.0** (`0.x.y`):
+Work is tracked in [open issues](https://github.com/jose-compu/logosdb/issues?q=is%3Aissue+is%3Aopen). **1.0.0** shipped on 2026-05-17; the public C API and supported language bindings follow [Semantic Versioning](https://semver.org/) on the `1.x` line:
 
 | Bump | When |
 |------|------|
-| **Patch** (`0.x.Z`) | Bug fixes, security fixes, documentation, CI/build-only changes, and internal tooling that does **not** alter the supported contract of the public C API in [`include/logosdb/logosdb.h`](include/logosdb/logosdb.h) or the stable surface of language bindings. |
-| **Minor** (`0.Y.z`) | Backward-compatible additions: new functions or options, new storage or index behaviors behind explicit settings, new integrations, new platforms, and additive file-format upgrades with automatic or guided migration. |
-| **Major `1.0.0`** | First **stable** release: a documented compatibility promise for the public C API and for on-disk formats (including upgrade paths). Intended when the **Path to 1.0.0** criteria (below) are satisfied so downstream authors can depend on semver semantics without surprise breakage across patch/minor lines. |
+| **Patch** (`1.0.Z`) | Bug fixes, security fixes, documentation, CI/build-only changes, and internal tooling that does **not** alter the supported contract of the public C API in [`include/logosdb/logosdb.h`](include/logosdb/logosdb.h) or the stable surface of language bindings. |
+| **Minor** (`1.Y.z`) | Backward-compatible additions: new functions or options, new storage or index behaviors behind explicit settings, new integrations, new platforms, and additive file-format upgrades with automatic or guided migration. |
+| **Major** (`2.0.0`) | Breaking changes to the public C API, on-disk format without a migration path, or binding contracts that cannot remain compatible. |
 
 Target versions and issue assignment match **[GitHub milestones](https://github.com/jose-compu/logosdb/milestones)** (each open roadmap issue has exactly one milestone).
 
@@ -84,24 +84,26 @@ Past releases are summarized in the [CHANGELOG](CHANGELOG) and the [closed miles
 
   * [#78](https://github.com/jose-compu/logosdb/issues/78) — Feature: Codex plugin marketplace integration for LogosDB
 
-### **SHIPPED** [0.13.0](https://github.com/jose-compu/logosdb/milestone/12) — minor — platform
+### **SHIPPED** [1.0.0](https://github.com/jose-compu/logosdb/milestone/13) — first stable release
+
+  * Smart chunking, UTF-8/NFC policy, path-hardening, and expanded security tests (#98, #108–#112). See [CHANGELOG](CHANGELOG) `1.0.0`.
+
+### **SHIPPED** [1.0.1](https://github.com/jose-compu/logosdb/issues/116) — patch — release hygiene
+
+  * [#116](https://github.com/jose-compu/logosdb/issues/116) — Sync `CHANGELOG`, version macros, package metadata, and post-1.0 docs.
+
+### Open — platform / hardening (post-1.0)
 
   * [#10](https://github.com/jose-compu/logosdb/issues/10) — Windows support: abstract POSIX file I/O behind a portable layer
+  * [#111](https://github.com/jose-compu/logosdb/issues/111) — Finish Python integration-adapter security audit (partially addressed in 1.0.0 for `vibe.py`)
 
-### **SHIPPED** [1.0.0](https://github.com/jose-compu/logosdb/milestone/13) — stable release tag
+## Stability (since 1.0.0)
 
-No roadmap issues are assigned only to this milestone: it marks publishing **`1.0.0`** once the criteria below are satisfied; implementation work stays on the milestones above until shipped.
+As of **1.0.0**, the project commits to stable semver for the public C API and supported language bindings:
 
-## Path to 1.0.0
-
-`1.0.0` is **not** a single mega-release of every open issue; it is the milestone where the project commits to stable semver for the public API and supported persistence story. Practically, **1.0.0** is targeted when:
-
-  * The public C API in `include/logosdb/logosdb.h` is treated as stable: breaking changes only in future major versions, with migration notes.
-  * On-disk layout and version negotiation are documented, with doctor/upgrade guidance ([#88](https://github.com/jose-compu/logosdb/issues/88)) and a credible backup/restore path ([#83](https://github.com/jose-compu/logosdb/issues/83)).
-  * The security baseline in [#74](https://github.com/jose-compu/logosdb/issues/74) is addressed for MCP, CLI, and bundled integrations.
-  * Tier-1 platforms for the release are explicit (first-class Windows ([#10](https://github.com/jose-compu/logosdb/issues/10)) or a documented Unix-only 1.0, decided at release time).
-
-Features such as hybrid retrieval ([#85](https://github.com/jose-compu/logosdb/issues/85)), filter predicates ([#84](https://github.com/jose-compu/logosdb/issues/84)), or multi-tenant namespaces ([#86](https://github.com/jose-compu/logosdb/issues/86)) can ship in **0.x** minors as they land; they do not all block **1.0.0** unless adopted into the stable API surface.
+  * Breaking changes to `include/logosdb/logosdb.h` or on-disk layout require a future major version, with migration notes.
+  * Tier-1 platforms for 1.x are **Linux and macOS**; Windows remains tracked in [#10](https://github.com/jose-compu/logosdb/issues/10).
+  * Backup/restore and doctor tooling shipped in earlier 0.x releases; further hardening continues on the 1.x line.
 
 # Getting the Source
 
@@ -738,7 +740,7 @@ We use databases with 1K, 10K, and 100K vectors. Each vector has 2048 dimensions
 
 *(Numbers below are illustrative ballparks; absolute values depend on hardware and build flags. Relative HNSW vs brute-force behavior is what to focus on.)*
 
-    LogosDB:    version 0.9.0
+    LogosDB:    version 1.0.1
     CPU:        Apple M-series (ARM64)
     Dim:        2048
     HNSW M:     16, ef_construction: 200, ef_search: 50
