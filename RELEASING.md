@@ -37,20 +37,25 @@ That's it — the workflow already references the environment by name.
 ## Cutting a release
 
 ```bash
-# 1. Bump the version in all three files. They MUST match.
+# 1. Bump the version in all coordinated files. They MUST match.
 #    - pyproject.toml            → [project].version
 #    - include/logosdb/logosdb.h → LOGOSDB_VERSION_* and LOGOSDB_VERSION_STRING
 #    - CMakeLists.txt            → project(logosdb VERSION ...)
+#    - nodejs/package.json, mcp/package.json, n8n/package.json
+#    - mcp/src/index.ts server self-reported version (keep in sync)
+#    Then: npm run vendor-core -w logosdb && npm install  # refresh deps/core + lockfile
 
 # 2. Update the CHANGELOG entry with the release date and notes.
 
-git add pyproject.toml include/logosdb/logosdb.h CMakeLists.txt CHANGELOG
-git commit -m "Release v0.2.0"
+git add pyproject.toml include/logosdb/logosdb.h CMakeLists.txt CHANGELOG \
+  nodejs/package.json mcp/package.json n8n/package.json mcp/src/index.ts \
+  nodejs/deps package-lock.json
+git commit -m "Release v1.0.1"
 git push origin main
 
 # 3. Tag and push.
-git tag -a v0.2.0 -m "logosdb 0.2.0"
-git push origin v0.2.0
+git tag -a v1.0.1 -m "logosdb 1.0.1"
+git push origin v1.0.1
 ```
 
 The tag push triggers `.github/workflows/publish.yml`:
@@ -65,7 +70,7 @@ The tag push triggers `.github/workflows/publish.yml`:
 
 If a build or test fails, nothing is uploaded — the job simply stops before
 the publish step. Because PyPI never allows re-uploading the same version,
-always bump the version number when retrying (`0.2.0` → `0.2.1`) rather than
+always bump the version number when retrying (`1.0.1` → `1.0.2`) rather than
 deleting and re-pushing a tag.
 
 ## Verifying a release after it lands
@@ -122,11 +127,11 @@ The sdist includes `third_party/hnswlib/` so no submodules are needed.
 
 Use this when GitHub Actions is unavailable, you are cutting an out-of-band release, or you simply want to push artifacts from your workstation. **Always** finish a release commit first (versions bumped, `CHANGELOG` updated, tag pushed) before running any of the commands below.
 
-Replace `${VERSION}` with the release you are publishing (e.g. `0.9.0`). The repository root is referred to as `${REPO}`:
+Replace `${VERSION}` with the release you are publishing (e.g. `1.0.1`). The repository root is referred to as `${REPO}`:
 
 ```bash
 REPO=/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb
-VERSION=0.9.0
+VERSION=1.0.1
 ```
 
 ### Order

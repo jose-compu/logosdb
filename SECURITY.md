@@ -6,8 +6,9 @@ We release security updates for the latest minor version series. Please keep you
 
 | Version | Supported          |
 |---------| ------------------ |
-| 0.9.x   | :white_check_mark: |
-| < 0.9   | :x:                |
+| 1.0.x   | :white_check_mark: |
+| 0.12.x  | :white_check_mark: (security fixes only until EOL) |
+| < 0.12  | :x:                |
 
 ## Reporting a Vulnerability
 
