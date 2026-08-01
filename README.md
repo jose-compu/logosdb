@@ -5,6 +5,8 @@
 [![PyPI](https://img.shields.io/pypi/v/logosdb.svg)](https://pypi.org/project/logosdb/)
 [![Python versions](https://img.shields.io/pypi/pyversions/logosdb.svg)](https://pypi.org/project/logosdb/)
 
+LogosDB is the SQLite for AI Agents.
+
 LogosDB is a fast semantic vector database written in C/C++ that provides approximate nearest-neighbor search over embedding vectors with associated text metadata.
 
 Authors: Jose ([@jose-compu](https://github.com/jose-compu))
