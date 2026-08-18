@@ -1,0 +1,49 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.jose-compu/logosdb-mcp-server",
+  "title": "LogosDB",
+  "description": "Local semantic memory for agents: index files, hybrid search, and namespaces.",
+  "websiteUrl": "https://www.npmjs.com/package/logosdb-mcp-server",
+  "repository": {
+    "url": "https://github.com/jose-compu/logosdb",
+    "source": "github"
+  },
+  "version": "1.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "logosdb-mcp-server",
+      "version": "1.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "LOGOSDB_PATH",
+          "description": "Root directory for namespace databases (default ./.logosdb)",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "EMBEDDING_PROVIDER",
+          "description": "transformers (default), ollama, openai, or voyage",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "OPENAI_API_KEY",
+          "description": "Required when EMBEDDING_PROVIDER=openai",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "VOYAGE_API_KEY",
+          "description": "Required when EMBEDDING_PROVIDER=voyage",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

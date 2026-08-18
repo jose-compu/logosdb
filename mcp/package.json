@@ -1,12 +1,23 @@
 {
   "name": "logosdb-mcp-server",
-  "version": "1.0.2",
-  "description": "MCP server exposing LogosDB semantic search to Claude Code and other MCP clients",
+  "version": "1.1.0",
+  "mcpName": "io.github.jose-compu/logosdb-mcp-server",
+  "description": "MCP server for LogosDB: local semantic memory, file indexing, and hybrid search for Claude Code, Cursor, and other MCP clients",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "readme": "README.md",
   "bin": {
     "logosdb-mcp-server": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "!dist/**/*.test.js",
+    "!dist/**/*.test.d.ts",
+    "!dist/**/*.test.js.map",
+    "!dist/**/*.test.d.ts.map",
+    "README.md",
+    "server.json"
+  ],
   "scripts": {
     "prepare": "npm run build",
     "build": "tsc",
@@ -18,28 +29,32 @@
     "format:check": "prettier --check src/",
     "prepublishOnly": "npm run build",
     "smoke": "node scripts/mcp-stdio-smoke.mjs",
-    "test": "npm run build && node --test dist/chunker.test.js dist/security.test.js dist/file-index-manifest.test.js dist/gitignore-walker.test.js dist/hybrid.test.js dist/metadata-filter.test.js dist/quota.test.js dist/store.test.js && npm run smoke"
+    "test": "npm run build && node --test dist/chunker.test.js dist/security.test.js dist/file-index-manifest.test.js dist/gitignore-walker.test.js dist/hybrid.test.js dist/metadata-filter.test.js dist/quota.test.js dist/store.test.js dist/cli.test.js && npm run smoke"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jose-compu/logosdb.git"
+    "url": "git+https://github.com/jose-compu/logosdb.git",
+    "directory": "mcp"
   },
   "keywords": [
     "mcp",
+    "mcp-server",
     "model-context-protocol",
     "logosdb",
     "vector-database",
     "semantic-search",
     "claude-code",
+    "cursor",
     "embeddings",
-    "rag"
+    "rag",
+    "hybrid-search"
   ],
   "author": "Jose",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/jose-compu/logosdb/issues"
   },
-  "homepage": "https://github.com/jose-compu/logosdb#readme",
+  "homepage": "https://github.com/jose-compu/logosdb/tree/main/mcp#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@xenova/transformers": "^2.17.2",

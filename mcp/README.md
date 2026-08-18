@@ -11,6 +11,33 @@ npm install -g logosdb-mcp-server
 
 Or run without installing via `npx -y logosdb-mcp-server`.
 
+```bash
+npx -y logosdb-mcp-server --version
+npx -y logosdb-mcp-server --help
+```
+
+`--help` / `--version` print to stdout and exit. With no flags the process speaks MCP over stdio.
+
+## Cursor
+
+Add a stdio MCP server in Cursor (`Settings → MCP`, or `.cursor/mcp.json` in the project):
+
+```json
+{
+  "mcpServers": {
+    "logosdb": {
+      "command": "npx",
+      "args": ["-y", "logosdb-mcp-server"],
+      "env": {
+        "LOGOSDB_PATH": "./.logosdb"
+      }
+    }
+  }
+}
+```
+
+Claude Desktop uses the same `mcpServers` shape in `claude_desktop_config.json`.
+
 ## Claude Code: complete recipe
 
 These steps assume your **Claude Code project root** is the directory where you want `./.logosdb` (or your chosen `LOGOSDB_PATH`) to live. The MCP child process **`cwd`** is normally that same folder, so relative paths in `.claude/mcp.json` resolve there.
@@ -329,10 +356,10 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 
 | Tool | Inputs | Description |
 |---|---|---|
-| `logosdb_index` | `text`, `namespace`, `metadata?` | Embed and store a text snippet |
-| `logosdb_index_file` | `path`, `namespace`, `chunk_size?`, `chunking?`, `incremental?`, `respect_gitignore?` | Chunk, embed, and store a file or tree; **`incremental: true`** skips unchanged files, replaces chunks for changed files, and prunes removed files under a directory (state in `LOGOSDB_PATH/_logosdb_mcp_manifests/`). When the path lives inside a Git working tree, `.gitignore` rules are applied by default (override per call with `respect_gitignore: false` or globally with `LOGOSDB_RESPECT_GITIGNORE=0`; see [`.gitignore`-aware walking](#gitignore-aware-walking-091)). `chunking` selects the splitting strategy — see [Chunking strategies](#chunking-strategies). |
-| `logosdb_search` | `query`, `namespace`, `top_k?`, `ts_from?`, `ts_to?`, `candidate_k?` | Semantic search; optional inclusive ISO 8601 time window (maps to `search_ts_range`) |
-| `logosdb_list` | — | List all namespaces |
+| `logosdb_index` | `text`, `namespace`, `metadata?`, `tags?` | Embed and store a text snippet; optional structured `tags` for later `filter` |
+| `logosdb_index_file` | `path`, `namespace`, `chunk_size?`, `chunking?`, `incremental?`, `respect_gitignore?`, `tags?` | Chunk, embed, and store a file or tree; **`incremental: true`** skips unchanged files, replaces chunks for changed files, and prunes removed files under a directory (state in `LOGOSDB_PATH/_logosdb_mcp_manifests/`). When the path lives inside a Git working tree, `.gitignore` rules are applied by default (override per call with `respect_gitignore: false` or globally with `LOGOSDB_RESPECT_GITIGNORE=0`; see [`.gitignore`-aware walking](#gitignore-aware-walking-091)). `chunking` selects the splitting strategy — see [Chunking strategies](#chunking-strategies). |
+| `logosdb_search` | `query`, `namespace`, `top_k?`, `ts_from?`, `ts_to?`, `candidate_k?`, `hybrid?`, `fusion?`, `lexical_weight?`, `filter?` | Semantic search; optional ISO 8601 window; optional hybrid ANN+lexical fusion; optional metadata `filter` |
+| `logosdb_list` | — | List namespaces (includes live counts / quota summary when configured) |
 | `logosdb_info` | `namespace` | Stats: count, live count, dimension |
 | `logosdb_delete` | `namespace`, `id?` **or** `query?`, `search_top_k?`, `match_rank?` | Delete by row id, or embed `query` and delete the `match_rank` hit (default 0) among `search_top_k` neighbors |
 

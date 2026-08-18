@@ -1,6 +1,21 @@
 logosdb change log
 ==================
 
+1.1.0  (2026-08-18) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * **CLI:** `logosdb-mcp-server --help` / `--version` (`-h` / `-v`) print to
+    stdout and exit; no flags still starts the MCP stdio server.
+  * **Version no longer hardcoded:** the MCP `initialize` handshake reports
+    `package.json` version (was a stale string after each bump).
+  * **npm / registry packaging:** `files` whitelist, `mcpName`, `server.json`
+    for the official MCP Registry, `repository.directory`, Cursor keywords,
+    and test artifacts excluded from the tarball.
+  * **Docs:** Cursor / Claude Desktop snippet; tools table now lists hybrid
+    search, filters, tags, and quotas.
+  * **Codex plugin `codex-semantic-memory` 0.2.0:** pin MCP launch to
+    `logosdb-mcp-server@1.1.0` (`.mcp.json` + wrap script).
+
 1.0.1  (2026-07-21) — release hygiene
 -------------------------------------
 

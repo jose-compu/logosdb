@@ -61,6 +61,14 @@ import {
   type FilterPredicate,
 } from './metadata-filter.js';
 import { loadQuotaConfig, checkVectorQuota, checkNsQuota } from './quota.js';
+import { applyCli, readPackageVersion } from './cli.js';
+
+const cliMode = applyCli(process.argv.slice(2));
+if (cliMode !== 'server') {
+  process.exit(0);
+}
+
+const PACKAGE_VERSION = readPackageVersion();
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -280,7 +288,7 @@ const TOOLS: Tool[] = [
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
-const server = new Server({ name: 'logosdb', version: '1.0.2' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'logosdb', version: PACKAGE_VERSION }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
@@ -761,7 +769,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write(
-    `[logosdb-mcp] Server started. Store: ${LOGOSDB_PATH}, provider: ${embCfg.provider}\n`,
+    `[logosdb-mcp] ${PACKAGE_VERSION} started. Store: ${LOGOSDB_PATH}, provider: ${embCfg.provider}\n`,
   );
 }
 
