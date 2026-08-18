@@ -29,5 +29,5 @@ fi
 if command -v logosdb-mcp-server >/dev/null 2>&1; then
   exec logosdb-mcp-server
 else
-  exec npx --yes logosdb-mcp-server
+  exec npx --yes logosdb-mcp-server@1.1.0
 fi

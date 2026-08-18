@@ -5,7 +5,7 @@ description: >
   Handles explicit memory commands (/memory-recall, /memory-remember, /memory-index, /memory-status)
   and drives automatic silent indexing, searching, and turn-record storage.
   Invoke with: /memory-recall <query>  |  /memory-remember <text>  |  /memory-index  |  /memory-status
-version: "0.1.0"
+version: "0.2.0"
 ---
 
 ## Command routing

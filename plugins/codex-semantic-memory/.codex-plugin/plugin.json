@@ -1,6 +1,6 @@
 {
   "name": "codex-semantic-memory",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local-first semantic memory for Codex powered by LogosDB. Auto-indexes the project, injects relevant past context silently before every response, and persists turn records across sessions — no cloud, no API keys.",
   "author": "Jose Ignacio",
   "license": "MIT",

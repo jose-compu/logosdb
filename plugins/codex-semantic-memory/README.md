@@ -16,7 +16,7 @@ All automatic actions are **silent** — nothing is printed to the console.
 ## Prerequisites
 
 ```bash
-npm install -g logosdb-mcp-server   # or: npx is used as a fallback
+npm install -g logosdb-mcp-server@1.1.0   # or: npx logosdb-mcp-server@1.1.0 as fallback
 ```
 
 ## Install
