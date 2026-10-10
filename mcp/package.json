@@ -1,6 +1,6 @@
 {
   "name": "logosdb-mcp-server",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "mcpName": "io.github.jose-compu/logosdb-mcp-server",
   "description": "MCP server for LogosDB: local semantic memory, file indexing, and hybrid search for Claude Code, Cursor, and other MCP clients",
   "main": "dist/index.js",

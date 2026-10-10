@@ -7,6 +7,22 @@ export type CliMode = 'help' | 'version' | 'server';
 
 export const PACKAGE_NAME = 'logosdb-mcp-server';
 
+/** Optional `--path` / `-p` override for LOGOSDB_PATH. */
+export function consumeDbPath(argv: string[]): string | undefined {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--path' || arg === '-p') {
+      const value = argv[i + 1];
+      if (value && !value.startsWith('-')) return value;
+    }
+    if (arg.startsWith('--path=')) {
+      const value = arg.slice('--path='.length);
+      if (value) return value;
+    }
+  }
+  return undefined;
+}
+
 export function readPackageVersion(): string {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -31,6 +47,7 @@ MCP server exposing LogosDB semantic search over stdio.
 
 Usage:
   logosdb-mcp-server              Start the MCP server (stdio)
+  logosdb-mcp-server --path DIR   Start with LOGOSDB_PATH=DIR
   logosdb-mcp-server --help       Show this help
   logosdb-mcp-server --version    Print the package version
 
@@ -44,6 +61,8 @@ Docs: https://www.npmjs.com/package/logosdb-mcp-server
 }
 
 export function applyCli(argv: string[], io: { stdout: NodeJS.WritableStream } = process): CliMode {
+  const dbPath = consumeDbPath(argv);
+  if (dbPath) process.env.LOGOSDB_PATH = dbPath;
   const mode = parseCliArgs(argv);
   const version = readPackageVersion();
   if (mode === 'help') {
