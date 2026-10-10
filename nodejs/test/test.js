@@ -8,7 +8,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { DB, DIST_IP, DIST_COSINE, DIST_L2, VERSION } = require('../lib');
+const { DB, DIST_IP, DIST_COSINE, DIST_L2, VERSION, normalizeL2 } = require('../lib');
 
 // Helper to generate random unit vector
 function randomUnitVector(dim, seed = 0) {
@@ -56,6 +56,20 @@ describe('LogosDB Node.js', function() {
     it('should export version', () => {
       assert.strictEqual(typeof VERSION, 'string');
       assert.ok(VERSION.match(/^\d+\.\d+\.\d+/));
+    });
+  });
+
+  describe('normalizeL2', () => {
+    it('returns a unit vector', () => {
+      const out = normalizeL2([3, 4]);
+      assert.strictEqual(out.length, 2);
+      assert.ok(Math.abs(out[0] - 0.6) < 1e-9);
+      assert.ok(Math.abs(out[1] - 0.8) < 1e-9);
+    });
+
+    it('rejects empty and zero vectors', () => {
+      assert.throws(() => normalizeL2([]), /non-empty/);
+      assert.throws(() => normalizeL2([0, 0]), /zero-length/);
     });
   });
 

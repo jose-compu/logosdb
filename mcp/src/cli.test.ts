@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { applyCli, formatHelp, parseCliArgs, readPackageVersion } from './cli.js';
+import { applyCli, consumeDbPath, formatHelp, parseCliArgs, readPackageVersion } from './cli.js';
 
 describe('parseCliArgs', () => {
   it('defaults to server when argv is empty', () => {
@@ -35,17 +35,40 @@ describe('readPackageVersion', () => {
   });
 });
 
+describe('consumeDbPath', () => {
+  it('reads --path and -p', () => {
+    assert.equal(consumeDbPath(['--path', '/tmp/db']), '/tmp/db');
+    assert.equal(consumeDbPath(['-p', '/tmp/db2']), '/tmp/db2');
+    assert.equal(consumeDbPath(['--path=/tmp/db3']), '/tmp/db3');
+    assert.equal(consumeDbPath([]), undefined);
+  });
+});
+
 describe('formatHelp', () => {
   it('includes the version, usage, and npm URL', () => {
     const text = formatHelp('1.1.0');
     assert.match(text, /logosdb-mcp-server 1\.1\.0/);
     assert.match(text, /--help/);
     assert.match(text, /--version/);
+    assert.match(text, /--path/);
     assert.match(text, /npmjs\.com\/package\/logosdb-mcp-server/);
   });
 });
 
 describe('applyCli', () => {
+  it('sets LOGOSDB_PATH from --path', () => {
+    const prev = process.env.LOGOSDB_PATH;
+    try {
+      applyCli(['--path', '/tmp/logosdb-cli-test'], {
+        stdout: { write: () => true } as unknown as NodeJS.WritableStream,
+      });
+      assert.equal(process.env.LOGOSDB_PATH, '/tmp/logosdb-cli-test');
+    } finally {
+      if (prev === undefined) delete process.env.LOGOSDB_PATH;
+      else process.env.LOGOSDB_PATH = prev;
+    }
+  });
+
   it('writes version and does not start the server', () => {
     let out = '';
     const mode = applyCli(['--version'], {

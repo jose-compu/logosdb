@@ -151,3 +151,6 @@ export const DIST_L2: number;
 
 /** Library version string */
 export const VERSION: string;
+
+/** L2-normalize a vector (new array). Required for DIST_IP. */
+export function normalizeL2(embedding: number[]): number[];

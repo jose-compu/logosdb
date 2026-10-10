@@ -112,6 +112,8 @@ Close the database.
 - `DIST_COSINE` (1): Cosine similarity (auto-normalizes)
 - `DIST_L2` (2): Euclidean distance
 
+`normalizeL2(embedding)` returns a new unit vector for `DIST_IP`. `put` / `search` / `update` throw if the vector length does not match `db.dim()`.
+
 ## Memory Model
 
 LogosDB uses memory-mapped files:

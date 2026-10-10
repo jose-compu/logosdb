@@ -57,6 +57,7 @@ class DB {
    */
   put(embedding, text, timestamp) {
     this._checkClosed();
+    assertDim(embedding, this.dim(), 'put');
     return this._db.put(embedding, text, timestamp);
   }
 
@@ -68,6 +69,7 @@ class DB {
    */
   search(queryEmbedding, topK = 10) {
     this._checkClosed();
+    assertDim(queryEmbedding, this.dim(), 'search');
     return this._db.search(queryEmbedding, topK);
   }
 
@@ -96,6 +98,7 @@ class DB {
    */
   update(id, embedding, text, timestamp) {
     this._checkClosed();
+    assertDim(embedding, this.dim(), 'update');
     return this._db.update(id, embedding, text, timestamp);
   }
 
@@ -175,10 +178,46 @@ const DIST_L2 = bindings.DIST_L2;
  */
 const VERSION = bindings.VERSION;
 
+/**
+ * L2-normalize a vector in place-safe fashion (returns a new array).
+ * Required for DIST_IP; DIST_COSINE already normalizes internally.
+ * @param {number[]} embedding
+ * @returns {number[]}
+ */
+function normalizeL2(embedding) {
+  if (!Array.isArray(embedding) || embedding.length === 0) {
+    throw new Error('normalizeL2: embedding must be a non-empty number array');
+  }
+  let sum = 0;
+  for (const value of embedding) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error('normalizeL2: embedding must contain finite numbers');
+    }
+    sum += value * value;
+  }
+  const norm = Math.sqrt(sum);
+  if (!(norm > 0)) {
+    throw new Error('normalizeL2: zero-length vector');
+  }
+  return embedding.map((value) => value / norm);
+}
+
+function assertDim(embedding, dim, op) {
+  if (!Array.isArray(embedding)) {
+    throw new Error(`${op}: embedding must be a number array`);
+  }
+  if (embedding.length !== dim) {
+    throw new Error(
+      `${op}: vector dimension ${embedding.length} does not match database dim ${dim}`
+    );
+  }
+}
+
 module.exports = {
   DB,
   DIST_IP,
   DIST_COSINE,
   DIST_L2,
   VERSION,
+  normalizeL2,
 };
