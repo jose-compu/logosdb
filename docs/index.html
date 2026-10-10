@@ -33,7 +33,7 @@
       <div class="container hero-grid">
         <div>
           <p class="section-label">Semantic memory</p>
-          <p class="version-badge">1.0.0</p>
+          <p class="version-badge">1.0.2</p>
           <h1>
             <span class="word-cyan">Semantic.</span>
             <span class="word-blue">Fast.</span>
@@ -143,10 +143,10 @@
     <section id="features">
       <div class="container">
         <span class="section-label">Features</span>
-        <h2>1.0.0 — stable release</h2>
+        <h2>1.0.2 — npm bindings, MCP, n8n</h2>
         <p class="section-intro">
-          LogosDB 1.0.0 commits to stable semver for the public C API and supported on-disk formats.
-          Throughput, search, integrations, and tooling from the 0.x line — production-ready.
+          The C/C++ core remains on the 1.0 stable line. The 10 October 2026 npm train ships
+          <code>logosdb@1.0.2</code>, <code>logosdb-mcp-server@1.2.0</code>, and <code>n8n-nodes-logosdb@1.0.3</code>.
         </p>
 
         <div class="flyer-grid">
@@ -183,6 +183,18 @@
             <h3>Multi-tenant namespaces</h3>
             <p>Isolated namespaces with quotas inside one DB root. Ideal for separating code, docs, and agent decisions.</p>
           </article>
+          <article class="feature-card cyan">
+            <h3>Node <code>normalizeL2</code></h3>
+            <p><code>logosdb@1.0.2</code> exposes <code>normalizeL2()</code> and throws in JS when <code>put</code> / <code>search</code> / <code>update</code> vectors do not match <code>db.dim()</code>.</p>
+          </article>
+          <article class="feature-card blue">
+            <h3>MCP <code>--path</code></h3>
+            <p><code>logosdb-mcp-server@1.2.0</code> accepts <code>--path DIR</code> / <code>-p DIR</code> to set <code>LOGOSDB_PATH</code> before stdio starts.</p>
+          </article>
+          <article class="feature-card purple">
+            <h3>n8n embed errors</h3>
+            <p><code>n8n-nodes-logosdb@1.0.3</code> includes a short HTTP body snippet on OpenAI/Voyage embed failures.</p>
+          </article>
         </div>
       </div>
     </section>
@@ -201,7 +213,7 @@
             <div class="badge-icon">🧩</div>
             <div>
               <h3>MCP server — Claude Code</h3>
-              <p><code>logosdb-mcp-server</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default.</p>
+              <p><code>logosdb-mcp-server@1.2.0</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default. Launch with <code>npx -y logosdb-mcp-server --path ./.logosdb</code>.</p>
             </div>
           </article>
           <article class="integration-card">
@@ -270,7 +282,9 @@ for h in hits:
           <a class="btn btn-primary" href="https://github.com/jose-compu/logosdb#building" target="_blank" rel="noopener">Build from source</a>
           <a class="btn btn-ghost" href="https://github.com/jose-compu/logosdb" target="_blank" rel="noopener">GitHub</a>
           <a class="btn btn-ghost" href="https://pypi.org/project/logosdb/" target="_blank" rel="noopener">PyPI</a>
+          <a class="btn btn-ghost" href="https://www.npmjs.com/package/logosdb" target="_blank" rel="noopener">npm (Node)</a>
           <a class="btn btn-ghost" href="https://www.npmjs.com/package/logosdb-mcp-server" target="_blank" rel="noopener">npm (MCP)</a>
+          <a class="btn btn-ghost" href="https://www.npmjs.com/package/n8n-nodes-logosdb" target="_blank" rel="noopener">npm (n8n)</a>
           <a class="btn btn-ghost" href="https://github.com/jose-compu/logosdb/blob/main/tutorials/rag-on-prem.md" target="_blank" rel="noopener">RAG guide</a>
         </div>
       </div>
@@ -293,7 +307,7 @@ for h in hits:
         <a href="https://www.npmjs.com/package/logosdb-mcp-server">MCP server</a>
         <a href="https://github.com/jose-compu/logosdb/blob/main/LICENSE">MIT License</a>
       </div>
-      <p class="footer-copy">LogosDB 1.0.0 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
+      <p class="footer-copy">LogosDB 1.0.2 · MCP 1.2.0 · n8n 1.0.3 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
     </div>
   </footer>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
