@@ -16,6 +16,11 @@
 #include <thread>
 #include <vector>
 
+static std::string tmp_path(const std::string& name)
+{
+    return (std::filesystem::temp_directory_path() / name).string();
+}
+
 namespace
 {
 
@@ -42,7 +47,7 @@ TEST_SUITE("stress")
 {
     TEST_CASE("stress: many sequential puts")
     {
-        const std::string path = "/tmp/logosdb_stress_puts";
+        const std::string path = tmp_path("logosdb_stress_puts");
         std::filesystem::remove_all(path);
 
         char* err = nullptr;
@@ -73,7 +78,7 @@ TEST_SUITE("stress")
 
     TEST_CASE("stress: search under load")
     {
-        const std::string path = "/tmp/logosdb_stress_search";
+        const std::string path = tmp_path("logosdb_stress_search");
         std::filesystem::remove_all(path);
 
         char* err = nullptr;
@@ -109,7 +114,7 @@ TEST_SUITE("stress")
 
     TEST_CASE("stress: large put_batch")
     {
-        const std::string path = "/tmp/logosdb_stress_batch";
+        const std::string path = tmp_path("logosdb_stress_batch");
         std::filesystem::remove_all(path);
 
         char* err = nullptr;
@@ -145,7 +150,7 @@ TEST_SUITE("stress")
 
     TEST_CASE("stress: interleaved put search sync")
     {
-        const std::string path = "/tmp/logosdb_stress_mixed";
+        const std::string path = tmp_path("logosdb_stress_mixed");
         std::filesystem::remove_all(path);
 
         char* err = nullptr;
@@ -180,7 +185,7 @@ TEST_SUITE("stress")
 
     TEST_CASE("stress: concurrent puts (shared handle)")
     {
-        const std::string path = "/tmp/logosdb_stress_par_puts";
+        const std::string path = tmp_path("logosdb_stress_par_puts");
         std::filesystem::remove_all(path);
 
         char* err = nullptr;
@@ -200,7 +205,7 @@ TEST_SUITE("stress")
         for (int t = 0; t < n_threads; ++t)
         {
             workers.emplace_back(
-                [db, t, &fail_count]()
+                [db, t, &fail_count, per_thread]()
                 {
                     for (int i = 0; i < per_thread; ++i)
                     {
@@ -232,7 +237,7 @@ TEST_SUITE("stress")
 
     TEST_CASE("stress: concurrent searches (shared handle)")
     {
-        const std::string path = "/tmp/logosdb_stress_par_search";
+        const std::string path = tmp_path("logosdb_stress_par_search");
         std::filesystem::remove_all(path);
 
         char* err = nullptr;
@@ -259,7 +264,7 @@ TEST_SUITE("stress")
         for (int t = 0; t < n_threads; ++t)
         {
             workers.emplace_back(
-                [db, t, &fail_count]()
+                [db, t, &fail_count, queries_per_thread]()
                 {
                     for (int q = 0; q < queries_per_thread; ++q)
                     {
@@ -291,7 +296,7 @@ TEST_SUITE("stress")
 
     TEST_CASE("stress: concurrent mixed put and search")
     {
-        const std::string path = "/tmp/logosdb_stress_par_mixed";
+        const std::string path = tmp_path("logosdb_stress_par_mixed");
         std::filesystem::remove_all(path);
 
         char* err = nullptr;
@@ -320,7 +325,7 @@ TEST_SUITE("stress")
         for (int t = 0; t < n_putters; ++t)
         {
             workers.emplace_back(
-                [db, t, &fail_count]()
+                [db, t, &fail_count, put_iters]()
                 {
                     for (int i = 0; i < put_iters; ++i)
                     {
@@ -339,7 +344,7 @@ TEST_SUITE("stress")
         for (int t = 0; t < n_searchers; ++t)
         {
             workers.emplace_back(
-                [db, t, &fail_count]()
+                [db, t, &fail_count, search_iters]()
                 {
                     for (int q = 0; q < search_iters; ++q)
                     {

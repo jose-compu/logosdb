@@ -1,5 +1,6 @@
 #include <logosdb/logosdb.h>
 
+#include <cinttypes>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -392,17 +393,17 @@ static int run_upgrade_cmd(const std::string& db_path, bool apply)
     if (inferred != raw.n_rows)
     {
         fprintf(stderr,
-                "error: legacy n_rows mismatch (header=%llu size implies %llu)\n",
-                (unsigned long long)raw.n_rows,
-                (unsigned long long)inferred);
+                "error: legacy n_rows mismatch (header=%" PRIu64 " size implies %" PRIu64 ")\n",
+                raw.n_rows,
+                inferred);
         return 1;
     }
 
-    printf("Planned: rewrite vectors.bin header from v%u to v2 (dim=%u n_rows=%llu, float32 "
+    printf("Planned: rewrite vectors.bin header from v%u to v2 (dim=%u n_rows=%" PRIu64 ", float32 "
            "rows).\n",
            raw.version,
            raw.dim,
-           (unsigned long long)raw.n_rows);
+           raw.n_rows);
     if (!apply)
     {
         printf("This was a dry run. Re-run with --apply or --yes to write the new header.\n");
@@ -579,7 +580,7 @@ static int run_doctor(const std::string& db_path, bool json, int distance_overri
         {
             printf("    \"on_disk_version\": %u,\n", disk_vec_version);
             printf("    \"dim\": %u,\n", disk_raw.dim);
-            printf("    \"n_rows\": %llu,\n", (unsigned long long)disk_raw.n_rows);
+            printf("    \"n_rows\": %" PRIu64 ",\n", disk_raw.n_rows);
         }
         else
         {
@@ -669,10 +670,10 @@ static int run_doctor(const std::string& db_path, bool json, int distance_overri
     printf("wal.log             : %s  (%zu bytes)\n", e_wal ? "yes" : "no", s_wal);
     if (have_disk_header)
     {
-        printf("vectors on-disk hdr : version=%u dim=%u n_rows=%llu\n",
+        printf("vectors on-disk hdr : version=%u dim=%u n_rows=%" PRIu64 "\n",
                disk_vec_version,
                disk_raw.dim,
-               (unsigned long long)disk_raw.n_rows);
+               disk_raw.n_rows);
     }
     if (vec_ok)
     {
@@ -896,57 +897,57 @@ static int cmd_stats(const std::string& db_path, bool json)
     if (json)
     {
         printf("{\n");
-        printf("  \"rows_total\": %llu,\n", (unsigned long long)s.rows_total);
-        printf("  \"rows_live\": %llu,\n", (unsigned long long)s.rows_live);
-        printf("  \"tombstones\": %llu,\n", (unsigned long long)s.tombstones);
-        printf("  \"index_elements\": %llu,\n", (unsigned long long)s.index_elements);
-        printf("  \"wal_pending\": %llu,\n", (unsigned long long)s.wal_pending);
+        printf("  \"rows_total\": %" PRIu64 ",\n", s.rows_total);
+        printf("  \"rows_live\": %" PRIu64 ",\n", s.rows_live);
+        printf("  \"tombstones\": %" PRIu64 ",\n", s.tombstones);
+        printf("  \"index_elements\": %" PRIu64 ",\n", s.index_elements);
+        printf("  \"wal_pending\": %" PRIu64 ",\n", s.wal_pending);
         printf("  \"distance_metric\": %d,\n", s.distance_metric);
         printf("  \"storage_dtype\": %d,\n", s.storage_dtype);
-        printf("  \"put_success\": %llu,\n", (unsigned long long)s.put_success);
-        printf("  \"put_failed\": %llu,\n", (unsigned long long)s.put_failed);
-        printf("  \"put_batch_success\": %llu,\n", (unsigned long long)s.put_batch_success);
-        printf("  \"put_batch_failed\": %llu,\n", (unsigned long long)s.put_batch_failed);
-        printf("  \"search_success\": %llu,\n", (unsigned long long)s.search_success);
-        printf("  \"search_failed\": %llu,\n", (unsigned long long)s.search_failed);
-        printf("  \"search_ts_success\": %llu,\n", (unsigned long long)s.search_ts_success);
-        printf("  \"search_ts_failed\": %llu,\n", (unsigned long long)s.search_ts_failed);
-        printf("  \"delete_success\": %llu,\n", (unsigned long long)s.delete_success);
-        printf("  \"delete_failed\": %llu,\n", (unsigned long long)s.delete_failed);
-        printf("  \"update_success\": %llu,\n", (unsigned long long)s.update_success);
-        printf("  \"update_failed\": %llu,\n", (unsigned long long)s.update_failed);
-        printf("  \"sync_calls\": %llu\n", (unsigned long long)s.sync_calls);
+        printf("  \"put_success\": %" PRIu64 ",\n", s.put_success);
+        printf("  \"put_failed\": %" PRIu64 ",\n", s.put_failed);
+        printf("  \"put_batch_success\": %" PRIu64 ",\n", s.put_batch_success);
+        printf("  \"put_batch_failed\": %" PRIu64 ",\n", s.put_batch_failed);
+        printf("  \"search_success\": %" PRIu64 ",\n", s.search_success);
+        printf("  \"search_failed\": %" PRIu64 ",\n", s.search_failed);
+        printf("  \"search_ts_success\": %" PRIu64 ",\n", s.search_ts_success);
+        printf("  \"search_ts_failed\": %" PRIu64 ",\n", s.search_ts_failed);
+        printf("  \"delete_success\": %" PRIu64 ",\n", s.delete_success);
+        printf("  \"delete_failed\": %" PRIu64 ",\n", s.delete_failed);
+        printf("  \"update_success\": %" PRIu64 ",\n", s.update_success);
+        printf("  \"update_failed\": %" PRIu64 ",\n", s.update_failed);
+        printf("  \"sync_calls\": %" PRIu64 "\n", s.sync_calls);
         printf("}\n");
         return 0;
     }
 
     printf("stats — %s\n", db_path.c_str());
-    printf("rows_total / live / tombstones : %llu / %llu / %llu\n",
-           (unsigned long long)s.rows_total,
-           (unsigned long long)s.rows_live,
-           (unsigned long long)s.tombstones);
-    printf("index_elements                 : %llu\n", (unsigned long long)s.index_elements);
-    printf("wal_pending                    : %llu\n", (unsigned long long)s.wal_pending);
+    printf("rows_total / live / tombstones : %" PRIu64 " / %" PRIu64 " / %" PRIu64 "\n",
+           s.rows_total,
+           s.rows_live,
+           s.tombstones);
+    printf("index_elements                 : %" PRIu64 "\n", s.index_elements);
+    printf("wal_pending                    : %" PRIu64 "\n", s.wal_pending);
     printf("distance / storage_dtype       : %d / %d\n", s.distance_metric, s.storage_dtype);
-    printf("put ok / fail                  : %llu / %llu\n",
-           (unsigned long long)s.put_success,
-           (unsigned long long)s.put_failed);
-    printf("put_batch ok / fail            : %llu / %llu\n",
-           (unsigned long long)s.put_batch_success,
-           (unsigned long long)s.put_batch_failed);
-    printf("search ok / fail               : %llu / %llu\n",
-           (unsigned long long)s.search_success,
-           (unsigned long long)s.search_failed);
-    printf("search_ts ok / fail            : %llu / %llu\n",
-           (unsigned long long)s.search_ts_success,
-           (unsigned long long)s.search_ts_failed);
-    printf("delete ok / fail               : %llu / %llu\n",
-           (unsigned long long)s.delete_success,
-           (unsigned long long)s.delete_failed);
-    printf("update ok / fail               : %llu / %llu\n",
-           (unsigned long long)s.update_success,
-           (unsigned long long)s.update_failed);
-    printf("sync_calls                     : %llu\n", (unsigned long long)s.sync_calls);
+    printf("put ok / fail                  : %" PRIu64 " / %" PRIu64 "\n",
+           s.put_success,
+           s.put_failed);
+    printf("put_batch ok / fail            : %" PRIu64 " / %" PRIu64 "\n",
+           s.put_batch_success,
+           s.put_batch_failed);
+    printf("search ok / fail               : %" PRIu64 " / %" PRIu64 "\n",
+           s.search_success,
+           s.search_failed);
+    printf("search_ts ok / fail            : %" PRIu64 " / %" PRIu64 "\n",
+           s.search_ts_success,
+           s.search_ts_failed);
+    printf("delete ok / fail               : %" PRIu64 " / %" PRIu64 "\n",
+           s.delete_success,
+           s.delete_failed);
+    printf("update ok / fail               : %" PRIu64 " / %" PRIu64 "\n",
+           s.update_success,
+           s.update_failed);
+    printf("sync_calls                     : %" PRIu64 "\n", s.sync_calls);
     return 0;
 }
 
@@ -1444,11 +1445,11 @@ int main(int argc, char** argv)
         {
             if (args.json)
             {
-                printf("{\"id\": %llu}\n", (unsigned long long)id);
+                printf("{\"id\": %" PRIu64 "}\n", id);
             }
             else
             {
-                printf("put id=%llu\n", (unsigned long long)id);
+                printf("put id=%" PRIu64 "\n", id);
             }
         }
     }
@@ -1473,8 +1474,7 @@ int main(int argc, char** argv)
             const float* raw = logosdb_raw_vectors(db, nullptr, nullptr);
             if (!raw || args.query_id >= logosdb_count(db))
             {
-                fprintf(
-                    stderr, "error: invalid query-id %llu\n", (unsigned long long)args.query_id);
+                fprintf(stderr, "error: invalid query-id %" PRIu64 "\n", args.query_id);
                 rc = 1;
                 goto done;
             }
@@ -1524,7 +1524,7 @@ int main(int argc, char** argv)
                 {
                     printf("  {\n");
                     printf("    \"rank\": %d,\n", i);
-                    printf("    \"id\": %llu,\n", (unsigned long long)logosdb_result_id(res, i));
+                    printf("    \"id\": %" PRIu64 ",\n", logosdb_result_id(res, i));
                     printf("    \"score\": %.6f", logosdb_result_score(res, i));
                     const char* t = logosdb_result_text(res, i);
                     const char* tts = logosdb_result_timestamp(res, i);
@@ -1549,9 +1549,9 @@ int main(int argc, char** argv)
                 printf("results: %d\n", n);
                 for (int i = 0; i < n; ++i)
                 {
-                    printf("  #%d id=%llu score=%.6f",
+                    printf("  #%d id=%" PRIu64 " score=%.6f",
                            i,
-                           (unsigned long long)logosdb_result_id(res, i),
+                           logosdb_result_id(res, i),
                            logosdb_result_score(res, i));
                     const char* t = logosdb_result_text(res, i);
                     if (t)
@@ -1584,10 +1584,10 @@ int main(int argc, char** argv)
             goto done;
         }
         free(err);
-        printf("Exported rows to %s (start_id=%llu end_id=%llu)\n",
+        printf("Exported rows to %s (start_id=%" PRIu64 " end_id=%" PRIu64 ")\n",
                args.output_file,
-               (unsigned long long)args.export_start_id,
-               (unsigned long long)args.export_end_id);
+               args.export_start_id,
+               args.export_end_id);
     }
     else if (args.cmd == "import")
     {
