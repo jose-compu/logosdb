@@ -1,6 +1,13 @@
 logosdb change log
 ==================
 
+1.0.2  (2026-10-19) — Python / C++ / PyPI
+-----------------------------------------
+
+  * Align `pyproject.toml`, CMake `project(VERSION ...)`, and
+    `LOGOSDB_VERSION_*` with npm `logosdb` 1.0.2 so PyPI can publish the
+    same train. The 1.0.1 wheel was the last Python release.
+
 1.2.0  (2026-10-10) — npm packages
 ---------------------------------
 
