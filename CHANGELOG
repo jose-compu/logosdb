@@ -1,6 +1,12 @@
 logosdb change log
 ==================
 
+1.1.0  (2026-10-28) — core / PyPI / npm `logosdb`
+-------------------------------------------------
+
+  * Coordinated minor: Python, C++, and npm `logosdb` → **1.1.0**.
+  * Ships with `logosdb-mcp-server` **1.3.0** (Contextual Retrieval, #128).
+
 1.3.0  (2026-10-28) — `logosdb-mcp-server` only
 -----------------------------------------------
 
