@@ -38,6 +38,12 @@ export interface Chunk {
   text: string;
   /** approximate character offset in original text */
   offset: number;
+  /** 1-based inclusive line number of the first line in this chunk. */
+  lineStart?: number;
+  /** 1-based inclusive line number of the last line in this chunk. */
+  lineEnd?: number;
+  /** Nearest heading (section mode) or last-seen signature (line mode). */
+  heading?: string;
 }
 
 export type ChunkMode = 'auto' | 'line' | 'section' | 'legacy';
@@ -75,7 +81,8 @@ const CODE_EXTS = new Set([
 /** Documentation file extensions → section-aware chunking. */
 const SECTION_EXTS = new Set(['.md', '.rst']);
 
-function resolveMode(opts: ChunkOptions): ChunkMode {
+/** Resolve `auto` to the concrete strategy (`line` | `section` | `legacy`). */
+export function resolveChunkMode(opts: ChunkOptions): Exclude<ChunkMode, 'auto'> {
   const m = opts.mode ?? 'auto';
   if (m !== 'auto') return m;
   if (!opts.filePath) return 'legacy';
@@ -106,28 +113,32 @@ export function chunk(text: string, opts?: ChunkOptions | number, _legacyOverlap
     resolvedOpts = opts ?? {};
   }
 
-  const mode = resolveMode(resolvedOpts);
+  const mode = resolveChunkMode(resolvedOpts);
 
+  let chunks: Chunk[];
   switch (mode) {
     case 'line':
-      return chunkByLines(
+      chunks = chunkByLines(
         text,
         resolvedOpts.linesPerChunk ?? 50,
         resolvedOpts.lineOverlap ?? 10,
       );
+      break;
     case 'section':
-      return chunkBySection(
+      chunks = chunkBySection(
         text,
         resolvedOpts.targetChars ?? 800,
         resolvedOpts.overlapChars ?? 100,
       );
+      break;
     default:
-      return chunkByParagraph(
+      chunks = chunkByParagraph(
         text,
         resolvedOpts.targetChars ?? 800,
         resolvedOpts.overlapChars ?? 100,
       );
   }
+  return attachLineRanges(text, chunks);
 }
 
 // ── Strategy: line-window (code files) ───────────────────────────────────────
@@ -170,7 +181,13 @@ function chunkByLines(text: string, linesPerChunk: number, lineOverlap: number):
 
     const chunkText = lines.slice(start, splitAt).join('\n').trim();
     if (chunkText) {
-      chunks.push({ text: chunkText, offset: lineOffsets[start] });
+      chunks.push({
+        text: chunkText,
+        offset: lineOffsets[start],
+        lineStart: start + 1,
+        lineEnd: splitAt,
+        heading: lastSeenSignature(lines, start),
+      });
     }
 
     if (splitAt >= lines.length) break;
@@ -239,13 +256,19 @@ function chunkBySection(text: string, targetChars: number, overlapChars: number)
     return chunkByParagraph(text, targetChars, overlapChars);
   }
 
-  // Build raw sections: [{text, offset}].
-  const rawSections: { text: string; offset: number }[] = [];
+  // Build raw sections: [{text, offset, heading}].
+  const rawSections: { text: string; offset: number; heading?: string }[] = [];
   for (let s = 0; s < sectionStarts.length; s++) {
     const from = sectionStarts[s];
     const to = s + 1 < sectionStarts.length ? sectionStarts[s + 1] : lines.length;
     const secText = lines.slice(from, to).join('\n').trim();
-    if (secText) rawSections.push({ text: secText, offset: lineOffsets[from] });
+    if (secText) {
+      rawSections.push({
+        text: secText,
+        offset: lineOffsets[from],
+        heading: extractSectionHeading(secText),
+      });
+    }
   }
 
   if (rawSections.length === 0) return [{ text: text.trim(), offset: 0 }];
@@ -254,23 +277,33 @@ function chunkBySection(text: string, targetChars: number, overlapChars: number)
   const result: Chunk[] = [];
   let buffer = '';
   let bufferOffset = 0;
+  let bufferHeading: string | undefined;
 
   const flushBuffer = () => {
-    if (buffer.trim()) result.push({ text: buffer.trim(), offset: bufferOffset });
+    if (buffer.trim()) {
+      result.push({ text: buffer.trim(), offset: bufferOffset, heading: bufferHeading });
+    }
     buffer = '';
+    bufferHeading = undefined;
   };
 
   for (const sec of rawSections) {
     if (sec.text.length > targetChars) {
       flushBuffer();
       const sub = chunkByParagraph(sec.text, targetChars, overlapChars);
-      for (const c of sub) result.push({ text: c.text, offset: sec.offset + c.offset });
+      for (const c of sub) {
+        result.push({ text: c.text, offset: sec.offset + c.offset, heading: sec.heading });
+      }
     } else if (buffer && buffer.length + sec.text.length + 2 > targetChars) {
       flushBuffer();
       buffer = sec.text;
       bufferOffset = sec.offset;
+      bufferHeading = sec.heading;
     } else {
-      if (!buffer) bufferOffset = sec.offset;
+      if (!buffer) {
+        bufferOffset = sec.offset;
+        bufferHeading = sec.heading;
+      }
       buffer = buffer ? buffer + '\n\n' + sec.text : sec.text;
     }
   }
@@ -358,4 +391,54 @@ function chunkByParagraph(text: string, targetChars: number, overlapChars: numbe
   flushBuffer();
 
   return chunks.length ? chunks : [{ text: text.trim(), offset: 0 }];
+}
+
+// ── Situating helpers ────────────────────────────────────────────────────────
+
+const CODE_SIG_RE =
+  /^\s*(export\s+)?(async\s+)?(function|class|interface|type|enum|def|fn|pub\s+fn|func|struct|impl)\b/;
+
+function lastSeenSignature(lines: string[], startLine0: number): string | undefined {
+  for (let i = startLine0 - 1; i >= 0; i--) {
+    const t = lines[i].trim();
+    if (!t) continue;
+    if (CODE_SIG_RE.test(lines[i])) return t.slice(0, 120);
+  }
+  return undefined;
+}
+
+function extractSectionHeading(secText: string): string | undefined {
+  const lines = secText.split('\n');
+  if (lines.length === 0) return undefined;
+  if (ATX_HEADING_RE.test(lines[0])) return lines[0].replace(/^#{1,6}\s+/, '').trim().slice(0, 120);
+  if (lines.length >= 2 && SETEXT_UNDERLINE_RE.test(lines[1]) && lines[0].trim()) {
+    return lines[0].trim().slice(0, 120);
+  }
+  return undefined;
+}
+
+function attachLineRanges(source: string, chunks: Chunk[]): Chunk[] {
+  if (chunks.length === 0) return chunks;
+  const lineStarts: number[] = [0];
+  for (let i = 0; i < source.length; i++) {
+    if (source[i] === '\n') lineStarts.push(i + 1);
+  }
+  const offsetToLine = (offset: number): number => {
+    let lo = 0;
+    let hi = lineStarts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (lineStarts[mid] <= offset) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo + 1;
+  };
+  for (const c of chunks) {
+    if (c.lineStart == null) c.lineStart = offsetToLine(c.offset);
+    if (c.lineEnd == null) {
+      const lastOff = c.offset + Math.max(0, c.text.length - 1);
+      c.lineEnd = offsetToLine(Math.min(lastOff, Math.max(0, source.length - 1)));
+    }
+  }
+  return chunks;
 }

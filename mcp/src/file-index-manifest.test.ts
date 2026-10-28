@@ -39,6 +39,28 @@ describe('file-index-manifest', () => {
     fs.rmSync(dir, { recursive: true });
   });
 
+  it('saveManifest persists chunkContext', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'logosdb-manifest-ctx-'));
+    const p = path.join(dir, 'ns.json');
+    const m: FileIndexManifest = {
+      version: MANIFEST_VERSION,
+      files: {
+        '/x/a.ts': {
+          mtimeMs: 1,
+          size: 2,
+          chunkSize: 800,
+          chunkMode: 'line',
+          chunkContext: 'header',
+          ids: [1],
+        },
+      },
+    };
+    saveManifest(p, m);
+    const m2 = loadManifest(p);
+    assert.equal(m2.files['/x/a.ts']?.chunkContext, 'header');
+    fs.rmSync(dir, { recursive: true });
+  });
+
   it('pruneRemovedPaths deletes stale keys and calls db.delete', () => {
     const deleted: number[] = [];
     const db = {
