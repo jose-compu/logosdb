@@ -348,6 +348,7 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 | `VOYAGE_API_KEY` | — | Required when `EMBEDDING_PROVIDER=voyage` |
 | `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk for `"legacy"` and `"section"` modes (ignored in `"line"` mode) |
 | `LOGOSDB_CHUNK_MODE` | `auto` | Default chunking strategy: `auto` \| `line` \| `section` \| `legacy`. See [Chunking strategies](#chunking-strategies). |
+| `LOGOSDB_CHUNK_CONTEXT` | `header` | Situating prefix on the *embedded* string: `off` \| `header` \| `llm`. Stored row text stays the raw chunk. See [Contextual Retrieval](#contextual-retrieval). |
 | `LOGOSDB_RESPECT_GITIGNORE` | `1` (auto-on inside a Git working tree) | `0` / `false` / `no` / `off` disables `.gitignore`-aware filtering globally (0.9.1+) |
 
 **Important:** Use one embedding backend consistently for a given namespace on disk. Mixing dimensions or models on the same `LOGOSDB_PATH` namespace will produce invalid search results.
@@ -357,7 +358,7 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 | Tool | Inputs | Description |
 |---|---|---|
 | `logosdb_index` | `text`, `namespace`, `metadata?`, `tags?` | Embed and store a text snippet; optional structured `tags` for later `filter` |
-| `logosdb_index_file` | `path`, `namespace`, `chunk_size?`, `chunking?`, `incremental?`, `respect_gitignore?`, `tags?` | Chunk, embed, and store a file or tree; **`incremental: true`** skips unchanged files, replaces chunks for changed files, and prunes removed files under a directory (state in `LOGOSDB_PATH/_logosdb_mcp_manifests/`). When the path lives inside a Git working tree, `.gitignore` rules are applied by default (override per call with `respect_gitignore: false` or globally with `LOGOSDB_RESPECT_GITIGNORE=0`; see [`.gitignore`-aware walking](#gitignore-aware-walking-091)). `chunking` selects the splitting strategy — see [Chunking strategies](#chunking-strategies). |
+| `logosdb_index_file` | `path`, `namespace`, `chunk_size?`, `chunking?`, `chunk_context?`, `incremental?`, `respect_gitignore?`, `tags?` | Chunk, embed, and store a file or tree; **`incremental: true`** skips unchanged files, replaces chunks for changed files, and prunes removed files under a directory (state in `LOGOSDB_PATH/_logosdb_mcp_manifests/`). When the path lives inside a Git working tree, `.gitignore` rules are applied by default (override per call with `respect_gitignore: false` or globally with `LOGOSDB_RESPECT_GITIGNORE=0`; see [`.gitignore`-aware walking](#gitignore-aware-walking-091)). `chunking` selects the splitting strategy — see [Chunking strategies](#chunking-strategies). `chunk_context` selects the situating prefix on embeddings — see [Contextual Retrieval](#contextual-retrieval). |
 | `logosdb_search` | `query`, `namespace`, `top_k?`, `ts_from?`, `ts_to?`, `candidate_k?`, `hybrid?`, `fusion?`, `lexical_weight?`, `filter?` | Semantic search; optional ISO 8601 window; optional hybrid ANN+lexical fusion; optional metadata `filter` |
 | `logosdb_list` | — | List namespaces (includes live counts / quota summary when configured) |
 | `logosdb_info` | `namespace` | Stats: count, live count, dimension |
@@ -406,6 +407,24 @@ The `chunking` setting is part of the **incremental cache fingerprint**: changin
 ### `chunk_size` and overlap
 
 `chunk_size` controls the target character count for the `"legacy"` and `"section"` modes (default `800`; env `LOGOSDB_CHUNK_SIZE`). It is ignored in `"line"` mode (which uses `linesPerChunk` / `lineOverlap`, not exposed as tool parameters but configurable programmatically via the `ChunkOptions` API).
+
+## Contextual Retrieval
+
+Plain windows lose identity. `logosdb_index_file` can prepend a short **situating header** to the string that is **embedded**, while the stored row text stays the raw chunk (plus the existing `[file:…][chunk:…]` display label).
+
+This is [Anthropic Contextual Retrieval](https://www.anthropic.com/news/contextual-retrieval) v1 (`header` only; no LLM).
+
+| Mode | Embedded string | Stored text |
+|------|-----------------|-------------|
+| `header` (default for new indexes) | file, chunk i/n, lines, optional heading/symbol, then the raw chunk | raw chunk (display label unchanged) |
+| `off` | raw chunk only — same embed input as pre-1.3.0 | unchanged |
+| `llm` | reserved; falls back to `header` until a generator is configured | unchanged |
+
+**Per call:** `logosdb_index_file({ …, chunk_context: "off" })`.
+
+**Globally:** `LOGOSDB_CHUNK_CONTEXT=off` (also `0` / `false` / `raw`).
+
+The incremental fingerprint includes `chunkContext`. Missing field on old manifests compares as `off` (no mass re-index). Switching `off` ↔ `header` forces a re-chunk.
 
 ## Development
 

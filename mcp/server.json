@@ -8,13 +8,13 @@
     "url": "https://github.com/jose-compu/logosdb",
     "source": "github"
   },
-  "version": "1.2.0",
+  "version": "1.3.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "logosdb-mcp-server",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "transport": {
         "type": "stdio"
       },
@@ -28,6 +28,12 @@
         {
           "name": "EMBEDDING_PROVIDER",
           "description": "transformers (default), ollama, openai, or voyage",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "LOGOSDB_CHUNK_CONTEXT",
+          "description": "Situating prefix on embeds: off, header (default), or llm",
           "isRequired": false,
           "isSecret": false
         },

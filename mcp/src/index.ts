@@ -15,6 +15,7 @@
  *   OPENAI_API_KEY        Required when EMBEDDING_PROVIDER=openai
  *   VOYAGE_API_KEY        Required when EMBEDDING_PROVIDER=voyage
  *   LOGOSDB_CHUNK_SIZE             Target characters per chunk for file indexing (default: 800)
+ *   LOGOSDB_CHUNK_CONTEXT          Situating prefix on embeds: off | header | llm (default header)
  *   LOGOSDB_QUOTA_MAX_VECTORS      Max live vectors per namespace, 0 = unlimited (default 0)
  *   LOGOSDB_QUOTA_MAX_NAMESPACES   Max namespaces under LOGOSDB_PATH, 0 = unlimited (default 0)
  */
@@ -31,7 +32,12 @@ import * as path from 'path';
 
 import { resolveConfig, embed, embedBatch, type EmbeddingConfig } from './embeddings.js';
 import { NamespaceStore } from './store.js';
-import { chunk, type ChunkMode } from './chunker.js';
+import { chunk, resolveChunkMode, type ChunkMode } from './chunker.js';
+import {
+  embedTextForChunk,
+  resolveChunkContextMode,
+  type ChunkContextMode,
+} from './chunk-context.js';
 import {
   clampChunkSize,
   clampTopK,
@@ -81,6 +87,9 @@ const CHUNK_MODE_DEFAULT: ChunkMode = (() => {
   if (raw === 'line' || raw === 'section' || raw === 'legacy') return raw as ChunkMode;
   return 'auto';
 })();
+
+/** Global default situating-context mode; overridable per-call via `chunk_context`. */
+const CHUNK_CONTEXT_DEFAULT: ChunkContextMode = resolveChunkContextMode();
 
 let embCfg: EmbeddingConfig;
 try {
@@ -178,6 +187,16 @@ const TOOLS: Tool[] = [
             'Values must be strings, numbers, or booleans. ' +
             'Example: {"project":"my-app","lang":"typescript"}',
           additionalProperties: { type: ['string', 'number', 'boolean'] },
+        },
+        chunk_context: {
+          type: 'string',
+          enum: ['off', 'header', 'llm'],
+          description:
+            'Situating-context prefix prepended to the *embedded* string (stored text stays the raw chunk). ' +
+            '"header" (default): file, chunk i/n, line range, heading/symbol. ' +
+            '"off": embed raw chunk only (pre-1.3.0). ' +
+            '"llm": reserved; falls back to header unless a generator is configured. ' +
+            'Env: LOGOSDB_CHUNK_CONTEXT.',
         },
       },
       required: ['path', 'namespace'],
@@ -343,6 +362,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             : Boolean(args.respect_gitignore);
         const fileTags: Tags | undefined =
           args.tags != null ? validateTags(args.tags) : undefined;
+        const chunkContext: ChunkContextMode =
+          args.chunk_context != null
+            ? resolveChunkContextMode(String(args.chunk_context))
+            : CHUNK_CONTEXT_DEFAULT;
 
         if (!inputPath) throw new Error('"path" is required');
         if (!namespace) throw new Error('"namespace" is required');
@@ -412,7 +435,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             prev.mtimeMs === mtimeMs &&
             prev.size === fileSize &&
             prev.chunkSize === chunkSize &&
-            (prev.chunkMode ?? 'auto') === chunkMode
+            (prev.chunkMode ?? 'auto') === chunkMode &&
+            (prev.chunkContext ?? 'off') === chunkContext
           ) {
             skippedFiles++;
             continue;
@@ -442,11 +466,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             mode: chunkMode,
             filePath,
           });
+          const resolvedMode = resolveChunkMode({ mode: chunkMode, filePath });
           const texts = fileChunks.map((c) => c.text);
+          const embedTexts = fileChunks.map((c, i) =>
+            embedTextForChunk(
+              chunkContext,
+              {
+                filePath,
+                chunkIndex: i,
+                chunkCount: fileChunks.length,
+                chunk: c,
+                resolvedMode,
+                namespace,
+                tags: fileTags,
+              },
+              c.text,
+            ),
+          );
 
           const allVecs: number[][] = [];
-          for (let i = 0; i < texts.length; i += BATCH) {
-            const batch = texts.slice(i, i + BATCH);
+          for (let i = 0; i < embedTexts.length; i += BATCH) {
+            const batch = embedTexts.slice(i, i + BATCH);
             const vecs = await embedBatch(batch, embCfg);
             allVecs.push(...vecs);
           }
@@ -479,7 +519,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           indexedFiles++;
 
           if (incremental) {
-            manifest.files[filePath] = { mtimeMs, size: fileSize, chunkSize, chunkMode, ids };
+            manifest.files[filePath] = {
+              mtimeMs,
+              size: fileSize,
+              chunkSize,
+              chunkMode,
+              chunkContext,
+              ids,
+            };
           }
         }
 
@@ -494,6 +541,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           path: absPath,
           incremental,
           chunking: chunkMode,
+          chunk_context: chunkContext,
           respect_gitignore: respectGitignore,
           skipped_files: incremental ? skippedFiles : 0,
           indexed_files: indexedFiles,

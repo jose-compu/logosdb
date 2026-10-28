@@ -575,3 +575,20 @@ test('backward-compat: chunk(text) — no opts, defaults to legacy', () => {
   const chunks = chunk('Para one.\n\nPara two.');
   assert.ok(chunks[0].text.includes('Para one'));
 });
+
+test('line ranges are 1-based and cover the chunk', () => {
+  const src = makeLines(80);
+  const chunks = chunk(src, { mode: 'line', linesPerChunk: 20, lineOverlap: 0 });
+  for (const c of chunks) {
+    assert.ok(c.lineStart != null && c.lineEnd != null);
+    assert.ok(c.lineStart >= 1);
+    assert.ok(c.lineEnd >= c.lineStart);
+  }
+  assert.equal(chunks[0].lineStart, 1);
+});
+
+test('section mode attaches ATX heading', () => {
+  const md = '# Intro\n\nHello world.\n\n## API\n\nDocs here.\n';
+  const chunks = chunk(md, { mode: 'section', filePath: 'README.md' });
+  assert.ok(chunks.some((c) => c.heading === 'Intro' || c.heading === 'API'));
+});
