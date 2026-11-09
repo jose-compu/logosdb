@@ -1,6 +1,14 @@
 logosdb change log
 ==================
 
+1.2.0  (2026-11-09) — core / PyPI / npm `logosdb`
+-------------------------------------------------
+
+  * **#122 — fetch-by-id (`logosdb_get`).** Load a live row’s embedding,
+    text, and timestamp by integer id. Tombstoned / out-of-range ids fail
+    cleanly. Exposed as C API + C++ `DB::get`, Python `DB.get` / `Row`, and
+    Node `db.get(id)`.
+
 1.1.0  (2026-10-28) — core / PyPI / npm `logosdb`
 -------------------------------------------------
 

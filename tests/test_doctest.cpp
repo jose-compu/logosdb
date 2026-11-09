@@ -624,6 +624,66 @@ TEST_SUITE("errors")
 // Test Suite: Delete and Update
 // ============================================================================
 
+TEST_SUITE("get_by_id")
+{
+    TEST_CASE("get: returns embedding and metadata")
+    {
+        std::string path = "/tmp/logosdb_test_get_basic";
+        std::filesystem::remove_all(path);
+
+        int dim = 64;
+        logosdb::DB db(path, {.dim = dim});
+        auto v0 = unit_vec(dim, 3100);
+        auto v1 = unit_vec(dim, 3200);
+
+        db.put(v0, "zero", "2025-01-01T00:00:00Z");
+        db.put(v1, "one");
+
+        auto row = db.get(0);
+        CHECK(row.id == 0);
+        CHECK((int)row.embedding.size() == dim);
+        CHECK(row.text == "zero");
+        CHECK(row.timestamp == "2025-01-01T00:00:00Z");
+        float dot = 0.0f;
+        for (int i = 0; i < dim; ++i)
+            dot += row.embedding[i] * v0[i];
+        CHECK(dot > 0.99f);
+
+        auto row1 = db.get(1);
+        CHECK(row1.id == 1);
+        CHECK(row1.text == "one");
+        CHECK(row1.timestamp.empty());
+
+        std::filesystem::remove_all(path);
+    }
+
+    TEST_CASE("get: errors for OOB and tombstoned")
+    {
+        std::string path = "/tmp/logosdb_test_get_err";
+        std::filesystem::remove_all(path);
+
+        logosdb::DB db(path, {.dim = 32});
+        db.put(unit_vec(32, 3300), "only");
+
+        char* err = nullptr;
+        logosdb_row_t* r = logosdb_get(db.handle(), 99, &err);
+        CHECK(r == nullptr);
+        CHECK(err != nullptr);
+        free(err);
+        err = nullptr;
+
+        db.del(0);
+        r = logosdb_get(db.handle(), 0, &err);
+        CHECK(r == nullptr);
+        CHECK(err != nullptr);
+        free(err);
+
+        CHECK_THROWS_AS(db.get(0), std::runtime_error);
+
+        std::filesystem::remove_all(path);
+    }
+}  // TEST_SUITE("get_by_id")
+
 TEST_SUITE("delete_update")
 {
     TEST_CASE("delete_update: basic delete")

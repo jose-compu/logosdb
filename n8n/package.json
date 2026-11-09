@@ -41,7 +41,7 @@
     ]
   },
   "dependencies": {
-    "logosdb": "^1.1.0"
+    "logosdb": "^1.2.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

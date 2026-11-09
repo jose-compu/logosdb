@@ -52,6 +52,7 @@ public:
         Napi::Function func = DefineClass(env, "DB", {
             InstanceMethod("put", &DBWrapper::Put),
             InstanceMethod("putBatch", &DBWrapper::PutBatch),
+            InstanceMethod("get", &DBWrapper::Get),
             InstanceMethod("search", &DBWrapper::Search),
             InstanceMethod("searchTsRange", &DBWrapper::SearchTsRange),
             InstanceMethod("update", &DBWrapper::Update),
@@ -271,6 +272,50 @@ private:
                        Napi::Number::New(env, static_cast<double>(out_ids[i])));
         }
         return result;
+    }
+
+    Napi::Value Get(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
+
+        if (info.Length() < 1 || !info[0].IsNumber()) {
+            throw Napi::TypeError::New(env, "ID (number) expected");
+        }
+
+        uint64_t id = static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
+
+        char* err = nullptr;
+        logosdb_row_t* row = logosdb_get(db_, id, &err);
+        if (!row) {
+            std::string error_msg = err ? err : "Get failed";
+            if (err) free(err);
+            throw Napi::Error::New(env, error_msg);
+        }
+        if (err) free(err);
+
+        Napi::Object obj = Napi::Object::New(env);
+        obj.Set("id", Napi::Number::New(env, static_cast<double>(logosdb_row_id(row))));
+        int d = logosdb_row_dim(row);
+        const float* emb = logosdb_row_embedding(row);
+        Napi::Array embArr = Napi::Array::New(env, static_cast<size_t>(d));
+        for (int i = 0; i < d; ++i) {
+            embArr.Set(static_cast<uint32_t>(i),
+                       Napi::Number::New(env, emb ? emb[i] : 0.0f));
+        }
+        obj.Set("embedding", embArr);
+        const char* text = logosdb_row_text(row);
+        if (text) {
+            obj.Set("text", Napi::String::New(env, text));
+        } else {
+            obj.Set("text", env.Null());
+        }
+        const char* ts = logosdb_row_timestamp(row);
+        if (ts) {
+            obj.Set("timestamp", Napi::String::New(env, ts));
+        } else {
+            obj.Set("timestamp", env.Null());
+        }
+        logosdb_row_free(row);
+        return obj;
     }
 
     Napi::Value Search(const Napi::CallbackInfo& info) {

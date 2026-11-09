@@ -18,6 +18,20 @@ export interface SearchHit {
 }
 
 /**
+ * Fetched live row (get-by-id)
+ */
+export interface Row {
+  /** Row ID */
+  id: number;
+  /** Float32 embedding vector */
+  embedding: number[];
+  /** Associated text */
+  text: string | null;
+  /** ISO 8601 timestamp */
+  timestamp: string | null;
+}
+
+/**
  * Database options
  */
 export interface DBOptions {
@@ -83,6 +97,13 @@ export class DB {
     texts?: (string | null | undefined)[],
     timestamps?: (string | null | undefined)[],
   ): number[];
+
+  /**
+   * Fetch a live row by id
+   * @param id - Row ID
+   * @returns Row with embedding, text, and timestamp
+   */
+  get(id: number): Row;
 
   /**
    * Search for similar vectors
