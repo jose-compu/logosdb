@@ -61,6 +61,30 @@ PYBIND11_MODULE(_core, m) {
             return py::iter(py::make_tuple(h.id, h.score, h.text, h.timestamp));
         });
 
+    // ── Row (get-by-id) ────────────────────────────────────────────
+    py::class_<logosdb::Row>(m, "Row",
+        "A fetched live row: id, embedding (float32), and optional text/timestamp.")
+        .def_readonly("id",        &logosdb::Row::id)
+        .def_readonly("text",      &logosdb::Row::text)
+        .def_readonly("timestamp", &logosdb::Row::timestamp)
+        .def_property_readonly(
+            "embedding",
+            [](const logosdb::Row& row) {
+                py::array_t<float> arr(static_cast<py::ssize_t>(row.embedding.size()));
+                if (!row.embedding.empty()) {
+                    std::memcpy(arr.mutable_data(),
+                                row.embedding.data(),
+                                row.embedding.size() * sizeof(float));
+                }
+                return arr;
+            })
+        .def("__repr__", [](const logosdb::Row& row) {
+            return "Row(id=" + std::to_string(row.id) +
+                   ", dim=" + std::to_string(row.embedding.size()) +
+                   ", text=" + row.text +
+                   ", timestamp=" + row.timestamp + ")";
+        });
+
     // ── DB ─────────────────────────────────────────────────────────
     py::class_<logosdb::DB>(m, "DB",
         "A LogosDB database handle. One process per database path.")
@@ -213,6 +237,12 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
             py::arg("text") = "",
             py::arg("timestamp") = "",
             "Replace the row with the given id. Returns the NEW id (delete + put).")
+
+        .def("get",
+            &logosdb::DB::get,
+            py::arg("id"),
+            "Fetch a live row by id. Returns Row(id, embedding, text, timestamp). "
+            "Raises RuntimeError if the id is out of range or tombstoned.")
 
         .def("search",
             [](logosdb::DB & self, FloatArray query, int top_k) {

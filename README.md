@@ -18,7 +18,7 @@ Authors: Jose ([@jose-compu](https://github.com/jose-compu))
   * Vectors and metadata are stored as flat binary files, memory-mapped for zero-copy reads.
   * Approximate nearest-neighbor search via [HNSW](https://arxiv.org/abs/1603.09320) (hnswlib), O(log n) query time.
   * Each vector row carries optional text and ISO 8601 timestamp metadata (JSONL sidecar).
-  * The basic operations are `Put(embedding, text, timestamp)` and `Search(query, top_k)`.
+  * The basic operations are `Put(embedding, text, timestamp)`, `Get(id)`, and `Search(query, top_k)`.
   * **Timestamp range filtering**: search within a time window (e.g., "last 24 hours").
   * **Multiple distance metrics**: inner product, cosine similarity (auto-normalized), or L2 Euclidean.
   * Bulk vector access for direct tensor construction (e.g. loading into GPU memory).

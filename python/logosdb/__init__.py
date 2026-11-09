@@ -13,7 +13,7 @@ Example:
 """
 
 from ._core import (
-    DB, SearchHit, LOGOSDB_VERSION, __version__,
+    DB, SearchHit, Row, LOGOSDB_VERSION, __version__,
     DIST_IP, DIST_COSINE, DIST_L2,
 )
 
@@ -40,7 +40,7 @@ except ImportError:
 
 # Build __all__ based on available optional dependencies
 __all__ = [
-    "DB", "SearchHit", "LOGOSDB_VERSION", "__version__",
+    "DB", "SearchHit", "Row", "LOGOSDB_VERSION", "__version__",
     "DIST_IP", "DIST_COSINE", "DIST_L2",
 ]
 

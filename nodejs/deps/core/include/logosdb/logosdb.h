@@ -5,9 +5,9 @@
 #include <stdint.h>
 
 #define LOGOSDB_VERSION_MAJOR 1
-#define LOGOSDB_VERSION_MINOR 1
+#define LOGOSDB_VERSION_MINOR 2
 #define LOGOSDB_VERSION_PATCH 0
-#define LOGOSDB_VERSION_STRING "1.1.0"
+#define LOGOSDB_VERSION_STRING "1.2.0"
 
 /* Distance metrics for vector similarity search */
 #define LOGOSDB_DIST_IP 0     /* Inner product (default, requires L2-normalized vectors) */
@@ -29,6 +29,7 @@ extern "C"
     typedef struct logosdb_t logosdb_t;
     typedef struct logosdb_options_t logosdb_options_t;
     typedef struct logosdb_search_result_t logosdb_search_result_t;
+    typedef struct logosdb_row_t logosdb_row_t;
 
     /* ── Options ───────────────────────────────────────────────────────── */
 
@@ -161,6 +162,22 @@ extern "C"
                             const char* timestamp,
                             char** errptr);
 
+    /* Fetch a live row by id (#122). Returns an owned result that the caller
+     * must free with logosdb_row_free(). On error returns NULL and sets
+     * *errptr (null db, id out of range, or tombstoned).
+     *
+     * The embedding pointer from logosdb_row_embedding() is dim float32 values
+     * owned by the result (dequantized if storage dtype is float16/int8).
+     * Text and timestamp pointers are NULL when the stored field is empty. */
+    logosdb_row_t* logosdb_get(logosdb_t* db, uint64_t id, char** errptr);
+
+    uint64_t logosdb_row_id(const logosdb_row_t* r);
+    int logosdb_row_dim(const logosdb_row_t* r);
+    const float* logosdb_row_embedding(const logosdb_row_t* r);
+    const char* logosdb_row_text(const logosdb_row_t* r);
+    const char* logosdb_row_timestamp(const logosdb_row_t* r);
+    void logosdb_row_free(logosdb_row_t* r);
+
     /* ── Search ────────────────────────────────────────────────────────── */
 
     logosdb_search_result_t*
@@ -287,6 +304,14 @@ struct SearchHit
 {
     uint64_t id;
     float score;
+    std::string text;
+    std::string timestamp;
+};
+
+struct Row
+{
+    uint64_t id = 0;
+    std::vector<float> embedding;
     std::string text;
     std::string timestamp;
 };
@@ -469,6 +494,33 @@ class DB
             throw std::runtime_error("logosdb_update: " + msg);
         }
         return new_id;
+    }
+
+    /* Fetch a live row by id. Throws if the id is out of range or tombstoned. */
+    Row get(uint64_t id)
+    {
+        char* err = nullptr;
+        logosdb_row_t* r = logosdb_get(db_, id, &err);
+        if (!r)
+        {
+            std::string msg = err ? err : "unknown";
+            free(err);
+            throw std::runtime_error("logosdb_get: " + msg);
+        }
+        Row out;
+        out.id = logosdb_row_id(r);
+        int d = logosdb_row_dim(r);
+        const float* emb = logosdb_row_embedding(r);
+        if (emb && d > 0)
+            out.embedding.assign(emb, emb + d);
+        const char* t = logosdb_row_text(r);
+        if (t)
+            out.text = t;
+        const char* ts = logosdb_row_timestamp(r);
+        if (ts)
+            out.timestamp = ts;
+        logosdb_row_free(r);
+        return out;
     }
 
     std::vector<SearchHit> search(const std::vector<float>& query, int top_k)

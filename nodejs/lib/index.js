@@ -17,6 +17,15 @@ const bindings = require('bindings')('logosdb');
  */
 
 /**
+ * Fetched live row
+ * @typedef {Object} Row
+ * @property {number} id - Row ID
+ * @property {number[]} embedding - Float32 embedding vector
+ * @property {string|null} text - Associated text
+ * @property {string|null} timestamp - ISO 8601 timestamp
+ */
+
+/**
  * LogosDB database instance
  *
  * @example
@@ -59,6 +68,16 @@ class DB {
     this._checkClosed();
     assertDim(embedding, this.dim(), 'put');
     return this._db.put(embedding, text, timestamp);
+  }
+
+  /**
+   * Fetch a live row by id
+   * @param {number} id - Row ID
+   * @returns {Row} Row with embedding, text, and timestamp
+   */
+  get(id) {
+    this._checkClosed();
+    return this._db.get(id);
   }
 
   /**

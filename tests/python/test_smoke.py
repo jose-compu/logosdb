@@ -66,6 +66,31 @@ def test_put_and_search(db_path: Path):
     assert hits[0].score > 0.9
 
 
+def test_get(db_path: Path):
+    from logosdb import Row
+
+    db = DB(str(db_path), dim=DIM)
+    v0 = unit(100)
+    id0 = db.put(v0, text="fact zero", timestamp="2025-01-01T00:00:00Z")
+    row = db.get(id0)
+    assert isinstance(row, Row)
+    assert row.id == id0
+    assert row.text == "fact zero"
+    assert row.timestamp == "2025-01-01T00:00:00Z"
+    assert row.embedding.shape == (DIM,)
+    assert float(np.dot(row.embedding, v0)) > 0.99
+
+
+def test_get_errors(db_path: Path):
+    db = DB(str(db_path), dim=DIM)
+    db.put(unit(10), "only")
+    with pytest.raises(RuntimeError):
+        db.get(99)
+    db.delete(0)
+    with pytest.raises(RuntimeError):
+        db.get(0)
+
+
 def test_delete(db_path: Path):
     db = DB(str(db_path), dim=DIM)
     v0, v1, v2 = unit(1), unit(2), unit(3)

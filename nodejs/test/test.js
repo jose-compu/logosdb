@@ -227,6 +227,40 @@ describe('LogosDB Node.js', function() {
     });
   });
 
+  describe('Get by id', () => {
+    let db, dbPath;
+
+    beforeEach(() => {
+      dbPath = createTempDir();
+      db = new DB(dbPath, { dim: 32, distance: DIST_COSINE });
+    });
+
+    afterEach(() => {
+      if (db) db.close();
+      cleanup(dbPath);
+    });
+
+    it('should fetch embedding and metadata', () => {
+      const vec = randomUnitVector(32, 70);
+      const id = db.put(vec, 'hello', '2025-03-01T00:00:00Z');
+      const row = db.get(id);
+      assert.strictEqual(row.id, id);
+      assert.strictEqual(row.text, 'hello');
+      assert.strictEqual(row.timestamp, '2025-03-01T00:00:00Z');
+      assert.strictEqual(row.embedding.length, 32);
+      let dot = 0;
+      for (let i = 0; i < 32; i++) dot += row.embedding[i] * vec[i];
+      assert.ok(dot > 0.99);
+    });
+
+    it('should throw for deleted and out-of-range ids', () => {
+      const id = db.put(randomUnitVector(32, 71), 'x');
+      db.delete(id);
+      assert.throws(() => db.get(id), /deleted|out of range/i);
+      assert.throws(() => db.get(999), /out of range/i);
+    });
+  });
+
   describe('Update and Delete', () => {
     let db, dbPath;
 
