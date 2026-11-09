@@ -33,7 +33,7 @@
       <div class="container hero-grid">
         <div>
           <p class="section-label">Semantic memory</p>
-          <p class="version-badge">1.0.2</p>
+          <p class="version-badge">1.2.0</p>
           <h1>
             <span class="word-cyan">Semantic.</span>
             <span class="word-blue">Fast.</span>
@@ -115,7 +115,7 @@
           <article class="feature-card purple">
             <div class="icon">🔍</div>
             <h3>Rich retrieval</h3>
-            <p>Timestamp range filters, structured metadata predicates, hybrid ANN + lexical fusion, and multi-tenant namespaces with quotas.</p>
+            <p>ANN search, fetch-by-id, timestamp range filters, structured metadata predicates, hybrid ANN + lexical fusion, and multi-tenant namespaces with quotas.</p>
           </article>
         </div>
 
@@ -143,29 +143,30 @@
     <section id="features">
       <div class="container">
         <span class="section-label">Features</span>
-        <h2>1.0.2 — npm bindings, MCP, n8n</h2>
+        <h2>1.2.0 — fetch by id</h2>
         <p class="section-intro">
-          The C/C++ core remains on the 1.0 stable line. The 10 October 2026 npm train ships
-          <code>logosdb@1.0.2</code>, <code>logosdb-mcp-server@1.2.0</code>, and <code>n8n-nodes-logosdb@1.0.3</code>.
+          Core, PyPI, and npm <code>logosdb</code> at <strong>1.2.0</strong>. Load a live row’s embedding, text, and timestamp by integer id
+          (<code>logosdb_get</code> / <code>DB.get</code> / <code>db.get</code>) — the missing piece for LlamaIndex <code>get()</code>, LangChain
+          <code>get_by_ids</code>, and Pinecone-style fetch (#122).
         </p>
 
         <div class="flyer-grid">
           <article class="flyer-box cyan">
-            <h3>Streaming NDJSON import/export</h3>
-            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">C / C++ / Python — bounded memory, checkpoint resume.</p>
+            <h3>Fetch-by-id (<code>logosdb_get</code>)</h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">C / C++ / Python / Node — live rows only.</p>
             <ul style="list-style: none; padding: 0; margin: 0;">
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> <code>chunk_size</code> for streaming reads/writes</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Byte-offset <code>--checkpoint</code> and <code>--resume</code></li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> CLI: <code>logosdb-cli export</code> / <code>import</code></li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Embedding (float32, dequantized if needed)</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Text + ISO 8601 timestamp metadata</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Tombstoned / OOB ids fail cleanly</li>
             </ul>
           </article>
           <article class="flyer-box purple">
-            <h3>Batch ingest &amp; hybrid search</h3>
-            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Chunked WAL-aware writes and advanced retrieval modes.</p>
+            <h3>Still shipping with 1.x</h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Batch ingest, streaming I/O, hybrid search, MCP.</p>
             <ul style="list-style: none; padding: 0; margin: 0;">
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> <code>put_batch</code> with <code>LOGOSDB_BATCH_CHUNK_SIZE</code></li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> <code>put_batch</code> + NDJSON export/import</li>
               <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Hybrid ANN + lexical score fusion</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Filter API v2: metadata predicates</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> MCP contextual retrieval (<code>header</code> mode)</li>
             </ul>
           </article>
         </div>
@@ -184,16 +185,16 @@
             <p>Isolated namespaces with quotas inside one DB root. Ideal for separating code, docs, and agent decisions.</p>
           </article>
           <article class="feature-card cyan">
-            <h3>Node <code>normalizeL2</code></h3>
-            <p><code>logosdb@1.0.2</code> exposes <code>normalizeL2()</code> and throws in JS when <code>put</code> / <code>search</code> / <code>update</code> vectors do not match <code>db.dim()</code>.</p>
+            <h3>Python <code>DB.get</code> / <code>Row</code></h3>
+            <p>Returns a <code>Row</code> with a NumPy float32 embedding plus text and timestamp. Raises on deleted or out-of-range ids.</p>
           </article>
           <article class="feature-card blue">
-            <h3>MCP <code>--path</code></h3>
-            <p><code>logosdb-mcp-server@1.2.0</code> accepts <code>--path DIR</code> / <code>-p DIR</code> to set <code>LOGOSDB_PATH</code> before stdio starts.</p>
+            <h3>Node <code>db.get(id)</code></h3>
+            <p><code>logosdb@1.2.0</code> returns <code>{ id, embedding, text, timestamp }</code>. Also ships <code>normalizeL2()</code> and dim checks on write/search.</p>
           </article>
           <article class="feature-card purple">
-            <h3>n8n embed errors</h3>
-            <p><code>n8n-nodes-logosdb@1.0.3</code> includes a short HTTP body snippet on OpenAI/Voyage embed failures.</p>
+            <h3>MCP &amp; n8n</h3>
+            <p><code>logosdb-mcp-server</code> (file index, hybrid search, contextual headers) and <code>n8n-nodes-logosdb</code> track the core npm line.</p>
           </article>
         </div>
       </div>
@@ -213,7 +214,7 @@
             <div class="badge-icon">🧩</div>
             <div>
               <h3>MCP server — Claude Code</h3>
-              <p><code>logosdb-mcp-server@1.2.0</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default. Launch with <code>npx -y logosdb-mcp-server --path ./.logosdb</code>.</p>
+              <p><code>logosdb-mcp-server@1.4.0</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default. Launch with <code>npx -y logosdb-mcp-server --path ./.logosdb</code>.</p>
             </div>
           </article>
           <article class="integration-card">
@@ -250,7 +251,7 @@
       <div class="container">
         <span class="section-label">Developers</span>
         <h2>Quick start</h2>
-        <p class="section-intro">Install from PyPI, open a database, embed with your model, and search.</p>
+        <p class="section-intro">Install from PyPI, open a database, embed with your model, search, and fetch by id.</p>
 
         <pre class="code-block"><code class="language-bash">pip install logosdb</code></pre>
 
@@ -272,7 +273,10 @@ for text, ts in [
 question = "How can we avoid duplicate writes when retries happen?"
 hits = db.search(model.encode(question).astype("float32"), top_k=3)
 for h in hits:
-    print(f"{h.score:.4f}  {h.text}")</code></pre>
+    print(f"{h.score:.4f}  {h.text}")
+
+row = db.get(hits[0].id)  # 1.2.0 — embedding + metadata by id
+print(row.id, row.text, row.embedding.shape)</code></pre>
 
         <pre class="code-block"><code><span class="prompt">&gt;</span> logosdb-cli info /tmp/agent_memory
 <span class="prompt">&gt;</span> logosdb-cli export /tmp/agent_memory --output rows.ndjson
@@ -307,7 +311,7 @@ for h in hits:
         <a href="https://www.npmjs.com/package/logosdb-mcp-server">MCP server</a>
         <a href="https://github.com/jose-compu/logosdb/blob/main/LICENSE">MIT License</a>
       </div>
-      <p class="footer-copy">LogosDB 1.0.2 · MCP 1.2.0 · n8n 1.0.3 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
+      <p class="footer-copy">LogosDB 1.2.0 · MCP 1.4.0 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
     </div>
   </footer>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
