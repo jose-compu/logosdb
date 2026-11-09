@@ -8,6 +8,13 @@ logosdb change log
     text, and timestamp by integer id. Tombstoned / out-of-range ids fail
     cleanly. Exposed as C API + C++ `DB::get`, Python `DB.get` / `Row`, and
     Node `db.get(id)`.
+  * Ships with `logosdb-mcp-server` **1.4.0** (depends on `logosdb` ^1.2.0).
+
+1.4.0  (2026-11-09) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * Depend on `logosdb` **^1.2.0** (fetch-by-id on the native binding).
+  * Package / MCP registry metadata → **1.4.0**.
 
 1.1.0  (2026-10-28) — core / PyPI / npm `logosdb`
 -------------------------------------------------
