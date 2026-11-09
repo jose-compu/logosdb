@@ -206,7 +206,7 @@ Run [Ollama](https://ollama.com) with an embedding model (e.g. `nomic-embed-text
 
 ## Google Antigravity
 
-[Google Antigravity](https://codelabs.developers.google.com/google-workspace-mcp-antigravity) is an agentic IDE stack that can load **MCP servers** over **stdio** — the same pattern as Claude Code. **`logosdb-mcp-server`** is published as [`logosdb-mcp-server`](https://www.npmjs.com/package/logosdb-mcp-server) on npm and speaks standard MCP tools (`logosdb_index`, `logosdb_index_file`, `logosdb_search`, `logosdb_list`, `logosdb_info`, `logosdb_delete`). See the [MCP specification](https://modelcontextprotocol.io).
+[Google Antigravity](https://codelabs.developers.google.com/google-workspace-mcp-antigravity) is an agentic IDE stack that can load **MCP servers** over **stdio** — the same pattern as Claude Code. **`logosdb-mcp-server`** is published as [`logosdb-mcp-server`](https://www.npmjs.com/package/logosdb-mcp-server) on npm and speaks standard MCP tools (`logosdb_index`, `logosdb_index_file`, `logosdb_search`, `logosdb_list`, `logosdb_info`, `logosdb_get`, `logosdb_delete`). See the [MCP specification](https://modelcontextprotocol.io).
 
 ### Where to configure
 
@@ -362,6 +362,7 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 | `logosdb_search` | `query`, `namespace`, `top_k?`, `ts_from?`, `ts_to?`, `candidate_k?`, `hybrid?`, `fusion?`, `lexical_weight?`, `filter?` | Semantic search; optional ISO 8601 window; optional hybrid ANN+lexical fusion; optional metadata `filter` |
 | `logosdb_list` | — | List namespaces (includes live counts / quota summary when configured) |
 | `logosdb_info` | `namespace` | Stats: count, live count, dimension |
+| `logosdb_get` | `namespace`, `id` | Fetch a live row by id (embedding, text, timestamp); fails if OOB or tombstoned (`logosdb` ≥ 1.2.0) |
 | `logosdb_delete` | `namespace`, `id?` **or** `query?`, `search_top_k?`, `match_rank?` | Delete by row id, or embed `query` and delete the `match_rank` hit (default 0) among `search_top_k` neighbors |
 
 Timestamp-filtered search matches the core library: when `ts_from` and/or `ts_to` are set, results are drawn from that window; `candidate_k` defaults to `10 × top_k` if omitted.

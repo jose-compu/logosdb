@@ -7,6 +7,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import type { Row, SearchHit } from 'logosdb';
+
+export type { Row, SearchHit };
 
 type LogosDBCtor = new (
   p: string,
@@ -35,13 +38,6 @@ function getNative(): { DB: LogosDBCtor; DIST_COSINE: number } {
   }
 }
 
-export interface SearchHit {
-  id: number;
-  score: number;
-  text: string | null;
-  timestamp: string | null;
-}
-
 interface LogosDB {
   put(embedding: number[], text?: string, timestamp?: string): number;
   putBatch(
@@ -50,11 +46,14 @@ interface LogosDB {
     texts?: (string | null | undefined)[],
     timestamps?: (string | null | undefined)[],
   ): number[];
+  /** Fetch a live row by id (logosdb ≥ 1.2.0). Throws if OOB or tombstoned. */
+  get(id: number): Row;
   search(queryEmbedding: number[], topK?: number): SearchHit[];
   searchTsRange(
     queryEmbedding: number[],
     options?: { topK?: number; tsFrom?: string; tsTo?: string; candidateK?: number },
   ): SearchHit[];
+  update(id: number, embedding: number[], text?: string, timestamp?: string): number;
   delete(id: number): void;
   count(): number;
   countLive(): number;

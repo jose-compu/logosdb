@@ -10,6 +10,13 @@ logosdb change log
     Node `db.get(id)`.
   * Ships with `logosdb-mcp-server` **1.4.0** (depends on `logosdb` ^1.2.0).
 
+1.4.1  (2026-11-09) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * Align local `LogosDB` TypeScript surface with `logosdb` ≥ 1.2.0: `get(id)` /
+    `Row` (and `update`). Re-export `Row` / `SearchHit` from `store`.
+  * New tool **`logosdb_get`**: fetch live row embedding + metadata by id.
+
 1.4.0  (2026-11-09) — `logosdb-mcp-server` only
 -----------------------------------------------
 

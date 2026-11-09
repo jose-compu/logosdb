@@ -278,6 +278,20 @@ const TOOLS: Tool[] = [
     },
   },
   {
+    name: 'logosdb_get',
+    description:
+      'Fetch a live row by integer id from a namespace (logosdb ≥ 1.2.0). Returns id, embedding, text, and timestamp. ' +
+      'Fails if the id is out of range or tombstoned. Use after search/index when you need the stored vector, not only the text hit.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        namespace: { type: 'string', description: 'Collection name' },
+        id: { type: 'number', description: 'Row ID (from index/search)' },
+      },
+      required: ['namespace', 'id'],
+    },
+  },
+  {
     name: 'logosdb_delete',
     description:
       'Delete one entry from a namespace. Provide **either** numeric `id` (from index/search) **or** `query` to semantically match: ' +
@@ -702,6 +716,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           countLive: db.countLive(),
           dim: db.dim(),
           path: nsPath,
+        });
+      }
+
+      // ── logosdb_get ────────────────────────────────────────────────────────
+      case 'logosdb_get': {
+        const namespace = String(args.namespace ?? '');
+        if (!namespace) throw new Error('"namespace" is required');
+        const id = typeof args.id === 'number' ? args.id : parseInt(String(args.id), 10);
+        if (isNaN(id)) throw new Error('"id" must be a number');
+
+        const nsPath = path.join(LOGOSDB_PATH, namespace);
+        if (!fs.existsSync(nsPath)) {
+          throw new Error(`Namespace "${namespace}" does not exist.`);
+        }
+
+        let db: ReturnType<typeof store.open>;
+        try {
+          db = store.get(namespace);
+        } catch {
+          // Placeholder dim; LogosDB restores dim from its header (same as logosdb_info).
+          db = store.open(namespace, embCfg.dim);
+        }
+
+        const row = db.get(id);
+        return ok({
+          namespace,
+          id: row.id,
+          text: row.text,
+          timestamp: row.timestamp,
+          dim: row.embedding.length,
+          embedding: row.embedding,
         });
       }
 
