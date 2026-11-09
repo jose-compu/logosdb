@@ -31,9 +31,10 @@ jobs:
         #                       pyproject — that runs x86_64 Docker on ARM and
         #                       fails with "exec format error")
         # ubuntu-24.04-arm  → manylinux aarch64 (native)
-        # macos-13          → macOS x86_64 (Intel runner)
-        # macos-14          → macOS arm64 (Apple Silicon runner)
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-14]
+        # macos-latest      → macOS arm64 (Apple Silicon; macos-14 label is
+        #                       currently rejected on this org as
+        #                       macos-14-arm64-us-default)
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
