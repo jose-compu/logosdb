@@ -1,3 +1,5 @@
+[![LogosDB MCP server](https://mcprush.com/badge/logosdb-mcp/card.svg)](https://mcprush.com/to/logosdb-mcp?ref=badge)
+
 <img width="1248" height="832" alt="image" src="https://github.com/user-attachments/assets/490d2c94-bebf-4841-a12f-cd230600c65a" />
 
 [![CI](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml)
