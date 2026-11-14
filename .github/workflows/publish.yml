@@ -143,8 +143,10 @@ jobs:
           echo "npm version: ${NPMV}"
           node -e "const [maj,min]='${NPMV}'.split('.').map(Number); if (maj < 11 || (maj === 11 && min < 5)) process.exit(1)"
 
+      # n8n workspace pulls isolated-vm, whose install script compiles native code and
+      # fails on GitHub-hosted runners; we only publish logosdb + logosdb-mcp-server.
       - name: Install workspace dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Vendor core for native addon
         run: npm run vendor-core -w logosdb
