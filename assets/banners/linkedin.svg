@@ -1,9 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="627" viewBox="0 0 1200 627">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="627" viewBox="0 0 1200 627" role="img" aria-label="LogosDB LinkedIn release banner template">
   <rect width="1200" height="627" fill="#0a0a0b"/>
-  <rect x="80" y="80" width="180" height="180" rx="24" fill="#141416" stroke="#2a2a2e"/>
-  <text id="logo-slot" x="170" y="185" text-anchor="middle" fill="#888" font-family="system-ui,sans-serif" font-size="14">LOGO</text>
-  <text x="300" y="155" fill="#f4f4f5" font-family="system-ui,Segoe UI,sans-serif" font-size="72" font-weight="700" letter-spacing="-1">LogosDB</text>
-  <text x="300" y="210" fill="#2dd4bf" font-family="system-ui,Segoe UI,sans-serif" font-size="28" font-weight="500">{{TITLE}}</text>
-  <text x="300" y="400" fill="#a1a1aa" font-family="system-ui,Segoe UI,sans-serif" font-size="36" font-weight="400">Release {{VERSION}}</text>
-  <line x1="300" y1="250" x2="1120" y2="250" stroke="#27272a" stroke-width="2"/>
+  <rect x="0" y="0" width="6" height="627" fill="#2dd4bf"/>
+  <rect x="72" y="72" width="180" height="200" rx="24" fill="#141416" stroke="#2a2a2e"/>
+  <text x="162" y="185" text-anchor="middle" fill="#52525b" font-family="Inter,system-ui,sans-serif" font-size="13">logo.png</text>
+  <text x="292" y="115" fill="#f4f4f5" font-family="Space Grotesk,system-ui,sans-serif" font-size="52" font-weight="700">LogosDB</text>
+  <text x="292" y="148" fill="#a1a1aa" font-family="Inter,system-ui,sans-serif" font-size="18">{{TAGLINE}}</text>
+  <line x1="292" y1="168" x2="1128" y2="168" stroke="#27272a" stroke-width="2"/>
+  <text x="292" y="245" fill="#2dd4bf" font-family="Space Grotesk,system-ui,sans-serif" font-size="64" font-weight="700">v{{VERSION}}</text>
+  <text x="470" y="235" fill="#f4f4f5" font-family="Space Grotesk,system-ui,sans-serif" font-size="28" font-weight="500">{{TITLE}}</text>
+  <circle cx="297" cy="304" r="5" fill="#14b8a6"/>
+  <text x="314" y="312" fill="#d4d4d8" font-family="Inter,system-ui,sans-serif" font-size="22">{{HIGHLIGHT_1}}</text>
+  <circle cx="297" cy="344" r="5" fill="#14b8a6"/>
+  <text x="314" y="352" fill="#d4d4d8" font-family="Inter,system-ui,sans-serif" font-size="22">{{HIGHLIGHT_2}}</text>
+  <circle cx="297" cy="384" r="5" fill="#14b8a6"/>
+  <text x="314" y="392" fill="#d4d4d8" font-family="Inter,system-ui,sans-serif" font-size="22">{{HIGHLIGHT_3}}</text>
+  <rect x="292" y="410" width="200" height="32" rx="10" fill="#18181b" stroke="#3f3f46"/>
+  <text x="306" y="432" fill="#d4d4d8" font-family="Inter,system-ui,sans-serif" font-size="15" font-weight="600">{{PACKAGE_1}}</text>
+  <rect x="292" y="468" width="520" height="40" rx="12" fill="#141416" stroke="#3f3f46"/>
+  <text x="308" y="494" fill="#2dd4bf" font-family="JetBrains Mono,monospace" font-size="19">{{INSTALL}}</text>
+  <text x="292" y="598" fill="#a1a1aa" font-family="Inter,system-ui,sans-serif" font-size="17">github.com/jose-compu/logosdb</text>
+  <text x="1128" y="598" text-anchor="end" fill="#a1a1aa" font-family="Inter,system-ui,sans-serif" font-size="17">{{DATE}}</text>
 </svg>

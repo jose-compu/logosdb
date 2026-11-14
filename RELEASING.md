@@ -46,6 +46,11 @@ That's it — the workflow already references the environment by name.
 #    Then: npm run vendor-core -w logosdb && npm install  # refresh deps/core + lockfile
 
 # 2. Update the CHANGELOG entry with the release date and notes.
+# 3. Render the LinkedIn banner (1200×627) and attach it to the GitHub release:
+#    python3 assets/banners/render_linkedin.py --config assets/banners/linkedin-v1.3.0.yaml \
+#      --out assets/banners/linkedin-v${VERSION}.png
+#    Or pass fields on the CLI (--version, --title, --date, --highlight, --package, --install).
+#    Fonts live under assets/banners/fonts/; the renderer does not fall back to system fonts.
 
 git add pyproject.toml include/logosdb/logosdb.h CMakeLists.txt CHANGELOG \
   nodejs/package.json mcp/package.json n8n/package.json mcp/src/index.ts \
