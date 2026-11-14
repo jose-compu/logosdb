@@ -69,14 +69,16 @@ The tag push triggers `.github/workflows/publish.yml`:
    uploads the wheels + sdist to PyPI (Trusted Publishing / OIDC — no stored token).
 4. **`publish_npm`** builds and publishes **`logosdb`** from `nodejs/`, then
    **`logosdb-mcp-server`** from `mcp/` (order matters for `^` deps). Uses
-   `secrets.NPM_TOKEN` as `NODE_AUTH_TOKEN` with `actions/setup-node`
-   `registry-url`, skips a package whose exact version is already on npm, and
-   passes `--provenance` when publishing. Re-run manually with
-   **Actions → Publish → Run workflow → target: `npm`** if the tag run failed
-   (e.g. token not configured yet).
+   [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (OIDC):
+   job permissions `id-token: write` and `contents: read`, `actions/setup-node`
+   with `registry-url: https://registry.npmjs.org`, npm upgraded to ≥ 11.5.1, no
+   `NPM_TOKEN` / `NODE_AUTH_TOKEN`. Provenance is attached automatically. Skips
+   a package whose exact version is already on npm. Re-run manually with
+   **Actions → Publish → Run workflow → target: `npm`** if the tag run failed.
 
-Configure **`NPM_TOKEN`** under **Settings → Secrets and variables → Actions**
-(Automation token with publish rights to `logosdb` and `logosdb-mcp-server`).
+On npmjs.com, configure trusted publishers for **`logosdb`** and
+**`logosdb-mcp-server`**: repository `jose-compu/logosdb`, workflow file
+`publish.yml`, environment *(none)*.
 
 If a build or test fails, nothing is uploaded — the job simply stops before
 the publish step. Because PyPI never allows re-uploading the same version,

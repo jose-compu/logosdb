@@ -134,8 +134,14 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Upgrade npm (Trusted Publishing requires npm ≥ 11.5.1)
+        run: |
+          set -euo pipefail
+          npm install -g npm@latest
+          NPMV="$(npm -v)"
+          echo "npm version: ${NPMV}"
+          node -e "const [maj,min]='${NPMV}'.split('.').map(Number); if (maj < 11 || (maj === 11 && min < 5)) process.exit(1)"
 
       - name: Install workspace dependencies
         run: npm ci
@@ -148,15 +154,13 @@ jobs:
 
       - name: Publish logosdb (skip if version exists)
         working-directory: nodejs
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
           if npm view "logosdb@${VERSION}" version 2>/dev/null; then
             echo "logosdb ${VERSION} already on npm — skipping"
           else
-            npm publish --access public --provenance
+            npm publish --access public
           fi
 
       - name: Build MCP server
@@ -164,13 +168,11 @@ jobs:
 
       - name: Publish logosdb-mcp-server (skip if version exists)
         working-directory: mcp
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./package.json').version")
           if npm view "logosdb-mcp-server@${VERSION}" version 2>/dev/null; then
             echo "logosdb-mcp-server ${VERSION} already on npm — skipping"
           else
-            npm publish --access public --provenance
+            npm publish --access public
           fi
