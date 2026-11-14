@@ -52,6 +52,30 @@ export interface DBOptions {
 /**
  * Timestamp range search options
  */
+/** Same shape as Python `DB.stats()` and C `logosdb_stats_t`. */
+export interface DbStats {
+  rows_total: number;
+  rows_live: number;
+  tombstones: number;
+  index_elements: number;
+  wal_pending: number;
+  distance_metric: number;
+  storage_dtype: number;
+  put_success: number;
+  put_failed: number;
+  put_batch_success: number;
+  put_batch_failed: number;
+  search_success: number;
+  search_failed: number;
+  search_ts_success: number;
+  search_ts_failed: number;
+  delete_success: number;
+  delete_failed: number;
+  update_success: number;
+  update_failed: number;
+  sync_calls: number;
+}
+
 export interface TsRangeOptions {
   /** Number of results (default: 10) */
   topK?: number;
@@ -149,6 +173,12 @@ export class DB {
    */
   countLive(): number;
 
+  /** Flush WAL, index, vectors, and metadata to disk. */
+  sync(): void;
+
+  /** Operation counters and store health fields. */
+  stats(): DbStats;
+
   /**
    * Get vector dimension
    * @returns Dimension
@@ -175,3 +205,6 @@ export const VERSION: string;
 
 /** L2-normalize a vector (new array). Required for DIST_IP. */
 export function normalizeL2(embedding: number[]): number[];
+
+/** Copy live rows from src into empty dst (drops tombstones). */
+export function compact(src: string, dst: string): void;

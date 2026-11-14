@@ -149,6 +149,23 @@ class DB {
   }
 
   /**
+   * Flush WAL, persist HNSW index, and fsync vector + metadata stores.
+   */
+  sync() {
+    this._checkClosed();
+    this._db.sync();
+  }
+
+  /**
+   * Operation counters and store health fields (same keys as Python `DB.stats()`).
+   * @returns {import('../types').DbStats}
+   */
+  stats() {
+    this._checkClosed();
+    return this._db.stats();
+  }
+
+  /**
    * Get vector dimension
    * @returns {number}
    */
@@ -221,6 +238,16 @@ function normalizeL2(embedding) {
   return embedding.map((value) => value / norm);
 }
 
+/**
+ * Copy live rows from `src` database directory into `dst` (drops tombstones).
+ * `dst` must be missing or empty.
+ * @param {string} src
+ * @param {string} dst
+ */
+function compact(src, dst) {
+  bindings.compact(src, dst);
+}
+
 function assertDim(embedding, dim, op) {
   if (!Array.isArray(embedding)) {
     throw new Error(`${op}: embedding must be a number array`);
@@ -239,4 +266,5 @@ module.exports = {
   DIST_L2,
   VERSION,
   normalizeL2,
+  compact,
 };

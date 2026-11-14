@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="627" viewBox="0 0 1200 627">
+  <rect width="1200" height="627" fill="#0a0a0b"/>
+  <rect x="80" y="80" width="180" height="180" rx="24" fill="#141416" stroke="#2a2a2e"/>
+  <text id="logo-slot" x="170" y="185" text-anchor="middle" fill="#888" font-family="system-ui,sans-serif" font-size="14">LOGO</text>
+  <text x="300" y="155" fill="#f4f4f5" font-family="system-ui,Segoe UI,sans-serif" font-size="72" font-weight="700" letter-spacing="-1">LogosDB</text>
+  <text x="300" y="210" fill="#2dd4bf" font-family="system-ui,Segoe UI,sans-serif" font-size="28" font-weight="500">{{TITLE}}</text>
+  <text x="300" y="400" fill="#a1a1aa" font-family="system-ui,Segoe UI,sans-serif" font-size="36" font-weight="400">Release {{VERSION}}</text>
+  <line x1="300" y1="250" x2="1120" y2="250" stroke="#27272a" stroke-width="2"/>
+</svg>

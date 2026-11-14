@@ -60,13 +60,23 @@ git push origin v1.0.1
 
 The tag push triggers `.github/workflows/publish.yml`:
 
-1. **`build_wheels`** runs on 4 runners (Linux x86_64, Linux arm64, macOS x86_64,
-   macOS arm64), invoking `cibuildwheel` to produce one wheel per supported
-   CPython version (3.9–3.13). Each wheel is tested against the pytest suite
-   inside the isolated build environment.
+1. **`build_wheels`** runs on Linux x86_64, Linux arm64, and macOS arm64,
+   invoking `cibuildwheel` to produce one wheel per supported CPython version
+   (3.9–3.13). Each wheel is tested against the pytest suite inside the isolated
+   build environment.
 2. **`build_sdist`** builds the source distribution.
 3. **`publish_pypi`** waits for reviewer approval (if configured) and then
-   uploads the wheels + sdist to PyPI.
+   uploads the wheels + sdist to PyPI (Trusted Publishing / OIDC — no stored token).
+4. **`publish_npm`** builds and publishes **`logosdb`** from `nodejs/`, then
+   **`logosdb-mcp-server`** from `mcp/` (order matters for `^` deps). Uses
+   `secrets.NPM_TOKEN` as `NODE_AUTH_TOKEN` with `actions/setup-node`
+   `registry-url`, skips a package whose exact version is already on npm, and
+   passes `--provenance` when publishing. Re-run manually with
+   **Actions → Publish → Run workflow → target: `npm`** if the tag run failed
+   (e.g. token not configured yet).
+
+Configure **`NPM_TOKEN`** under **Settings → Secrets and variables → Actions**
+(Automation token with publish rights to `logosdb` and `logosdb-mcp-server`).
 
 If a build or test fails, nothing is uploaded — the job simply stops before
 the publish step. Because PyPI never allows re-uploading the same version,
