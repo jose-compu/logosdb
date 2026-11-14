@@ -712,6 +712,53 @@ pre.code-block code.hljs {
 .hljs-meta { color: var(--muted); }
 .hljs-literal { color: var(--purple); }
 
+.pkg-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0 0;
+  font-size: 0.9rem;
+}
+
+.pkg-table th,
+.pkg-table td {
+  text-align: left;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.pkg-table th {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pkg-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.release-banner {
+  display: block;
+  margin: 1.5rem 0 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  max-width: 640px;
+  transition: box-shadow 0.2s ease;
+}
+
+.release-banner:hover {
+  box-shadow: 0 0 24px rgba(0, 245, 212, 0.15);
+}
+
+.release-banner img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .links-row {
   display: flex;
   flex-wrap: wrap;
