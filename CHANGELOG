@@ -1,6 +1,19 @@
 logosdb change log
 ==================
 
+1.3.0  (2026-11-14) — core / PyPI / npm `logosdb`
+-------------------------------------------------
+
+  * **#138 — Node `db.sync()`, `db.stats()`, `compact(src, dst)`.** Flush WAL,
+    index, vectors, and metadata; read the same counters Python already returns;
+    copy live rows into an empty directory and drop tombstones. C API unchanged.
+  * Ships with `logosdb-mcp-server` **1.4.2** (depends on `logosdb` ^1.3.0).
+
+1.4.2  (2026-11-14) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * Depend on `logosdb` **^1.3.0** (npm publish workflow in `.github/workflows/publish.yml`).
+
 1.2.0  (2026-11-09) — core / PyPI / npm `logosdb`
 -------------------------------------------------
 
