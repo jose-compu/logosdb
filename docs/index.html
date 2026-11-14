@@ -33,7 +33,7 @@
       <div class="container hero-grid">
         <div>
           <p class="section-label">Semantic memory</p>
-          <p class="version-badge">1.2.0</p>
+          <p class="version-badge">1.3.0</p>
           <h1>
             <span class="word-cyan">Semantic.</span>
             <span class="word-blue">Fast.</span>
@@ -143,58 +143,82 @@
     <section id="features">
       <div class="container">
         <span class="section-label">Features</span>
-        <h2>1.2.0 — fetch by id</h2>
+        <!-- RELEASE_HEADLINE_START -->
+        <h2>1.3.0 — Node sync, stats, compact</h2>
         <p class="section-intro">
-          Core, PyPI, and npm <code>logosdb</code> at <strong>1.2.0</strong>. Load a live row’s embedding, text, and timestamp by integer id
-          (<code>logosdb_get</code> / <code>DB.get</code> / <code>db.get</code>) — the missing piece for LlamaIndex <code>get()</code>, LangChain
-          <code>get_by_ids</code>, and Pinecone-style fetch (#122).
+          Core, PyPI, and npm <code>logosdb</code> at <strong>1.3.0</strong>. Node catches up with Python for durability and observability:
+          <code>db.sync()</code> flushes WAL, index, vectors, and metadata; <code>db.stats()</code> returns the same counters as
+          <code>DB.stats()</code>; <code>compact(src, dst)</code> copies live rows into a fresh directory and drops tombstones (#138). C API unchanged.
         </p>
+
+        <table class="pkg-table" aria-label="Published package versions">
+          <thead>
+            <tr><th>Package</th><th>Version</th><th>Registry</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>logosdb</code></td><td><strong>1.3.0</strong></td><td>PyPI, npm</td></tr>
+            <tr><td><code>logosdb-mcp-server</code></td><td><strong>1.4.2</strong></td><td>npm (<code>^1.3.0</code>)</td></tr>
+            <tr><td><code>n8n-nodes-logosdb</code></td><td>1.0.3</td><td>npm (unchanged)</td></tr>
+          </tbody>
+        </table>
+
+        <a class="release-banner" href="https://github.com/jose-compu/logosdb/releases/tag/v1.3.0" target="_blank" rel="noopener">
+          <img src="https://github.com/jose-compu/logosdb/releases/download/v1.3.0/linkedin-v1.3.0.png" alt="LogosDB 1.3.0 release" width="1200" height="627" loading="lazy" />
+        </a>
+        <!-- RELEASE_HEADLINE_END -->
 
         <div class="flyer-grid">
           <article class="flyer-box cyan">
-            <h3>Fetch-by-id (<code>logosdb_get</code>)</h3>
-            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">C / C++ / Python / Node — live rows only.</p>
+            <h3>Node <code>db.sync()</code></h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Durability before shutdown or backup.</p>
             <ul style="list-style: none; padding: 0; margin: 0;">
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Embedding (float32, dequantized if needed)</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Text + ISO 8601 timestamp metadata</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Tombstoned / OOB ids fail cleanly</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> WAL, HNSW index, vector store, metadata</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Mirrors C <code>logosdb_sync</code> / Python <code>DB.sync()</code></li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Throws on I/O failure</li>
             </ul>
           </article>
           <article class="flyer-box purple">
-            <h3>Still shipping with 1.x</h3>
-            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Batch ingest, streaming I/O, hybrid search, MCP.</p>
+            <h3><code>db.stats()</code> &amp; <code>compact()</code></h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Inspect and reclaim space without new C calls.</p>
             <ul style="list-style: none; padding: 0; margin: 0;">
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> <code>put_batch</code> + NDJSON export/import</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Hybrid ANN + lexical score fusion</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> MCP contextual retrieval (<code>header</code> mode)</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> <code>DbStats</code>: row counts, tombstones, WAL pending, op counters</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Top-level <code>compact(src, dst)</code> — live rows only</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Fetch-by-id, batch ingest, hybrid search still in 1.x</li>
             </ul>
           </article>
         </div>
 
         <div class="feature-grid" style="margin-top: 1.5rem;">
           <article class="feature-card cyan">
-            <h3>Distance metrics</h3>
-            <p>Inner product (L2-normalized), cosine similarity (auto-normalized), or L2 Euclidean — pick what fits your embedding model.</p>
+            <h3>Node API (<code>logosdb@1.3.0</code>)</h3>
+            <p>
+              <code>db.sync(): void</code> · <code>db.stats(): DbStats</code> ·
+              <code>compact(src: string, dst: string): void</code> ·
+              <code>db.get(id): Row</code> · <code>normalizeL2()</code>
+            </p>
+          </article>
+          <article class="feature-card blue">
+            <h3><code>DbStats</code> fields</h3>
+            <p>
+              <code>rows_total</code>, <code>rows_live</code>, <code>tombstones</code>, <code>index_elements</code>,
+              <code>wal_pending</code>, <code>distance_metric</code>, <code>storage_dtype</code>, per-op success/fail counters, <code>sync_calls</code>.
+            </p>
+          </article>
+          <article class="feature-card purple">
+            <h3>Python parity</h3>
+            <p><code>DB.sync()</code> and <code>DB.stats()</code> already exposed the same C surface; 1.3.0 brings Node to parity without changing the C API.</p>
+          </article>
+          <article class="feature-card cyan">
+            <h3>Fetch-by-id</h3>
+            <p><code>DB.get</code> / <code>db.get</code> — live embedding, text, and timestamp by integer id (1.2.0, #122).</p>
           </article>
           <article class="feature-card blue">
             <h3>Timestamp filtering</h3>
-            <p>Search within ISO 8601 time windows — "last 24 hours", date ranges, or bounded recall for temporal RAG.</p>
-          </article>
-          <article class="feature-card purple">
-            <h3>Multi-tenant namespaces</h3>
-            <p>Isolated namespaces with quotas inside one DB root. Ideal for separating code, docs, and agent decisions.</p>
-          </article>
-          <article class="feature-card cyan">
-            <h3>Python <code>DB.get</code> / <code>Row</code></h3>
-            <p>Returns a <code>Row</code> with a NumPy float32 embedding plus text and timestamp. Raises on deleted or out-of-range ids.</p>
-          </article>
-          <article class="feature-card blue">
-            <h3>Node <code>db.get(id)</code></h3>
-            <p><code>logosdb@1.2.0</code> returns <code>{ id, embedding, text, timestamp }</code>. Also ships <code>normalizeL2()</code> and dim checks on write/search.</p>
+            <p>Search within ISO 8601 time windows — temporal RAG with <code>search_ts_range</code> / <code>db.searchTsRange</code>.</p>
           </article>
           <article class="feature-card purple">
             <h3>MCP &amp; n8n</h3>
-            <p><code>logosdb-mcp-server</code> (file index, hybrid search, contextual headers) and <code>n8n-nodes-logosdb</code> track the core npm line.</p>
+            <p><code>logosdb-mcp-server@1.4.2</code> depends on <code>logosdb@^1.3.0</code>. <code>n8n-nodes-logosdb@1.0.3</code> unchanged.</p>
           </article>
         </div>
       </div>
@@ -214,7 +238,7 @@
             <div class="badge-icon">🧩</div>
             <div>
               <h3>MCP server — Claude Code</h3>
-              <p><code>logosdb-mcp-server@1.4.0</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default. Launch with <code>npx -y logosdb-mcp-server --path ./.logosdb</code>.</p>
+              <p><code>logosdb-mcp-server@1.4.2</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default. Launch with <code>npx -y logosdb-mcp-server --path ./.logosdb</code>.</p>
             </div>
           </article>
           <article class="integration-card">
@@ -251,7 +275,7 @@
       <div class="container">
         <span class="section-label">Developers</span>
         <h2>Quick start</h2>
-        <p class="section-intro">Install from PyPI, open a database, embed with your model, search, and fetch by id.</p>
+        <p class="section-intro">Install from PyPI or npm, open a database, embed with your model, search, sync, and inspect stats.</p>
 
         <pre class="code-block"><code class="language-bash">pip install logosdb</code></pre>
 
@@ -275,8 +299,20 @@ hits = db.search(model.encode(question).astype("float32"), top_k=3)
 for h in hits:
     print(f"{h.score:.4f}  {h.text}")
 
-row = db.get(hits[0].id)  # 1.2.0 — embedding + metadata by id
-print(row.id, row.text, row.embedding.shape)</code></pre>
+row = db.get(hits[0].id)
+print(row.id, row.text, row.embedding.shape)
+print(db.stats())  # rows_live, tombstones, sync_calls, …
+db.sync()</code></pre>
+
+        <pre class="code-block"><code class="language-javascript">const { DB, compact } = require("logosdb");
+
+const db = new DB("/tmp/node_memory", { dim: 384, distance: 1 /* DIST_COSINE */ });
+db.put(embedding, "note", "2026-11-14T12:00:00Z");
+db.sync();
+const s = db.stats();
+console.log(s.rows_live, s.tombstones, s.sync_calls);
+compact("/tmp/node_memory", "/tmp/node_memory_compact");
+db.close();</code></pre>
 
         <pre class="code-block"><code><span class="prompt">&gt;</span> logosdb-cli info /tmp/agent_memory
 <span class="prompt">&gt;</span> logosdb-cli export /tmp/agent_memory --output rows.ndjson
@@ -311,12 +347,13 @@ print(row.id, row.text, row.embedding.shape)</code></pre>
         <a href="https://www.npmjs.com/package/logosdb-mcp-server">MCP server</a>
         <a href="https://github.com/jose-compu/logosdb/blob/main/LICENSE">MIT License</a>
       </div>
-      <p class="footer-copy">LogosDB 1.2.0 · MCP 1.4.0 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
+      <p class="footer-copy">LogosDB 1.3.0 · MCP 1.4.2 · n8n 1.0.3 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
     </div>
   </footer>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
   <script>hljs.highlightAll();</script>
 </body>
 </html>
