@@ -138,7 +138,8 @@ jobs:
       - name: Upgrade npm (Trusted Publishing requires npm ≥ 11.5.1)
         run: |
           set -euo pipefail
-          npm install -g npm@latest
+          # npm 12+ requires Node 22+; this job stays on Node 20 for the native addon ABI.
+          npm install -g "npm@>=11.5.1 <12"
           NPMV="$(npm -v)"
           echo "npm version: ${NPMV}"
           node -e "const [maj,min]='${NPMV}'.split('.').map(Number); if (maj < 11 || (maj === 11 && min < 5)) process.exit(1)"
