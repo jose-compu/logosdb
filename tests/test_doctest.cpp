@@ -3,15 +3,9 @@
 
 #include <logosdb/logosdb.h>
 
-#ifdef _WIN32
-#include <fcntl.h>
-#include <io.h>
-#include <sys/stat.h>
-#else
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#endif
 
 #include <cmath>
 #include <cstdio>
@@ -28,20 +22,9 @@ using namespace std::string_literals;
 // Test Helpers
 // ============================================================================
 
-// Returns a platform-specific temp directory prefix, e.g. "/tmp/" on POSIX
-// and the system temp path (with trailing separator) on Windows.
 static std::string tmp_path(const std::string& name)
 {
-    std::string path = (std::filesystem::temp_directory_path() / name).string();
-#ifdef _WIN32
-    // Forward slashes avoid cmd.exe interpreting "\\t" etc. when tests shell out to the CLI.
-    for (char& c : path)
-    {
-        if (c == '\\')
-            c = '/';
-    }
-#endif
-    return path;
+    return (std::filesystem::temp_directory_path() / name).string();
 }
 
 static std::vector<float> unit_vec(int dim, int seed)
@@ -63,13 +46,8 @@ static std::vector<float> unit_vec(int dim, int seed)
 
 static int run_cli(const std::string& args, std::string& output)
 {
-#ifdef _WIN32
-    std::string cmd = ".\\logosdb-cli.exe " + args + " 2>&1";
-    FILE* pipe = _popen(cmd.c_str(), "r");
-#else
     std::string cmd = "./logosdb-cli " + args + " 2>&1";
     FILE* pipe = popen(cmd.c_str(), "r");
-#endif
     if (!pipe)
         return -1;
     char buffer[4096];
@@ -78,11 +56,7 @@ static int run_cli(const std::string& args, std::string& output)
     {
         output += buffer;
     }
-#ifdef _WIN32
-    return _pclose(pipe);
-#else
     return pclose(pipe);
-#endif
 }
 
 // ============================================================================
@@ -975,59 +949,37 @@ TEST_SUITE("wal")
         }
 
         {
-#ifdef _WIN32
-            int fd = _open((path + "/wal.log").c_str(), O_RDWR | O_BINARY);
-#else
             int fd = ::open((path + "/wal.log").c_str(), O_RDWR);
-#endif
             CHECK(fd >= 0);
 
-#ifdef _WIN32
-            _lseeki64(fd, 0, SEEK_END);
-#else
             ::lseek(fd, 0, SEEK_END);
-#endif
-
-            auto raw_write = [&](const void* buf, unsigned int len)
-            {
-#ifdef _WIN32
-                return _write(fd, buf, len);
-#else
-                return static_cast<int>(::write(fd, buf, len));
-#endif
-            };
 
             uint8_t state = 0;
-            raw_write(&state, 1);
+            ::write(fd, &state, 1);
 
             uint32_t dim = 32;
-            raw_write(&dim, 4);
+            ::write(fd, &dim, 4);
 
             auto v2 = unit_vec(32, 7200);
             uint32_t vec_bytes = 32 * sizeof(float);
-            raw_write(&vec_bytes, 4);
-            raw_write(v2.data(), vec_bytes);
+            ::write(fd, &vec_bytes, 4);
+            ::write(fd, v2.data(), vec_bytes);
 
             std::string text = "third (from wal)";
             uint32_t text_len = static_cast<uint32_t>(text.size());
-            raw_write(&text_len, 4);
-            raw_write(text.data(), text_len);
+            ::write(fd, &text_len, 4);
+            ::write(fd, text.data(), text_len);
 
             std::string ts = "2025-03-01T00:00:00Z";
             uint32_t ts_len = static_cast<uint32_t>(ts.size());
-            raw_write(&ts_len, 4);
-            raw_write(ts.data(), ts_len);
+            ::write(fd, &ts_len, 4);
+            ::write(fd, ts.data(), ts_len);
 
             uint64_t expected_id = 2;
-            raw_write(&expected_id, 8);
+            ::write(fd, &expected_id, 8);
 
-#ifdef _WIN32
-            _commit(fd);
-            _close(fd);
-#else
             ::fsync(fd);
             ::close(fd);
-#endif
         }
 
         {
@@ -1160,11 +1112,7 @@ TEST_SUITE("batch")
         std::string path = tmp_path("logosdb_test_batch_chunked");
         std::filesystem::remove_all(path);
         // Force several small chunks to exercise the chunking path.
-#ifdef _WIN32
-        _putenv_s("LOGOSDB_BATCH_CHUNK_SIZE", "64");
-#else
         setenv("LOGOSDB_BATCH_CHUNK_SIZE", "64", 1);
-#endif
         {
             logosdb::DB db(path, {.dim = 16});
             const int n = 257;  // > 4 chunks of 64
@@ -1197,11 +1145,7 @@ TEST_SUITE("batch")
             CHECK(hits[0].id == 200u);
             CHECK(hits[0].text == "row_200");
         }
-#ifdef _WIN32
-        _putenv_s("LOGOSDB_BATCH_CHUNK_SIZE", "");
-#else
         unsetenv("LOGOSDB_BATCH_CHUNK_SIZE");
-#endif
         std::filesystem::remove_all(path);
     }
 

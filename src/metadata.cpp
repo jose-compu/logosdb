@@ -1,7 +1,6 @@
 #include "metadata.h"
 
 #include <fcntl.h>
-#include <sys/stat.h>
 #include <sys/types.h>
 
 #include <cerrno>
@@ -11,7 +10,6 @@
 
 #ifdef _WIN32
 #include <io.h>
-#include <share.h>
 #else
 #include <unistd.h>
 #endif
@@ -34,18 +32,11 @@ bool MetadataStore::open(const std::string& path, std::string& err)
     path_ = path;
 
 #ifdef _WIN32
-    {
-        int fd = -1;
-        _sopen_s(&fd,
-                 path.c_str(),
-                 O_RDWR | O_CREAT | O_APPEND | O_BINARY,
-                 _SH_DENYNO,
-                 _S_IREAD | _S_IWRITE);
-        fd_ = fd;
-    }
+    int flags = O_RDWR | O_CREAT | O_APPEND | O_BINARY;
 #else
-    fd_ = ::open(path.c_str(), O_RDWR | O_CREAT | O_APPEND, 0644);
+    int flags = O_RDWR | O_CREAT | O_APPEND;
 #endif
+    fd_ = ::open(path.c_str(), flags, 0644);
     if (fd_ < 0)
     {
         err = std::string("open meta: ") + strerror(errno);
@@ -67,7 +58,7 @@ bool MetadataStore::open(const std::string& path, std::string& err)
             {
                 j = json::parse(line);
             }
-            catch (const json::exception&)
+            catch (const json::exception& e)
             {
                 // Invalid JSON line - skip but don't fail
                 continue;

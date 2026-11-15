@@ -118,29 +118,13 @@ cd logosdb
 
 # Building
 
-This project supports [CMake](https://cmake.org/) on Linux, macOS, and Windows.
+This project supports [CMake](https://cmake.org/) out of the box.
 
-**Linux / macOS:**
+Quick start:
 
 ```bash
 mkdir -p build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release .. && cmake --build .
-```
-
-**Windows (MSVC, Visual Studio 2019+):**
-
-Open a *Developer Command Prompt for VS* (or use the `ilammy/msvc-dev-cmd` action in CI), then:
-
-```cmd
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
-```
-
-Alternatively, use the Visual Studio generator (binaries land in `build\Release\`):
-
-```cmd
-cmake -S . -B build
-cmake --build build --config Release
 ```
 
 This builds:

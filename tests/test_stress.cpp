@@ -18,15 +18,7 @@
 
 static std::string tmp_path(const std::string& name)
 {
-    std::string path = (std::filesystem::temp_directory_path() / name).string();
-#ifdef _WIN32
-    for (char& c : path)
-    {
-        if (c == '\\')
-            c = '/';
-    }
-#endif
-    return path;
+    return (std::filesystem::temp_directory_path() / name).string();
 }
 
 namespace
