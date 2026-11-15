@@ -1,6 +1,7 @@
 #include "metadata.h"
 
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 
 #include <cerrno>
@@ -35,7 +36,10 @@ bool MetadataStore::open(const std::string& path, std::string& err)
 #ifdef _WIN32
     {
         int fd = -1;
-        _sopen_s(&fd, path.c_str(), O_RDWR | O_CREAT | O_APPEND | O_BINARY, _SH_DENYNO,
+        _sopen_s(&fd,
+                 path.c_str(),
+                 O_RDWR | O_CREAT | O_APPEND | O_BINARY,
+                 _SH_DENYNO,
                  _S_IREAD | _S_IWRITE);
         fd_ = fd;
     }

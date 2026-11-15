@@ -32,7 +32,16 @@ using namespace std::string_literals;
 // and the system temp path (with trailing separator) on Windows.
 static std::string tmp_path(const std::string& name)
 {
-    return (std::filesystem::temp_directory_path() / name).string();
+    std::string path = (std::filesystem::temp_directory_path() / name).string();
+#ifdef _WIN32
+    // Forward slashes avoid cmd.exe interpreting "\\t" etc. when tests shell out to the CLI.
+    for (char& c : path)
+    {
+        if (c == '\\')
+            c = '/';
+    }
+#endif
+    return path;
 }
 
 static std::vector<float> unit_vec(int dim, int seed)
@@ -55,7 +64,7 @@ static std::vector<float> unit_vec(int dim, int seed)
 static int run_cli(const std::string& args, std::string& output)
 {
 #ifdef _WIN32
-    std::string cmd = "logosdb-cli.exe " + args + " 2>&1";
+    std::string cmd = ".\\logosdb-cli.exe " + args + " 2>&1";
     FILE* pipe = _popen(cmd.c_str(), "r");
 #else
     std::string cmd = "./logosdb-cli " + args + " 2>&1";
@@ -650,7 +659,7 @@ TEST_SUITE("get_by_id")
 {
     TEST_CASE("get: returns embedding and metadata")
     {
-        std::string path = "/tmp/logosdb_test_get_basic";
+        std::string path = tmp_path("logosdb_test_get_basic");
         std::filesystem::remove_all(path);
 
         int dim = 64;
@@ -681,7 +690,7 @@ TEST_SUITE("get_by_id")
 
     TEST_CASE("get: errors for OOB and tombstoned")
     {
-        std::string path = "/tmp/logosdb_test_get_err";
+        std::string path = tmp_path("logosdb_test_get_err");
         std::filesystem::remove_all(path);
 
         logosdb::DB db(path, {.dim = 32});
