@@ -17,6 +17,12 @@ ROOT = HERE.parents[1]
 FONTS = HERE / "fonts"
 DEFAULT_LOGO = ROOT / "logo.png"
 CANVAS_W, CANVAS_H = 1200, 627
+MARGIN_X = 72
+MARGIN_BOTTOM = 42
+HEADLINE_TO_RELEASE_GAP = 18
+RELEASE_TO_HIGHLIGHTS_GAP = 14
+HIGHLIGHT_GAP = 8
+BLOCK_GAP = 10
 
 BG = (10, 10, 11)
 PANEL = (20, 20, 22)
@@ -55,15 +61,17 @@ class BannerData:
 
 
 class FontSet:
-    def __init__(self) -> None:
+    def __init__(self, compact: bool = False) -> None:
+        sm = 16 if compact else 18
+        mono_sz = 17 if compact else 19
         self.display_xl = _load("SpaceGrotesk-Bold.woff", 64)
         self.display_lg = _load("SpaceGrotesk-Bold.woff", 52)
         self.heading = _load("SpaceGrotesk-Medium.woff", 28)
         self.body = _load("Inter-Regular.ttf", 22)
-        self.body_sm = _load("Inter-Regular.ttf", 18)
+        self.body_sm = _load("Inter-Regular.ttf", sm)
         self.label = _load("Inter-SemiBold.ttf", 16)
         self.footer = _load("Inter-Regular.ttf", 17)
-        self.mono = _load("JetBrainsMono-Medium.ttf", 19)
+        self.mono = _load("JetBrainsMono-Medium.ttf", mono_sz)
         self.mono_sm = _load("JetBrainsMono-Regular.ttf", 16)
         self.chip = _load("Inter-SemiBold.ttf", 15)
 
@@ -89,6 +97,16 @@ def _text_h(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont) 
     return box[3] - box[1]
 
 
+def _bbox_bottom(
+    draw: ImageDraw.ImageDraw,
+    x: int,
+    y: int,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+) -> int:
+    return draw.textbbox((x, y), text, font=font)[3]
+
+
 def _draw_chip(
     draw: ImageDraw.ImageDraw,
     x: int,
@@ -96,7 +114,7 @@ def _draw_chip(
     label: str,
     version: str,
     fonts: FontSet,
-) -> int:
+) -> tuple[int, int]:
     text = f"{label}  {version}"
     pad_x, pad_y = 14, 8
     tw = _text_w(draw, text, fonts.chip)
@@ -104,7 +122,7 @@ def _draw_chip(
     w, h = tw + pad_x * 2, th + pad_y * 2
     draw.rounded_rectangle((x, y, x + w, y + h), radius=10, fill=CHIP_BG, outline=CHIP_BORDER, width=1)
     draw.text((x + pad_x, y + pad_y - 1), text, fill=BODY, font=fonts.chip)
-    return w
+    return w, h
 
 
 def _parse_package(raw: str) -> tuple[str, str]:
@@ -213,7 +231,9 @@ def build_banner_data(args: argparse.Namespace) -> BannerData:
 
 
 def render(data: BannerData, logo_path: Path, out_path: Path) -> None:
-    fonts = FontSet()
+    x0, x1 = 292, CANVAS_W - MARGIN_X
+    dense_body = bool(data.release_tagline) or any(h.desc for h in data.highlights)
+    fonts = FontSet(compact=dense_body)
     img = Image.new("RGB", (CANVAS_W, CANVAS_H), BG)
     draw = ImageDraw.Draw(img)
 
@@ -228,15 +248,19 @@ def render(data: BannerData, logo_path: Path, out_path: Path) -> None:
     img.paste(logo, (lx, ly), logo)
 
     x0 = 292
+    x1 = CANVAS_W - MARGIN_X
     draw.text((x0, 76), "LogosDB", fill=TITLE, font=fonts.display_lg)
     draw.text((x0, 134), data.tagline, fill=MUTED, font=fonts.body_sm)
-    draw.line([(x0, 168), (CANVAS_W - 72, 168)], fill=RULE, width=2)
+    draw.line([(x0, 168), (x1, 168)], fill=RULE, width=2)
 
+    ver_top = 192
     ver_label = f"v{data.version}"
-    draw.text((x0, 192), ver_label, fill=TEAL, font=fonts.display_xl)
+    draw.text((x0, ver_top), ver_label, fill=TEAL, font=fonts.display_xl)
+    ver_bottom = _bbox_bottom(draw, x0, ver_top, ver_label, fonts.display_xl)
+
     ver_w = _text_w(draw, ver_label, fonts.display_xl)
     title_x = x0 + ver_w + 28
-    title_max = CANVAS_W - 72 - title_x
+    title_max = x1 - title_x
     title_font = fonts.heading
     title_lines: list[str] = []
     words = data.title.split()
@@ -252,58 +276,75 @@ def render(data: BannerData, logo_path: Path, out_path: Path) -> None:
     if line:
         title_lines.append(line)
     title_y = 208
+    title_bottom = title_y
     for ln in title_lines[:2]:
         draw.text((title_x, title_y), ln, fill=TITLE, font=title_font)
+        title_bottom = max(title_bottom, _bbox_bottom(draw, title_x, title_y, ln, title_font))
         title_y += 34
 
-    block_bottom = max(title_y, 192 + _text_h(draw, ver_label, fonts.display_xl))
-    highlight_y = block_bottom + 10
+    y = max(ver_bottom, title_bottom) + HEADLINE_TO_RELEASE_GAP
     if data.release_tagline:
-        draw.text((x0, highlight_y), data.release_tagline, fill=MUTED, font=fonts.body_sm)
-        highlight_y += 28
+        draw.text((x0, y), data.release_tagline, fill=MUTED, font=fonts.body_sm)
+        y = _bbox_bottom(draw, x0, y, data.release_tagline, fonts.body_sm) + RELEASE_TO_HIGHLIGHTS_GAP
 
     bullet_r = 4
     name_x = x0 + 20
     for item in data.highlights[:3]:
-        cy = highlight_y + 11
+        cy = y + 11
         draw.ellipse((x0, cy - bullet_r, x0 + bullet_r * 2, cy + bullet_r), fill=TEAL_DIM)
-        draw.text((name_x, highlight_y), item.name, fill=BODY, font=fonts.mono_sm)
-        row_h = _text_h(draw, item.name, fonts.mono_sm)
+        draw.text((name_x, y), item.name, fill=BODY, font=fonts.mono_sm)
+        row_bottom = _bbox_bottom(draw, name_x, y, item.name, fonts.mono_sm)
         if item.desc:
-            desc_y = highlight_y + row_h + 2
+            desc_y = row_bottom + 4
             draw.text((name_x, desc_y), item.desc, fill=MUTED, font=fonts.body_sm)
-            row_h += 2 + _text_h(draw, item.desc, fonts.body_sm)
-        highlight_y += row_h + 14
+            row_bottom = _bbox_bottom(draw, name_x, desc_y, item.desc, fonts.body_sm)
+        y = row_bottom + HIGHLIGHT_GAP
 
-    pkg_y = max(highlight_y + 16, 430)
+    footer_y = CANVAS_H - MARGIN_BOTTOM
+    footer_text_h = _text_h(draw, data.github, fonts.footer)
+    footer_top_limit = footer_y - footer_text_h - BLOCK_GAP
+
+    y += BLOCK_GAP
     pkg_x = x0
     gap = 12
+    chip_row_h = 0
     for label, ver in data.packages[:4]:
-        w = _draw_chip(draw, pkg_x, pkg_y, label, ver, fonts)
+        w, h = _draw_chip(draw, pkg_x, y, label, ver, fonts)
+        chip_row_h = max(chip_row_h, h)
         pkg_x += w + gap
         if pkg_x > CANVAS_W - 200:
             break
 
+    if chip_row_h:
+        y += chip_row_h + BLOCK_GAP
+
     if data.install:
-        inst_y = 468
-        pad = 16
+        pad = 14
         mono = fonts.mono
         tw = _text_w(draw, data.install, mono)
-        box_w = min(tw + pad * 2, CANVAS_W - 72 - x0)
-        box_h = _text_h(draw, data.install, mono) + pad * 2
+        box_w = min(tw + pad * 2, x1 - x0)
+        text_h = _text_h(draw, data.install, mono)
+        box_h = text_h + pad * 2
+        if y + box_h > footer_top_limit:
+            raise ValueError(
+                f"install block does not fit above footer "
+                f"(need {y + box_h}px, limit {footer_top_limit}px)"
+            )
         draw.rounded_rectangle(
-            (x0, inst_y, x0 + box_w, inst_y + box_h),
+            (x0, y, x0 + box_w, y + box_h),
             radius=12,
             fill=PANEL,
             outline=CHIP_BORDER,
             width=1,
         )
-        draw.text((x0 + pad, inst_y + pad - 2), data.install, fill=TEAL, font=mono)
+        draw.text((x0 + pad, y + pad - 2), data.install, fill=TEAL, font=mono)
+        y += box_h
 
-    footer_y = CANVAS_H - 44
+    assert y <= footer_top_limit, f"banner content overflows footer (y={y}, limit={footer_top_limit})"
+
     draw.text((x0, footer_y), data.github, fill=MUTED, font=fonts.footer)
     date_w = _text_w(draw, data.date, fonts.footer)
-    draw.text((CANVAS_W - 72 - date_w, footer_y), data.date, fill=MUTED, font=fonts.footer)
+    draw.text((x1 - date_w, footer_y), data.date, fill=MUTED, font=fonts.footer)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(out_path, format="PNG", optimize=True)
