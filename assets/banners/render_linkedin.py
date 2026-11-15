@@ -36,12 +36,19 @@ GITHUB_DEFAULT = "github.com/jose-compu/logosdb"
 
 
 @dataclass
+class Highlight:
+    name: str
+    desc: str = ""
+
+
+@dataclass
 class BannerData:
     version: str
     title: str
     date: str
     tagline: str = TAGLINE_DEFAULT
-    highlights: list[str] = field(default_factory=list)
+    release_tagline: str = ""
+    highlights: list[Highlight] = field(default_factory=list)
     packages: list[tuple[str, str]] = field(default_factory=list)
     install: str = ""
     github: str = GITHUB_DEFAULT
@@ -125,6 +132,26 @@ def _load_config(path: Path) -> dict[str, Any]:
     return data
 
 
+def _highlight_from_item(item: Any) -> Highlight:
+    if isinstance(item, str):
+        return Highlight(name=item.strip())
+    if isinstance(item, dict):
+        name = str(item.get("name", "")).strip()
+        if not name:
+            raise ValueError("highlight object needs a non-empty name")
+        desc = str(item.get("desc", "") or "").strip()
+        return Highlight(name=name, desc=desc)
+    raise ValueError("each highlight must be a string or {name, desc?} object")
+
+
+def _highlights_from_config(raw: Any) -> list[Highlight]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("highlights must be a list")
+    return [_highlight_from_item(item) for item in raw]
+
+
 def _packages_from_config(raw: Any) -> list[tuple[str, str]]:
     if raw is None:
         return []
@@ -155,14 +182,21 @@ def build_banner_data(args: argparse.Namespace) -> BannerData:
     if not version or not title or not date:
         raise SystemExit("--version, --title, and --date are required (or set in --config)")
 
-    highlights = list(base.get("highlights") or [])
-    highlights.extend(args.highlight or [])
+    highlights = _highlights_from_config(base.get("highlights"))
+    for h in args.highlight or []:
+        highlights.append(_highlight_from_item(h))
 
     packages = _packages_from_config(base.get("packages"))
     packages.extend(args.package or [])
 
     install = args.install or base.get("install") or ""
     tagline = args.tagline or base.get("tagline") or TAGLINE_DEFAULT
+    release_tagline = (
+        args.release_tagline
+        or base.get("release_tagline")
+        or base.get("release_summary")
+        or ""
+    )
     github = args.github or base.get("github") or GITHUB_DEFAULT
 
     return BannerData(
@@ -170,7 +204,8 @@ def build_banner_data(args: argparse.Namespace) -> BannerData:
         title=str(title),
         date=str(date),
         tagline=str(tagline),
-        highlights=[str(h) for h in highlights],
+        release_tagline=str(release_tagline).strip(),
+        highlights=highlights,
         packages=packages,
         install=str(install),
         github=str(github),
@@ -221,15 +256,26 @@ def render(data: BannerData, logo_path: Path, out_path: Path) -> None:
         draw.text((title_x, title_y), ln, fill=TITLE, font=title_font)
         title_y += 34
 
-    highlight_y = 292
-    bullet_r = 5
-    for line in data.highlights[:3]:
-        cy = highlight_y + 12
-        draw.ellipse((x0, cy - bullet_r, x0 + bullet_r * 2, cy + bullet_r), fill=TEAL_DIM)
-        draw.text((x0 + 22, highlight_y), line, fill=BODY, font=fonts.body)
-        highlight_y += 40
+    block_bottom = max(title_y, 192 + _text_h(draw, ver_label, fonts.display_xl))
+    highlight_y = block_bottom + 10
+    if data.release_tagline:
+        draw.text((x0, highlight_y), data.release_tagline, fill=MUTED, font=fonts.body_sm)
+        highlight_y += 28
 
-    pkg_y = 410
+    bullet_r = 4
+    name_x = x0 + 20
+    for item in data.highlights[:3]:
+        cy = highlight_y + 11
+        draw.ellipse((x0, cy - bullet_r, x0 + bullet_r * 2, cy + bullet_r), fill=TEAL_DIM)
+        draw.text((name_x, highlight_y), item.name, fill=BODY, font=fonts.mono_sm)
+        row_h = _text_h(draw, item.name, fonts.mono_sm)
+        if item.desc:
+            desc_y = highlight_y + row_h + 2
+            draw.text((name_x, desc_y), item.desc, fill=MUTED, font=fonts.body_sm)
+            row_h += 2 + _text_h(draw, item.desc, fonts.body_sm)
+        highlight_y += row_h + 14
+
+    pkg_y = max(highlight_y + 16, 430)
     pkg_x = x0
     gap = 12
     for label, ver in data.packages[:4]:
@@ -273,7 +319,11 @@ def main() -> int:
     p.add_argument("--title", help="Release title headline")
     p.add_argument("--date", help="Release date (YYYY-MM-DD)")
     p.add_argument("--tagline", help=f"Product tagline (default: {TAGLINE_DEFAULT!r})")
-    p.add_argument("--highlight", action="append", default=[], help="Highlight line (repeatable)")
+    p.add_argument(
+        "--release-tagline",
+        help="One-line release benefit shown under the version headline",
+    )
+    p.add_argument("--highlight", action="append", default=[], help="Highlight name (repeatable)")
     p.add_argument("--package", type=_parse_package, action="append", default=[], metavar="LABEL=VER")
     p.add_argument("--install", help="Install commands shown in monospace")
     p.add_argument("--github", help=f"Footer repo URL (default: {GITHUB_DEFAULT})")

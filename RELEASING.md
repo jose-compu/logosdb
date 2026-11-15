@@ -47,9 +47,13 @@ That's it — the workflow already references the environment by name.
 
 # 2. Update the CHANGELOG entry with the release date and notes.
 # 3. Render the LinkedIn banner (1200×627) and attach it to the GitHub release:
-#    python3 assets/banners/render_linkedin.py --config assets/banners/linkedin-v1.3.0.yaml \
+#    Copy assets/banners/linkedin-v1.3.0.yaml to linkedin-v${VERSION}.yaml, then:
+#    python3 assets/banners/render_linkedin.py --config assets/banners/linkedin-v${VERSION}.yaml \
 #      --out assets/banners/linkedin-v${VERSION}.png
 #    Or pass fields on the CLI (--version, --title, --date, --highlight, --package, --install).
+#    Optional YAML fields:
+#      release_tagline: one line under the version/title (release benefit in plain words)
+#      highlights: list of API strings, or objects with name + desc (short plain-English line)
 #    Fonts live under assets/banners/fonts/; the renderer does not fall back to system fonts.
 
 git add pyproject.toml include/logosdb/logosdb.h CMakeLists.txt CHANGELOG \
