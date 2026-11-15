@@ -1,2 +1,9 @@
 src/
-dist/security.test.*
+scripts/
+eslint.config.js
+tsconfig.json
+.prettierrc
+**/*.test.js
+**/*.test.d.ts
+**/*.test.js.map
+**/*.test.d.ts.map

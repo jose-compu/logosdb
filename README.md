@@ -1,9 +1,13 @@
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/f89d3d66-10f0-4af1-aafe-b59d82b43548" />
+[![LogosDB MCP server](https://mcprush.com/badge/logosdb-mcp/card.svg)](https://mcprush.com/to/logosdb-mcp?ref=badge)
+
+<img width="1248" height="832" alt="image" src="https://github.com/user-attachments/assets/490d2c94-bebf-4841-a12f-cd230600c65a" />
 
 [![CI](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml)
 [![Python](https://github.com/jose-compu/logosdb/actions/workflows/python.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/python.yml)
 [![PyPI](https://img.shields.io/pypi/v/logosdb.svg)](https://pypi.org/project/logosdb/)
 [![Python versions](https://img.shields.io/pypi/pyversions/logosdb.svg)](https://pypi.org/project/logosdb/)
+
+LogosDB is the SQLite for AI Agents.
 
 LogosDB is a fast semantic vector database written in C/C++ that provides approximate nearest-neighbor search over embedding vectors with associated text metadata.
 
@@ -16,7 +20,7 @@ Authors: Jose ([@jose-compu](https://github.com/jose-compu))
   * Vectors and metadata are stored as flat binary files, memory-mapped for zero-copy reads.
   * Approximate nearest-neighbor search via [HNSW](https://arxiv.org/abs/1603.09320) (hnswlib), O(log n) query time.
   * Each vector row carries optional text and ISO 8601 timestamp metadata (JSONL sidecar).
-  * The basic operations are `Put(embedding, text, timestamp)` and `Search(query, top_k)`.
+  * The basic operations are `Put(embedding, text, timestamp)`, `Get(id)`, and `Search(query, top_k)`.
   * **Timestamp range filtering**: search within a time window (e.g., "last 24 hours").
   * **Multiple distance metrics**: inner product, cosine similarity (auto-normalized), or L2 Euclidean.
   * Bulk vector access for direct tensor construction (e.g. loading into GPU memory).
@@ -51,13 +55,13 @@ Guide to header files:
 
 # Roadmap
 
-Work is tracked in [open issues](https://github.com/jose-compu/logosdb/issues?q=is%3Aissue+is%3Aopen). Version bumps follow [Semantic Versioning](https://semver.org/) with these project conventions while the library is **pre-1.0** (`0.x.y`):
+Work is tracked in [open issues](https://github.com/jose-compu/logosdb/issues?q=is%3Aissue+is%3Aopen). **1.0.0** shipped on 2026-05-17; the public C API and supported language bindings follow [Semantic Versioning](https://semver.org/) on the `1.x` line:
 
 | Bump | When |
 |------|------|
-| **Patch** (`0.x.Z`) | Bug fixes, security fixes, documentation, CI/build-only changes, and internal tooling that does **not** alter the supported contract of the public C API in [`include/logosdb/logosdb.h`](include/logosdb/logosdb.h) or the stable surface of language bindings. |
-| **Minor** (`0.Y.z`) | Backward-compatible additions: new functions or options, new storage or index behaviors behind explicit settings, new integrations, new platforms, and additive file-format upgrades with automatic or guided migration. |
-| **Major `1.0.0`** | First **stable** release: a documented compatibility promise for the public C API and for on-disk formats (including upgrade paths). Intended when the **Path to 1.0.0** criteria (below) are satisfied so downstream authors can depend on semver semantics without surprise breakage across patch/minor lines. |
+| **Patch** (`1.0.Z`) | Bug fixes, security fixes, documentation, CI/build-only changes, and internal tooling that does **not** alter the supported contract of the public C API in [`include/logosdb/logosdb.h`](include/logosdb/logosdb.h) or the stable surface of language bindings. |
+| **Minor** (`1.Y.z`) | Backward-compatible additions: new functions or options, new storage or index behaviors behind explicit settings, new integrations, new platforms, and additive file-format upgrades with automatic or guided migration. |
+| **Major** (`2.0.0`) | Breaking changes to the public C API, on-disk format without a migration path, or binding contracts that cannot remain compatible. |
 
 Target versions and issue assignment match **[GitHub milestones](https://github.com/jose-compu/logosdb/milestones)** (each open roadmap issue has exactly one milestone).
 
@@ -80,28 +84,30 @@ Past releases are summarized in the [CHANGELOG](CHANGELOG) and the [closed miles
   * [#86](https://github.com/jose-compu/logosdb/issues/86) — Multi-tenant namespaces: quota and isolation within one DB root
   * [#89](https://github.com/jose-compu/logosdb/issues/89) — Recall benchmarking utility for HNSW tuning
 
-### [0.12.0](https://github.com/jose-compu/logosdb/milestone/11) — minor — integrations
+### **SHIPPED** [0.12.0](https://github.com/jose-compu/logosdb/milestone/11) — minor — integrations
 
   * [#78](https://github.com/jose-compu/logosdb/issues/78) — Feature: Codex plugin marketplace integration for LogosDB
 
-### [0.13.0](https://github.com/jose-compu/logosdb/milestone/12) — minor — platform
+### **SHIPPED** [1.0.0](https://github.com/jose-compu/logosdb/milestone/13) — first stable release
+
+  * Smart chunking, UTF-8/NFC policy, path-hardening, and expanded security tests (#98, #108–#112). See [CHANGELOG](CHANGELOG) `1.0.0`.
+
+### **SHIPPED** [1.0.1](https://github.com/jose-compu/logosdb/issues/116) — patch — release hygiene
+
+  * [#116](https://github.com/jose-compu/logosdb/issues/116) — Sync `CHANGELOG`, version macros, package metadata, and post-1.0 docs.
+
+### Open — platform / hardening (post-1.0)
 
   * [#10](https://github.com/jose-compu/logosdb/issues/10) — Windows support: abstract POSIX file I/O behind a portable layer
+  * [#111](https://github.com/jose-compu/logosdb/issues/111) — Finish Python integration-adapter security audit (partially addressed in 1.0.0 for `vibe.py`)
 
-### [1.0.0](https://github.com/jose-compu/logosdb/milestone/13) — stable release tag
+## Stability (since 1.0.0)
 
-No roadmap issues are assigned only to this milestone: it marks publishing **`1.0.0`** once the criteria below are satisfied; implementation work stays on the milestones above until shipped.
+As of **1.0.0**, the project commits to stable semver for the public C API and supported language bindings:
 
-## Path to 1.0.0
-
-`1.0.0` is **not** a single mega-release of every open issue; it is the milestone where the project commits to stable semver for the public API and supported persistence story. Practically, **1.0.0** is targeted when:
-
-  * The public C API in `include/logosdb/logosdb.h` is treated as stable: breaking changes only in future major versions, with migration notes.
-  * On-disk layout and version negotiation are documented, with doctor/upgrade guidance ([#88](https://github.com/jose-compu/logosdb/issues/88)) and a credible backup/restore path ([#83](https://github.com/jose-compu/logosdb/issues/83)).
-  * The security baseline in [#74](https://github.com/jose-compu/logosdb/issues/74) is addressed for MCP, CLI, and bundled integrations.
-  * Tier-1 platforms for the release are explicit (first-class Windows ([#10](https://github.com/jose-compu/logosdb/issues/10)) or a documented Unix-only 1.0, decided at release time).
-
-Features such as hybrid retrieval ([#85](https://github.com/jose-compu/logosdb/issues/85)), filter predicates ([#84](https://github.com/jose-compu/logosdb/issues/84)), or multi-tenant namespaces ([#86](https://github.com/jose-compu/logosdb/issues/86)) can ship in **0.x** minors as they land; they do not all block **1.0.0** unless adopted into the stable API surface.
+  * Breaking changes to `include/logosdb/logosdb.h` or on-disk layout require a future major version, with migration notes.
+  * Tier-1 platforms for 1.x are **Linux and macOS**; Windows remains tracked in [#10](https://github.com/jose-compu/logosdb/issues/10).
+  * Backup/restore and doctor tooling shipped in earlier 0.x releases; further hardening continues on the 1.x line.
 
 # Getting the Source
 
@@ -656,7 +662,8 @@ The **logosdb** MCP server is configured. Data lives on disk under `LOGOSDB_PATH
 | `OLLAMA_*` | — | See `mcp/README.md` when using Ollama |
 | `OPENAI_API_KEY` | — | Required when `EMBEDDING_PROVIDER=openai` |
 | `VOYAGE_API_KEY` | — | Required when `EMBEDDING_PROVIDER=voyage` |
-| `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk for file indexing |
+| `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk for `"legacy"` and `"section"` chunking modes |
+| `LOGOSDB_CHUNK_MODE` | `auto` | Chunking strategy: `auto` (per-extension), `line` (code), `section` (markdown/rst), `legacy` (original paragraph/char). See [`mcp/README.md` — Chunking strategies](mcp/README.md#chunking-strategies). |
 
 Voyage AI (`voyage-3`, dim=1024) is Anthropic's recommended cloud embedding model:
 
@@ -753,7 +760,7 @@ We use databases with 1K, 10K, and 100K vectors. Each vector has 2048 dimensions
 
 *(Numbers below are illustrative ballparks; absolute values depend on hardware and build flags. Relative HNSW vs brute-force behavior is what to focus on.)*
 
-    LogosDB:    version 0.9.0
+    LogosDB:    version 1.0.1
     CPU:        Apple M-series (ARM64)
     Dim:        2048
     HNSW M:     16, ef_construction: 200, ef_search: 50
@@ -777,6 +784,60 @@ Each "op" above corresponds to a write of a single vector + metadata + HNSW inde
     Brute-force top-5 (100K):  ~25 ms/query
 
 HNSW maintains sub-linear scaling while brute-force grows linearly with database size. At 100K vectors, HNSW is roughly 20x faster.
+
+## VectorDB Bench
+
+[VectorDB Bench](https://github.com/zilliztech/VectorDBBench) is the standard open-source harness for comparing vector databases at realistic scale (load, optimize, serial/concurrent search, recall). LogosDB is integrated as a first-class backend:
+
+| Location | Role |
+|----------|------|
+| `vectordb_bench/backend/clients/logosdb/` | Client: `config.py`, `logosdb.py`, `cli.py` |
+| `vectordb_bench/backend/clients/__init__.py` | `DB.LogosDB` enum + `init_cls` / `config_cls` / `case_config_cls` mappings |
+| `vectordb_bench/cli/vectordbbench.py` | CLI subcommand `logosdb` |
+| `pyproject.toml` | Optional extra `logosdb` (installs the Python bindings used by the client) |
+
+### Results — `Performance1536D50K` (2026-05-17)
+
+OpenAI embeddings, **50K** vectors, **1536** dimensions, **cosine** distance. Serial search only (`--skip-search-concurrent`). Absolute timings depend on hardware; recall/NDCG are the primary cross-database comparators.
+
+| Metric | Value |
+|--------|-------|
+| Load duration | 340.4 s |
+| Insert duration | 339.6 s |
+| Optimize duration | 0.8 s |
+| Serial latency p99 | 4.6 ms |
+| Serial latency p95 | 4.0 ms |
+| Recall@100 | **0.9347** |
+| NDCG | **0.9464** |
+
+Raw JSON: `vectordb_bench/results/LogosDB/result_20260517_*.json` (under your VectorDB Bench checkout).
+
+### Re-run
+
+From a VectorDB Bench tree with the LogosDB client installed (`pip install -e '.[logosdb]'` or equivalent):
+
+```bash
+.venv/bin/python3.12 -m vectordb_bench.cli.vectordbbench logosdb \
+  --uri /tmp/vectordbbench_logosdb \
+  --case-type Performance1536D50K \
+  --skip-search-concurrent
+```
+
+Use a fresh `--uri` directory per run. Set `OPENAI_API_KEY` (or the embedding provider your case expects) before starting.
+
+## Results — `glove-25-angular` (qdrant/vector-db-benchmark)
+
+Standard [qdrant/vector-db-benchmark](https://github.com/qdrant/vector-db-benchmark) harness, **1.18M × 25** vectors, **cosine** distance (angular). Serial search.
+
+| Metric | Value |
+|--------|-------|
+| Upload time | 345 s |
+| Mean precision@10 | 0.939 |
+| RPS | 9,401 |
+| Mean latency | 0.092 ms |
+| p99 latency | 0.146 ms |
+
+Source: [qdrant/vector-db-benchmark](https://github.com/qdrant/vector-db-benchmark).
 
 ## Benchmark vs ChromaDB
 

@@ -15,6 +15,7 @@
  *   OPENAI_API_KEY        Required when EMBEDDING_PROVIDER=openai
  *   VOYAGE_API_KEY        Required when EMBEDDING_PROVIDER=voyage
  *   LOGOSDB_CHUNK_SIZE             Target characters per chunk for file indexing (default: 800)
+ *   LOGOSDB_CHUNK_CONTEXT          Situating prefix on embeds: off | header | llm (default header)
  *   LOGOSDB_QUOTA_MAX_VECTORS      Max live vectors per namespace, 0 = unlimited (default 0)
  *   LOGOSDB_QUOTA_MAX_NAMESPACES   Max namespaces under LOGOSDB_PATH, 0 = unlimited (default 0)
  */
@@ -31,7 +32,12 @@ import * as path from 'path';
 
 import { resolveConfig, embed, embedBatch, type EmbeddingConfig } from './embeddings.js';
 import { NamespaceStore } from './store.js';
-import { chunk } from './chunker.js';
+import { chunk, resolveChunkMode, type ChunkMode } from './chunker.js';
+import {
+  embedTextForChunk,
+  resolveChunkContextMode,
+  type ChunkContextMode,
+} from './chunk-context.js';
 import {
   clampChunkSize,
   clampTopK,
@@ -61,11 +67,29 @@ import {
   type FilterPredicate,
 } from './metadata-filter.js';
 import { loadQuotaConfig, checkVectorQuota, checkNsQuota } from './quota.js';
+import { applyCli, readPackageVersion } from './cli.js';
+
+const cliMode = applyCli(process.argv.slice(2));
+if (cliMode !== 'server') {
+  process.exit(0);
+}
+
+const PACKAGE_VERSION = readPackageVersion();
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 const LOGOSDB_PATH = process.env.LOGOSDB_PATH ?? path.join(process.cwd(), '.logosdb');
 const CHUNK_SIZE = clampChunkSize(parseInt(process.env.LOGOSDB_CHUNK_SIZE ?? '800', 10), 800);
+
+/** Global default chunk mode; overridable per-call via the `chunking` parameter. */
+const CHUNK_MODE_DEFAULT: ChunkMode = (() => {
+  const raw = (process.env.LOGOSDB_CHUNK_MODE ?? 'auto').trim().toLowerCase();
+  if (raw === 'line' || raw === 'section' || raw === 'legacy') return raw as ChunkMode;
+  return 'auto';
+})();
+
+/** Global default situating-context mode; overridable per-call via `chunk_context`. */
+const CHUNK_CONTEXT_DEFAULT: ChunkContextMode = resolveChunkContextMode();
 
 let embCfg: EmbeddingConfig;
 try {
@@ -124,7 +148,8 @@ const TOOLS: Tool[] = [
       'When given a directory it walks recursively, skipping hidden paths and node_modules. ' +
       'When a Git working tree is detected the walker honours `.gitignore` (root + nested + `.git/info/exclude` + global excludes); disable with `respect_gitignore=false` or `LOGOSDB_RESPECT_GITIGNORE=0`. ' +
       'Supports any UTF-8 text file (source code, markdown, plain text). ' +
-      'With incremental=true, skips files unchanged since last index (mtime+size+chunk_size), re-indexes modified files after deleting their previous chunk rows, and when indexing a directory removes DB rows for files that disappeared from disk.',
+      'With incremental=true, skips files unchanged since last index (mtime+size+chunk_size+chunking), re-indexes modified files after deleting their previous chunk rows, and when indexing a directory removes DB rows for files that disappeared from disk. ' +
+      'Chunking strategy is selected automatically per file type ("auto"): code → line-window (~50 lines, 10-line overlap), markdown/rst → section-aware, everything else → paragraph/char. Override with `chunking`.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -135,7 +160,15 @@ const TOOLS: Tool[] = [
         namespace: { type: 'string', description: 'Collection name' },
         chunk_size: {
           type: 'number',
-          description: `Target characters per chunk (default: ${CHUNK_SIZE})`,
+          description: `Target characters per chunk for "legacy" and "section" modes (default: ${CHUNK_SIZE}). Ignored in "line" mode.`,
+        },
+        chunking: {
+          type: 'string',
+          enum: ['auto', 'line', 'section', 'legacy'],
+          description:
+            'Chunking strategy. "auto" (default) picks per file type: code → "line" (sliding ~50-line windows, 10-line overlap); .md/.rst → "section" (heading-aware); everything else → "legacy" (paragraph/char). ' +
+            '"line": force line-window for all files. "section": force heading-split for all files. "legacy": original 800-char paragraph merge. ' +
+            'Env override: LOGOSDB_CHUNK_MODE.',
         },
         incremental: {
           type: 'boolean',
@@ -154,6 +187,16 @@ const TOOLS: Tool[] = [
             'Values must be strings, numbers, or booleans. ' +
             'Example: {"project":"my-app","lang":"typescript"}',
           additionalProperties: { type: ['string', 'number', 'boolean'] },
+        },
+        chunk_context: {
+          type: 'string',
+          enum: ['off', 'header', 'llm'],
+          description:
+            'Situating-context prefix prepended to the *embedded* string (stored text stays the raw chunk). ' +
+            '"header" (default): file, chunk i/n, line range, heading/symbol. ' +
+            '"off": embed raw chunk only (pre-1.3.0). ' +
+            '"llm": reserved; falls back to header unless a generator is configured. ' +
+            'Env: LOGOSDB_CHUNK_CONTEXT.',
         },
       },
       required: ['path', 'namespace'],
@@ -235,6 +278,20 @@ const TOOLS: Tool[] = [
     },
   },
   {
+    name: 'logosdb_get',
+    description:
+      'Fetch a live row by integer id from a namespace (logosdb ≥ 1.2.0). Returns id, embedding, text, and timestamp. ' +
+      'Fails if the id is out of range or tombstoned. Use after search/index when you need the stored vector, not only the text hit.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        namespace: { type: 'string', description: 'Collection name' },
+        id: { type: 'number', description: 'Row ID (from index/search)' },
+      },
+      required: ['namespace', 'id'],
+    },
+  },
+  {
     name: 'logosdb_delete',
     description:
       'Delete one entry from a namespace. Provide **either** numeric `id` (from index/search) **or** `query` to semantically match: ' +
@@ -264,7 +321,7 @@ const TOOLS: Tool[] = [
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
-const server = new Server({ name: 'logosdb', version: '0.11.0' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'logosdb', version: PACKAGE_VERSION }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
@@ -307,6 +364,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           typeof args.chunk_size === 'number' ? args.chunk_size : CHUNK_SIZE,
           CHUNK_SIZE,
         );
+        const chunkingRaw = typeof args.chunking === 'string' ? args.chunking.trim().toLowerCase() : null;
+        const chunkMode: ChunkMode =
+          chunkingRaw === 'line' || chunkingRaw === 'section' || chunkingRaw === 'legacy'
+            ? (chunkingRaw as ChunkMode)
+            : CHUNK_MODE_DEFAULT;
         const incremental = Boolean(args.incremental);
         const respectGitignore =
           args.respect_gitignore === undefined
@@ -314,6 +376,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             : Boolean(args.respect_gitignore);
         const fileTags: Tags | undefined =
           args.tags != null ? validateTags(args.tags) : undefined;
+        const chunkContext: ChunkContextMode =
+          args.chunk_context != null
+            ? resolveChunkContextMode(String(args.chunk_context))
+            : CHUNK_CONTEXT_DEFAULT;
 
         if (!inputPath) throw new Error('"path" is required');
         if (!namespace) throw new Error('"namespace" is required');
@@ -382,7 +448,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             prev &&
             prev.mtimeMs === mtimeMs &&
             prev.size === fileSize &&
-            prev.chunkSize === chunkSize
+            prev.chunkSize === chunkSize &&
+            (prev.chunkMode ?? 'auto') === chunkMode &&
+            (prev.chunkContext ?? 'off') === chunkContext
           ) {
             skippedFiles++;
             continue;
@@ -407,12 +475,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             continue;
           }
 
-          const fileChunks = chunk(content, chunkSize);
+          const fileChunks = chunk(content, {
+            targetChars: chunkSize,
+            mode: chunkMode,
+            filePath,
+          });
+          const resolvedMode = resolveChunkMode({ mode: chunkMode, filePath });
           const texts = fileChunks.map((c) => c.text);
+          const embedTexts = fileChunks.map((c, i) =>
+            embedTextForChunk(
+              chunkContext,
+              {
+                filePath,
+                chunkIndex: i,
+                chunkCount: fileChunks.length,
+                chunk: c,
+                resolvedMode,
+                namespace,
+                tags: fileTags,
+              },
+              c.text,
+            ),
+          );
 
           const allVecs: number[][] = [];
-          for (let i = 0; i < texts.length; i += BATCH) {
-            const batch = texts.slice(i, i + BATCH);
+          for (let i = 0; i < embedTexts.length; i += BATCH) {
+            const batch = embedTexts.slice(i, i + BATCH);
             const vecs = await embedBatch(batch, embCfg);
             allVecs.push(...vecs);
           }
@@ -445,7 +533,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           indexedFiles++;
 
           if (incremental) {
-            manifest.files[filePath] = { mtimeMs, size: fileSize, chunkSize, ids };
+            manifest.files[filePath] = {
+              mtimeMs,
+              size: fileSize,
+              chunkSize,
+              chunkMode,
+              chunkContext,
+              ids,
+            };
           }
         }
 
@@ -459,6 +554,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           namespace,
           path: absPath,
           incremental,
+          chunking: chunkMode,
+          chunk_context: chunkContext,
           respect_gitignore: respectGitignore,
           skipped_files: incremental ? skippedFiles : 0,
           indexed_files: indexedFiles,
@@ -622,6 +719,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         });
       }
 
+      // ── logosdb_get ────────────────────────────────────────────────────────
+      case 'logosdb_get': {
+        const namespace = String(args.namespace ?? '');
+        if (!namespace) throw new Error('"namespace" is required');
+        const id = typeof args.id === 'number' ? args.id : parseInt(String(args.id), 10);
+        if (isNaN(id)) throw new Error('"id" must be a number');
+
+        const nsPath = path.join(LOGOSDB_PATH, namespace);
+        if (!fs.existsSync(nsPath)) {
+          throw new Error(`Namespace "${namespace}" does not exist.`);
+        }
+
+        let db: ReturnType<typeof store.open>;
+        try {
+          db = store.get(namespace);
+        } catch {
+          // Placeholder dim; LogosDB restores dim from its header (same as logosdb_info).
+          db = store.open(namespace, embCfg.dim);
+        }
+
+        const row = db.get(id);
+        return ok({
+          namespace,
+          id: row.id,
+          text: row.text,
+          timestamp: row.timestamp,
+          dim: row.embedding.length,
+          embedding: row.embedding,
+        });
+      }
+
       // ── logosdb_delete ─────────────────────────────────────────────────────
       case 'logosdb_delete': {
         const namespace = String(args.namespace ?? '');
@@ -734,7 +862,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write(
-    `[logosdb-mcp] Server started. Store: ${LOGOSDB_PATH}, provider: ${embCfg.provider}\n`,
+    `[logosdb-mcp] ${PACKAGE_VERSION} started. Store: ${LOGOSDB_PATH}, provider: ${embCfg.provider}\n`,
   );
 }
 

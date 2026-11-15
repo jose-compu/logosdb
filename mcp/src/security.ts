@@ -202,12 +202,63 @@ export function assertNoDisallowedControls(s: string, label: string): void {
   }
 }
 
+/**
+ * Bidi override and invisible format code points that can make stored text
+ * render differently than what the model sees.
+ *
+ * Rejected:
+ *   U+200B ZERO WIDTH SPACE
+ *   U+200C ZERO WIDTH NON-JOINER
+ *   U+200D ZERO WIDTH JOINER
+ *   U+200E LEFT-TO-RIGHT MARK
+ *   U+200F RIGHT-TO-LEFT MARK
+ *   U+202A–U+202E bidi embedding/override controls
+ *   U+2060 WORD JOINER
+ *   U+2066–U+2069 bidi isolate controls
+ *   U+FEFF BOM / ZERO WIDTH NO-BREAK SPACE (when not at position 0)
+ *   U+E0000–U+E007F language tag characters
+ */
+function assertNoBidiOrInvisible(s: string, label: string): void {
+  for (let i = 0; i < s.length; i++) {
+    const code = s.codePointAt(i) ?? 0;
+    if (
+      code === 0x200b || code === 0x200c || code === 0x200d ||
+      code === 0x200e || code === 0x200f ||
+      (code >= 0x202a && code <= 0x202e) ||
+      code === 0x2060 ||
+      (code >= 0x2066 && code <= 0x2069) ||
+      (code === 0xfeff && i !== 0) ||
+      (code >= 0xe0000 && code <= 0xe007f)
+    ) {
+      throw new Error(
+        `${label} contains disallowed Unicode format/bidi character (U+${code.toString(16).toUpperCase().padStart(4, '0')})`,
+      );
+    }
+    // Skip surrogate pair second code unit
+    if (code > 0xffff) i++;
+  }
+}
+
+/**
+ * Normalize `s` to NFC and validate that it contains no disallowed control or
+ * bidi/invisible Unicode code points.
+ *
+ * NFC normalization ensures that semantically identical strings (e.g. NFC vs
+ * NFD decompositions of the same character) produce the same embedding input,
+ * preventing duplicate "same" content from accumulating in the DB.
+ */
+export function normalizeAndValidateUserText(s: string, label: string): string {
+  const normalized = s.normalize('NFC');
+  assertNoDisallowedControls(normalized, label);
+  assertNoBidiOrInvisible(normalized, label);
+  return normalized;
+}
+
 export function validateUserText(s: string, label: string): string {
   if (s.length > MAX_TEXT_CHARS) {
     throw new Error(`${label} exceeds maximum length (${MAX_TEXT_CHARS} characters)`);
   }
-  assertNoDisallowedControls(s, label);
-  return s;
+  return normalizeAndValidateUserText(s, label);
 }
 
 export function validateMetadata(metadata: string | undefined): string | undefined {
@@ -215,8 +266,7 @@ export function validateMetadata(metadata: string | undefined): string | undefin
   if (metadata.length > MAX_METADATA_CHARS) {
     throw new Error(`metadata exceeds maximum length (${MAX_METADATA_CHARS} characters)`);
   }
-  assertNoDisallowedControls(metadata, 'metadata');
-  return metadata;
+  return normalizeAndValidateUserText(metadata, 'metadata');
 }
 
 export function clampChunkSize(raw: number, fallback: number): number {

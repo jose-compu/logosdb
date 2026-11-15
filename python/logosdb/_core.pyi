@@ -25,6 +25,15 @@ class SearchHit:
     def __repr__(self) -> str: ...
 
 
+class Row:
+    id: int
+    embedding: NDArray[np.float32]
+    text: str
+    timestamp: str
+
+    def __repr__(self) -> str: ...
+
+
 class DB:
     def __init__(
         self,
@@ -78,6 +87,8 @@ class DB:
         text: str = "",
         timestamp: str = "",
     ) -> int: ...
+
+    def get(self, id: int) -> Row: ...
 
     def search(
         self,

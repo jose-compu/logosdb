@@ -8,7 +8,15 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { DB, DIST_IP, DIST_COSINE, DIST_L2, VERSION } = require('../lib');
+const {
+  DB,
+  DIST_IP,
+  DIST_COSINE,
+  DIST_L2,
+  VERSION,
+  normalizeL2,
+  compact,
+} = require('../lib');
 
 // Helper to generate random unit vector
 function randomUnitVector(dim, seed = 0) {
@@ -56,6 +64,20 @@ describe('LogosDB Node.js', function() {
     it('should export version', () => {
       assert.strictEqual(typeof VERSION, 'string');
       assert.ok(VERSION.match(/^\d+\.\d+\.\d+/));
+    });
+  });
+
+  describe('normalizeL2', () => {
+    it('returns a unit vector', () => {
+      const out = normalizeL2([3, 4]);
+      assert.strictEqual(out.length, 2);
+      assert.ok(Math.abs(out[0] - 0.6) < 1e-9);
+      assert.ok(Math.abs(out[1] - 0.8) < 1e-9);
+    });
+
+    it('rejects empty and zero vectors', () => {
+      assert.throws(() => normalizeL2([]), /non-empty/);
+      assert.throws(() => normalizeL2([0, 0]), /zero-length/);
     });
   });
 
@@ -213,6 +235,40 @@ describe('LogosDB Node.js', function() {
     });
   });
 
+  describe('Get by id', () => {
+    let db, dbPath;
+
+    beforeEach(() => {
+      dbPath = createTempDir();
+      db = new DB(dbPath, { dim: 32, distance: DIST_COSINE });
+    });
+
+    afterEach(() => {
+      if (db) db.close();
+      cleanup(dbPath);
+    });
+
+    it('should fetch embedding and metadata', () => {
+      const vec = randomUnitVector(32, 70);
+      const id = db.put(vec, 'hello', '2025-03-01T00:00:00Z');
+      const row = db.get(id);
+      assert.strictEqual(row.id, id);
+      assert.strictEqual(row.text, 'hello');
+      assert.strictEqual(row.timestamp, '2025-03-01T00:00:00Z');
+      assert.strictEqual(row.embedding.length, 32);
+      let dot = 0;
+      for (let i = 0; i < 32; i++) dot += row.embedding[i] * vec[i];
+      assert.ok(dot > 0.99);
+    });
+
+    it('should throw for deleted and out-of-range ids', () => {
+      const id = db.put(randomUnitVector(32, 71), 'x');
+      db.delete(id);
+      assert.throws(() => db.get(id), /deleted|out of range/i);
+      assert.throws(() => db.get(999), /out of range/i);
+    });
+  });
+
   describe('Update and Delete', () => {
     let db, dbPath;
 
@@ -278,6 +334,67 @@ describe('LogosDB Node.js', function() {
       assert.throws(() => {
         db.put(randomUnitVector(64));
       }, /closed/);
+    });
+  });
+
+  describe('sync, stats, compact', () => {
+    let dbPath;
+
+    afterEach(() => {
+      cleanup(dbPath);
+    });
+
+    it('put + sync + stats reflects operations', () => {
+      dbPath = createTempDir();
+      const db = new DB(dbPath, { dim: 16, distance: DIST_COSINE });
+      const vec = randomUnitVector(16, 41);
+      db.put(vec, 'one');
+      db.sync();
+      const s = db.stats();
+      assert.strictEqual(s.rows_live, 1);
+      assert.ok(s.put_success >= 1);
+      assert.ok(s.sync_calls >= 1);
+      db.close();
+    });
+
+    it('compact drops tombstones', () => {
+      dbPath = createTempDir();
+      const src = dbPath;
+      const dst = path.join(os.tmpdir(), `logosdb-compact-${Date.now()}`);
+      const db = new DB(src, { dim: 8, distance: DIST_COSINE });
+      const v0 = randomUnitVector(8, 1);
+      const id = db.put(v0, 'live');
+      db.delete(id);
+      db.put(randomUnitVector(8, 2), 'still');
+      db.sync();
+      db.close();
+
+      compact(src, dst);
+
+      const db2 = new DB(dst, { dim: 8, distance: DIST_COSINE });
+      assert.strictEqual(db2.countLive(), 1);
+      const st = db2.stats();
+      assert.strictEqual(st.tombstones, 0);
+      db2.close();
+      cleanup(dst);
+    });
+
+    it('sync after close throws', () => {
+      dbPath = createTempDir();
+      const db = new DB(dbPath, { dim: 8 });
+      db.close();
+      assert.throws(() => db.sync(), /closed/);
+    });
+
+    it('compact into non-empty dst throws', () => {
+      dbPath = createTempDir();
+      const dst = createTempDir('logosdb-compact-dst-');
+      fs.writeFileSync(path.join(dst, 'marker.txt'), 'x');
+      const db = new DB(dbPath, { dim: 8, distance: DIST_COSINE });
+      db.put(randomUnitVector(8, 3));
+      db.close();
+      assert.throws(() => compact(dbPath, dst), /not empty/i);
+      cleanup(dst);
     });
   });
 

@@ -17,6 +17,15 @@ const bindings = require('bindings')('logosdb');
  */
 
 /**
+ * Fetched live row
+ * @typedef {Object} Row
+ * @property {number} id - Row ID
+ * @property {number[]} embedding - Float32 embedding vector
+ * @property {string|null} text - Associated text
+ * @property {string|null} timestamp - ISO 8601 timestamp
+ */
+
+/**
  * LogosDB database instance
  *
  * @example
@@ -57,7 +66,18 @@ class DB {
    */
   put(embedding, text, timestamp) {
     this._checkClosed();
+    assertDim(embedding, this.dim(), 'put');
     return this._db.put(embedding, text, timestamp);
+  }
+
+  /**
+   * Fetch a live row by id
+   * @param {number} id - Row ID
+   * @returns {Row} Row with embedding, text, and timestamp
+   */
+  get(id) {
+    this._checkClosed();
+    return this._db.get(id);
   }
 
   /**
@@ -68,6 +88,7 @@ class DB {
    */
   search(queryEmbedding, topK = 10) {
     this._checkClosed();
+    assertDim(queryEmbedding, this.dim(), 'search');
     return this._db.search(queryEmbedding, topK);
   }
 
@@ -96,6 +117,7 @@ class DB {
    */
   update(id, embedding, text, timestamp) {
     this._checkClosed();
+    assertDim(embedding, this.dim(), 'update');
     return this._db.update(id, embedding, text, timestamp);
   }
 
@@ -124,6 +146,23 @@ class DB {
   countLive() {
     this._checkClosed();
     return this._db.countLive();
+  }
+
+  /**
+   * Flush WAL, persist HNSW index, and fsync vector + metadata stores.
+   */
+  sync() {
+    this._checkClosed();
+    this._db.sync();
+  }
+
+  /**
+   * Operation counters and store health fields (same keys as Python `DB.stats()`).
+   * @returns {import('../types').DbStats}
+   */
+  stats() {
+    this._checkClosed();
+    return this._db.stats();
   }
 
   /**
@@ -175,10 +214,57 @@ const DIST_L2 = bindings.DIST_L2;
  */
 const VERSION = bindings.VERSION;
 
+/**
+ * L2-normalize a vector in place-safe fashion (returns a new array).
+ * Required for DIST_IP; DIST_COSINE already normalizes internally.
+ * @param {number[]} embedding
+ * @returns {number[]}
+ */
+function normalizeL2(embedding) {
+  if (!Array.isArray(embedding) || embedding.length === 0) {
+    throw new Error('normalizeL2: embedding must be a non-empty number array');
+  }
+  let sum = 0;
+  for (const value of embedding) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error('normalizeL2: embedding must contain finite numbers');
+    }
+    sum += value * value;
+  }
+  const norm = Math.sqrt(sum);
+  if (!(norm > 0)) {
+    throw new Error('normalizeL2: zero-length vector');
+  }
+  return embedding.map((value) => value / norm);
+}
+
+/**
+ * Copy live rows from `src` database directory into `dst` (drops tombstones).
+ * `dst` must be missing or empty.
+ * @param {string} src
+ * @param {string} dst
+ */
+function compact(src, dst) {
+  bindings.compact(src, dst);
+}
+
+function assertDim(embedding, dim, op) {
+  if (!Array.isArray(embedding)) {
+    throw new Error(`${op}: embedding must be a number array`);
+  }
+  if (embedding.length !== dim) {
+    throw new Error(
+      `${op}: vector dimension ${embedding.length} does not match database dim ${dim}`
+    );
+  }
+}
+
 module.exports = {
   DB,
   DIST_IP,
   DIST_COSINE,
   DIST_L2,
   VERSION,
+  normalizeL2,
+  compact,
 };

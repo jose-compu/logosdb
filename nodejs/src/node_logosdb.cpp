@@ -52,6 +52,7 @@ public:
         Napi::Function func = DefineClass(env, "DB", {
             InstanceMethod("put", &DBWrapper::Put),
             InstanceMethod("putBatch", &DBWrapper::PutBatch),
+            InstanceMethod("get", &DBWrapper::Get),
             InstanceMethod("search", &DBWrapper::Search),
             InstanceMethod("searchTsRange", &DBWrapper::SearchTsRange),
             InstanceMethod("update", &DBWrapper::Update),
@@ -59,6 +60,8 @@ public:
             InstanceMethod("count", &DBWrapper::Count),
             InstanceMethod("countLive", &DBWrapper::CountLive),
             InstanceMethod("dim", &DBWrapper::Dim),
+            InstanceMethod("sync", &DBWrapper::Sync),
+            InstanceMethod("stats", &DBWrapper::Stats),
             InstanceMethod("close", &DBWrapper::Close),
         });
 
@@ -273,6 +276,50 @@ private:
         return result;
     }
 
+    Napi::Value Get(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
+
+        if (info.Length() < 1 || !info[0].IsNumber()) {
+            throw Napi::TypeError::New(env, "ID (number) expected");
+        }
+
+        uint64_t id = static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
+
+        char* err = nullptr;
+        logosdb_row_t* row = logosdb_get(db_, id, &err);
+        if (!row) {
+            std::string error_msg = err ? err : "Get failed";
+            if (err) free(err);
+            throw Napi::Error::New(env, error_msg);
+        }
+        if (err) free(err);
+
+        Napi::Object obj = Napi::Object::New(env);
+        obj.Set("id", Napi::Number::New(env, static_cast<double>(logosdb_row_id(row))));
+        int d = logosdb_row_dim(row);
+        const float* emb = logosdb_row_embedding(row);
+        Napi::Array embArr = Napi::Array::New(env, static_cast<size_t>(d));
+        for (int i = 0; i < d; ++i) {
+            embArr.Set(static_cast<uint32_t>(i),
+                       Napi::Number::New(env, emb ? emb[i] : 0.0f));
+        }
+        obj.Set("embedding", embArr);
+        const char* text = logosdb_row_text(row);
+        if (text) {
+            obj.Set("text", Napi::String::New(env, text));
+        } else {
+            obj.Set("text", env.Null());
+        }
+        const char* ts = logosdb_row_timestamp(row);
+        if (ts) {
+            obj.Set("timestamp", Napi::String::New(env, ts));
+        } else {
+            obj.Set("timestamp", env.Null());
+        }
+        logosdb_row_free(row);
+        return obj;
+    }
+
     Napi::Value Search(const Napi::CallbackInfo& info) {
         Napi::Env env = info.Env();
 
@@ -466,6 +513,57 @@ private:
         return Napi::Number::New(env, dim_);
     }
 
+    Napi::Value Sync(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
+        if (!db_) {
+            throw Napi::Error::New(env, "Database is closed");
+        }
+        char* err = nullptr;
+        int rc = logosdb_sync(db_, &err);
+        if (rc != 0) {
+            std::string error_msg = err ? err : "sync failed";
+            if (err) free(err);
+            throw Napi::Error::New(env, error_msg);
+        }
+        if (err) free(err);
+        return env.Undefined();
+    }
+
+    static Napi::Object StatsToJsObject(Napi::Env env, const logosdb_stats_t& s) {
+        Napi::Object obj = Napi::Object::New(env);
+        obj.Set("rows_total", Napi::Number::New(env, static_cast<double>(s.rows_total)));
+        obj.Set("rows_live", Napi::Number::New(env, static_cast<double>(s.rows_live)));
+        obj.Set("tombstones", Napi::Number::New(env, static_cast<double>(s.tombstones)));
+        obj.Set("index_elements", Napi::Number::New(env, static_cast<double>(s.index_elements)));
+        obj.Set("wal_pending", Napi::Number::New(env, static_cast<double>(s.wal_pending)));
+        obj.Set("distance_metric", Napi::Number::New(env, s.distance_metric));
+        obj.Set("storage_dtype", Napi::Number::New(env, s.storage_dtype));
+        obj.Set("put_success", Napi::Number::New(env, static_cast<double>(s.put_success)));
+        obj.Set("put_failed", Napi::Number::New(env, static_cast<double>(s.put_failed)));
+        obj.Set("put_batch_success", Napi::Number::New(env, static_cast<double>(s.put_batch_success)));
+        obj.Set("put_batch_failed", Napi::Number::New(env, static_cast<double>(s.put_batch_failed)));
+        obj.Set("search_success", Napi::Number::New(env, static_cast<double>(s.search_success)));
+        obj.Set("search_failed", Napi::Number::New(env, static_cast<double>(s.search_failed)));
+        obj.Set("search_ts_success", Napi::Number::New(env, static_cast<double>(s.search_ts_success)));
+        obj.Set("search_ts_failed", Napi::Number::New(env, static_cast<double>(s.search_ts_failed)));
+        obj.Set("delete_success", Napi::Number::New(env, static_cast<double>(s.delete_success)));
+        obj.Set("delete_failed", Napi::Number::New(env, static_cast<double>(s.delete_failed)));
+        obj.Set("update_success", Napi::Number::New(env, static_cast<double>(s.update_success)));
+        obj.Set("update_failed", Napi::Number::New(env, static_cast<double>(s.update_failed)));
+        obj.Set("sync_calls", Napi::Number::New(env, static_cast<double>(s.sync_calls)));
+        return obj;
+    }
+
+    Napi::Value Stats(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
+        if (!db_) {
+            throw Napi::Error::New(env, "Database is closed");
+        }
+        logosdb_stats_t s{};
+        logosdb_stats(db_, &s);
+        return StatsToJsObject(env, s);
+    }
+
     Napi::Value Close(const Napi::CallbackInfo& info) {
         Napi::Env env = info.Env();
         if (db_) {
@@ -484,10 +582,29 @@ static void DefineConstants(Napi::Env env, Napi::Object exports) {
     exports.Set("VERSION", Napi::String::New(env, LOGOSDB_VERSION_STRING));
 }
 
+static Napi::Value Compact(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2 || !info[0].IsString() || !info[1].IsString()) {
+        throw Napi::TypeError::New(env, "Expected compact(src: string, dst: string)");
+    }
+    std::string src = info[0].As<Napi::String>().Utf8Value();
+    std::string dst = info[1].As<Napi::String>().Utf8Value();
+    char* err = nullptr;
+    int rc = logosdb_compact(src.c_str(), dst.c_str(), &err);
+    if (rc != 0) {
+        std::string error_msg = err ? err : "compact failed";
+        if (err) free(err);
+        throw Napi::Error::New(env, error_msg);
+    }
+    if (err) free(err);
+    return env.Undefined();
+}
+
 // Module initialization
 static Napi::Object Init(Napi::Env env, Napi::Object exports) {
     DBWrapper::Init(env, exports);
     DefineConstants(env, exports);
+    exports.Set("compact", Napi::Function::New(env, Compact, "compact"));
     return exports;
 }
 

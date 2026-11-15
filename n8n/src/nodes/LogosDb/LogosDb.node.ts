@@ -48,7 +48,12 @@ async function embed(texts: string[], provider: string, apiKey: string): Promise
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ input: texts, model: 'text-embedding-3-small' }),
     });
-    if (!res.ok) throw new Error(`OpenAI embed error ${res.status}`);
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(
+        `OpenAI embed error ${res.status}${detail ? `: ${detail.slice(0, 240)}` : ''}`
+      );
+    }
     const data = (await res.json()) as { data: Array<{ index: number; embedding: number[] }> };
     return data.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
   }
@@ -59,7 +64,12 @@ async function embed(texts: string[], provider: string, apiKey: string): Promise
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ input: texts, model: 'voyage-3' }),
     });
-    if (!res.ok) throw new Error(`Voyage embed error ${res.status}`);
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(
+        `Voyage embed error ${res.status}${detail ? `: ${detail.slice(0, 240)}` : ''}`
+      );
+    }
     const data = (await res.json()) as { data: Array<{ embedding: number[] }> };
     return data.data.map((d) => d.embedding);
   }

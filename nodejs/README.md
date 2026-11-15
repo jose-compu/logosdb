@@ -102,6 +102,14 @@ Delete a row by ID.
 
 Get total/live row counts.
 
+### `db.sync()` / `db.stats()`
+
+`sync()` flushes the WAL, persists the HNSW index, and fsyncs vector and metadata files (point-in-time durability for backups). `stats()` returns operation counters and store health fields with the same keys as Python `DB.stats()`.
+
+### `compact(src, dst)`
+
+Module-level helper (not a method on `DB`). Copies **live** rows from `src` into an empty `dst` directory and drops tombstones. Close any open handles on `src` first.
+
 ### `db.close()`
 
 Close the database.
@@ -111,6 +119,8 @@ Close the database.
 - `DIST_IP` (0): Inner product (default, requires L2-normalized vectors)
 - `DIST_COSINE` (1): Cosine similarity (auto-normalizes)
 - `DIST_L2` (2): Euclidean distance
+
+`normalizeL2(embedding)` returns a new unit vector for `DIST_IP`. `put` / `search` / `update` throw if the vector length does not match `db.dim()`.
 
 ## Memory Model
 

@@ -11,6 +11,33 @@ npm install -g logosdb-mcp-server
 
 Or run without installing via `npx -y logosdb-mcp-server`.
 
+```bash
+npx -y logosdb-mcp-server --version
+npx -y logosdb-mcp-server --help
+```
+
+`--help` / `--version` print to stdout and exit. With no flags the process speaks MCP over stdio.
+
+## Cursor
+
+Add a stdio MCP server in Cursor (`Settings → MCP`, or `.cursor/mcp.json` in the project):
+
+```json
+{
+  "mcpServers": {
+    "logosdb": {
+      "command": "npx",
+      "args": ["-y", "logosdb-mcp-server"],
+      "env": {
+        "LOGOSDB_PATH": "./.logosdb"
+      }
+    }
+  }
+}
+```
+
+Claude Desktop uses the same `mcpServers` shape in `claude_desktop_config.json`.
+
 ## Claude Code: complete recipe
 
 These steps assume your **Claude Code project root** is the directory where you want `./.logosdb` (or your chosen `LOGOSDB_PATH`) to live. The MCP child process **`cwd`** is normally that same folder, so relative paths in `.claude/mcp.json` resolve there.
@@ -80,7 +107,7 @@ In your **project root**, create `.claude/mcp.json` (or merge into **`~/.claude.
 
 | Issue | Action |
 |-------|--------|
-| Native `logosdb` fails (`Could not locate the bindings file`, install exits 1) | Use **`logosdb` ≥ 0.9.0** (N-API prebuild downloader + vendored C++ fallback). From a terminal: `npm view logosdb version` then reinstall; if prebuilds are missing, ensure Python + C++17 toolchain so `node-gyp rebuild` can run. |
+| Native `logosdb` fails (`Could not locate the bindings file`, install exits 1) | Use **`logosdb` ≥ 1.0.0** (N-API prebuild downloader + vendored C++ fallback). From a terminal: `npm view logosdb version` then reinstall; if prebuilds are missing, ensure Python + C++17 toolchain so `node-gyp rebuild` can run. |
 | `npx` cannot download or run the package | Check network, Node version, and corporate proxy; try `npm install logosdb-mcp-server` + `node ./node_modules/logosdb-mcp-server/dist/index.js` in `args` via `node` command. |
 | Wrong embedding size / garbage search | Use one backend and dimension per namespace; use a fresh `LOGOSDB_PATH` or new namespace when changing models ([Environment variables](#environment-variables)). |
 | Path rejected on index | Stay inside cwd or set `LOGOSDB_INDEX_ROOT` to an absolute allowed directory. |
@@ -179,7 +206,7 @@ Run [Ollama](https://ollama.com) with an embedding model (e.g. `nomic-embed-text
 
 ## Google Antigravity
 
-[Google Antigravity](https://codelabs.developers.google.com/google-workspace-mcp-antigravity) is an agentic IDE stack that can load **MCP servers** over **stdio** — the same pattern as Claude Code. **`logosdb-mcp-server`** is published as [`logosdb-mcp-server`](https://www.npmjs.com/package/logosdb-mcp-server) on npm and speaks standard MCP tools (`logosdb_index`, `logosdb_index_file`, `logosdb_search`, `logosdb_list`, `logosdb_info`, `logosdb_delete`). See the [MCP specification](https://modelcontextprotocol.io).
+[Google Antigravity](https://codelabs.developers.google.com/google-workspace-mcp-antigravity) is an agentic IDE stack that can load **MCP servers** over **stdio** — the same pattern as Claude Code. **`logosdb-mcp-server`** is published as [`logosdb-mcp-server`](https://www.npmjs.com/package/logosdb-mcp-server) on npm and speaks standard MCP tools (`logosdb_index`, `logosdb_index_file`, `logosdb_search`, `logosdb_list`, `logosdb_info`, `logosdb_get`, `logosdb_delete`). See the [MCP specification](https://modelcontextprotocol.io).
 
 ### Where to configure
 
@@ -319,7 +346,9 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 | `OLLAMA_EMBEDDING_DIM` | `768` | Must match the model’s embedding size |
 | `OPENAI_API_KEY` | — | Required when `EMBEDDING_PROVIDER=openai` |
 | `VOYAGE_API_KEY` | — | Required when `EMBEDDING_PROVIDER=voyage` |
-| `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk when indexing files |
+| `LOGOSDB_CHUNK_SIZE` | `800` | Target characters per chunk for `"legacy"` and `"section"` modes (ignored in `"line"` mode) |
+| `LOGOSDB_CHUNK_MODE` | `auto` | Default chunking strategy: `auto` \| `line` \| `section` \| `legacy`. See [Chunking strategies](#chunking-strategies). |
+| `LOGOSDB_CHUNK_CONTEXT` | `header` | Situating prefix on the *embedded* string: `off` \| `header` \| `llm`. Stored row text stays the raw chunk. See [Contextual Retrieval](#contextual-retrieval). |
 | `LOGOSDB_RESPECT_GITIGNORE` | `1` (auto-on inside a Git working tree) | `0` / `false` / `no` / `off` disables `.gitignore`-aware filtering globally (0.9.1+) |
 
 **Important:** Use one embedding backend consistently for a given namespace on disk. Mixing dimensions or models on the same `LOGOSDB_PATH` namespace will produce invalid search results.
@@ -328,14 +357,75 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 
 | Tool | Inputs | Description |
 |---|---|---|
-| `logosdb_index` | `text`, `namespace`, `metadata?` | Embed and store a text snippet |
-| `logosdb_index_file` | `path`, `namespace`, `chunk_size?`, `incremental?`, `respect_gitignore?` | Chunk, embed, and store a file or tree; **`incremental: true`** skips unchanged files, replaces chunks for changed files, and prunes removed files under a directory (state in `LOGOSDB_PATH/_logosdb_mcp_manifests/`). When the path lives inside a Git working tree, `.gitignore` rules are applied by default (override per call with `respect_gitignore: false` or globally with `LOGOSDB_RESPECT_GITIGNORE=0`; see [`.gitignore`-aware walking](#gitignore-aware-walking-091)) |
-| `logosdb_search` | `query`, `namespace`, `top_k?`, `ts_from?`, `ts_to?`, `candidate_k?` | Semantic search; optional inclusive ISO 8601 time window (maps to `search_ts_range`) |
-| `logosdb_list` | — | List all namespaces |
+| `logosdb_index` | `text`, `namespace`, `metadata?`, `tags?` | Embed and store a text snippet; optional structured `tags` for later `filter` |
+| `logosdb_index_file` | `path`, `namespace`, `chunk_size?`, `chunking?`, `chunk_context?`, `incremental?`, `respect_gitignore?`, `tags?` | Chunk, embed, and store a file or tree; **`incremental: true`** skips unchanged files, replaces chunks for changed files, and prunes removed files under a directory (state in `LOGOSDB_PATH/_logosdb_mcp_manifests/`). When the path lives inside a Git working tree, `.gitignore` rules are applied by default (override per call with `respect_gitignore: false` or globally with `LOGOSDB_RESPECT_GITIGNORE=0`; see [`.gitignore`-aware walking](#gitignore-aware-walking-091)). `chunking` selects the splitting strategy — see [Chunking strategies](#chunking-strategies). `chunk_context` selects the situating prefix on embeddings — see [Contextual Retrieval](#contextual-retrieval). |
+| `logosdb_search` | `query`, `namespace`, `top_k?`, `ts_from?`, `ts_to?`, `candidate_k?`, `hybrid?`, `fusion?`, `lexical_weight?`, `filter?` | Semantic search; optional ISO 8601 window; optional hybrid ANN+lexical fusion; optional metadata `filter` |
+| `logosdb_list` | — | List namespaces (includes live counts / quota summary when configured) |
 | `logosdb_info` | `namespace` | Stats: count, live count, dimension |
+| `logosdb_get` | `namespace`, `id` | Fetch a live row by id (embedding, text, timestamp); fails if OOB or tombstoned (`logosdb` ≥ 1.2.0) |
 | `logosdb_delete` | `namespace`, `id?` **or** `query?`, `search_top_k?`, `match_rank?` | Delete by row id, or embed `query` and delete the `match_rank` hit (default 0) among `search_top_k` neighbors |
 
 Timestamp-filtered search matches the core library: when `ts_from` and/or `ts_to` are set, results are drawn from that window; `candidate_k` defaults to `10 × top_k` if omitted.
+
+## Chunking strategies
+
+`logosdb_index_file` splits each file into chunks before embedding. The strategy is chosen automatically per file type (`"auto"`, the default) or can be forced per-call or globally.
+
+| Mode | Files (auto) | How it splits | When to use |
+|------|-------------|---------------|-------------|
+| `auto` | — | Delegates to `line`, `section`, or `legacy` based on extension | Default — best choice for mixed repositories |
+| `line` | `.ts` `.tsx` `.js` `.jsx` `.mjs` `.cjs` `.py` `.go` `.rs` `.java` `.c` `.cpp` `.h` `.cs` `.rb` `.php` `.swift` `.kt` `.scala` `.sh` `.sql` | Sliding **~50-line windows**, **~10-line overlap**. Prefers blank-line boundaries at window edges to avoid cutting mid-function. | Code; improves recall on function/class-level queries |
+| `section` | `.md` `.rst` | **Heading-aware**: splits on ATX (`# … ######`) and Setext (`=== / ---`) boundaries. Small consecutive sections are merged up to `chunk_size`. Large sections are sub-split with the paragraph chunker. | Documentation, READMEs, RST manuals |
+| `legacy` | `.json` `.yaml` `.toml` `.txt` `.cfg` `.ini` `.graphql` `.proto` and anything else | **Paragraph / character merge**: splits on blank lines, merges short paragraphs up to `chunk_size` (default 800 chars), carries `overlapChars` (100 chars) into the next chunk. Long single-paragraph blocks are sub-split by character window. | Config files, plain text, and **compatibility with namespaces indexed before the smart chunker was introduced** |
+
+### Selecting a strategy
+
+**Per call** — pass `chunking` to `logosdb_index_file`:
+
+```
+logosdb_index_file(path="src/", namespace="code", chunking="line")
+logosdb_index_file(path="docs/", namespace="docs", chunking="section")
+logosdb_index_file(path="configs/", namespace="cfg", chunking="legacy")
+```
+
+**Globally** — set `LOGOSDB_CHUNK_MODE` in the MCP server env:
+
+```json
+"env": {
+  "LOGOSDB_PATH": "./.logosdb",
+  "LOGOSDB_CHUNK_MODE": "legacy"
+}
+```
+
+Valid values: `auto` (default), `line`, `section`, `legacy`.
+
+### Using `"legacy"` mode for compatibility
+
+If you have an **existing namespace** that was indexed before the smart chunker was introduced (pre-1.0.0 or with `LOGOSDB_CHUNK_MODE` unset on an older server), its chunks were produced by the legacy paragraph/char chunker. Continuing to use `"legacy"` for that namespace keeps results consistent — or reindex it fresh with `incremental: false` to switch strategies.
+
+The `chunking` setting is part of the **incremental cache fingerprint**: changing the mode on an existing incremental namespace causes all previously-indexed files to be re-chunked automatically on the next run.
+
+### `chunk_size` and overlap
+
+`chunk_size` controls the target character count for the `"legacy"` and `"section"` modes (default `800`; env `LOGOSDB_CHUNK_SIZE`). It is ignored in `"line"` mode (which uses `linesPerChunk` / `lineOverlap`, not exposed as tool parameters but configurable programmatically via the `ChunkOptions` API).
+
+## Contextual Retrieval
+
+Plain windows lose identity. `logosdb_index_file` can prepend a short **situating header** to the string that is **embedded**, while the stored row text stays the raw chunk (plus the existing `[file:…][chunk:…]` display label).
+
+This is [Anthropic Contextual Retrieval](https://www.anthropic.com/news/contextual-retrieval) v1 (`header` only; no LLM).
+
+| Mode | Embedded string | Stored text |
+|------|-----------------|-------------|
+| `header` (default for new indexes) | file, chunk i/n, lines, optional heading/symbol, then the raw chunk | raw chunk (display label unchanged) |
+| `off` | raw chunk only — same embed input as pre-1.3.0 | unchanged |
+| `llm` | reserved; falls back to `header` until a generator is configured | unchanged |
+
+**Per call:** `logosdb_index_file({ …, chunk_context: "off" })`.
+
+**Globally:** `LOGOSDB_CHUNK_CONTEXT=off` (also `0` / `false` / `raw`).
+
+The incremental fingerprint includes `chunkContext`. Missing field on old manifests compares as `off` (no mass re-index). Switching `off` ↔ `header` forces a re-chunk.
 
 ## Development
 

@@ -71,6 +71,15 @@ struct logosdb_search_result_t
     std::vector<Hit> hits;
 };
 
+struct logosdb_row_t
+{
+    uint64_t id = 0;
+    int dim = 0;
+    std::vector<float> embedding;
+    std::string text;
+    std::string timestamp;
+};
+
 /* ── Helpers ───────────────────────────────────────────────────────── */
 
 static void set_err(char** errptr, const std::string& msg)
@@ -667,6 +676,78 @@ uint64_t logosdb_update(logosdb_t* db,
     }
     db->st_update_ok.fetch_add(1, std::memory_order_relaxed);
     return vid;
+}
+
+/* ── Get by id (#122) ──────────────────────────────────────────────── */
+
+logosdb_row_t* logosdb_get(logosdb_t* db, uint64_t id, char** errptr)
+{
+    if (!db)
+    {
+        set_err(errptr, "null db");
+        return nullptr;
+    }
+
+    std::lock_guard<std::mutex> lock(db->mu);
+
+    if (id >= db->vectors.n_rows())
+    {
+        set_err(errptr, "get: id out of range");
+        return nullptr;
+    }
+    if (db->meta.is_deleted(id))
+    {
+        set_err(errptr, "get: id deleted");
+        return nullptr;
+    }
+
+    auto* r = new logosdb_row_t();
+    r->id = id;
+    r->dim = db->dim;
+    r->embedding.resize(static_cast<size_t>(db->dim));
+    db->vectors.row_to_float32(id, r->embedding.data());
+
+    auto* m = db->meta.row(id);
+    if (m)
+    {
+        r->text = m->text;
+        r->timestamp = m->timestamp;
+    }
+    return r;
+}
+
+uint64_t logosdb_row_id(const logosdb_row_t* r)
+{
+    return r ? r->id : UINT64_MAX;
+}
+
+int logosdb_row_dim(const logosdb_row_t* r)
+{
+    return r ? r->dim : 0;
+}
+
+const float* logosdb_row_embedding(const logosdb_row_t* r)
+{
+    return (r && !r->embedding.empty()) ? r->embedding.data() : nullptr;
+}
+
+const char* logosdb_row_text(const logosdb_row_t* r)
+{
+    if (!r || r->text.empty())
+        return nullptr;
+    return r->text.c_str();
+}
+
+const char* logosdb_row_timestamp(const logosdb_row_t* r)
+{
+    if (!r || r->timestamp.empty())
+        return nullptr;
+    return r->timestamp.c_str();
+}
+
+void logosdb_row_free(logosdb_row_t* r)
+{
+    delete r;
 }
 
 /* ── Search ────────────────────────────────────────────────────────── */

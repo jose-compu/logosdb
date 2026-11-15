@@ -1,7 +1,138 @@
 logosdb change log
 ==================
 
-0.11.0  (unreleased) — `logosdb-mcp-server` + bench tool
+1.3.0  (2026-11-14) — core / PyPI / npm `logosdb`
+-------------------------------------------------
+
+  * **#138 — Node `db.sync()`, `db.stats()`, `compact(src, dst)`.** Flush WAL,
+    index, vectors, and metadata; read the same counters Python already returns;
+    copy live rows into an empty directory and drop tombstones. C API unchanged.
+  * Ships with `logosdb-mcp-server` **1.4.2** (depends on `logosdb` ^1.3.0).
+
+1.4.2  (2026-11-14) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * Depend on `logosdb` **^1.3.0** (npm publish workflow in `.github/workflows/publish.yml`).
+
+1.2.0  (2026-11-09) — core / PyPI / npm `logosdb`
+-------------------------------------------------
+
+  * **#122 — fetch-by-id (`logosdb_get`).** Load a live row’s embedding,
+    text, and timestamp by integer id. Tombstoned / out-of-range ids fail
+    cleanly. Exposed as C API + C++ `DB::get`, Python `DB.get` / `Row`, and
+    Node `db.get(id)`.
+  * Ships with `logosdb-mcp-server` **1.4.0** (depends on `logosdb` ^1.2.0).
+
+1.4.1  (2026-11-09) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * Align local `LogosDB` TypeScript surface with `logosdb` ≥ 1.2.0: `get(id)` /
+    `Row` (and `update`). Re-export `Row` / `SearchHit` from `store`.
+  * New tool **`logosdb_get`**: fetch live row embedding + metadata by id.
+
+1.4.0  (2026-11-09) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * Depend on `logosdb` **^1.2.0** (fetch-by-id on the native binding).
+  * Package / MCP registry metadata → **1.4.0**.
+
+1.1.0  (2026-10-28) — core / PyPI / npm `logosdb`
+-------------------------------------------------
+
+  * Coordinated minor: Python, C++, and npm `logosdb` → **1.1.0**.
+  * Ships with `logosdb-mcp-server` **1.3.0** (Contextual Retrieval, #128).
+
+1.3.0  (2026-10-28) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * **#128 — Contextual Retrieval (`header` mode).** `logosdb_index_file`
+    prepends a situating prefix (file, chunk i/n, line range, heading/symbol)
+    to the *embedded* string. Stored row text stays the raw chunk.
+    `LOGOSDB_CHUNK_CONTEXT=off|header|llm` (default `header`; `llm` falls
+    back to header). Incremental fingerprint includes `chunkContext`; old
+    manifests without the field compare as `off`.
+
+1.2.0  (2026-10-10) — npm packages
+---------------------------------
+
+  * **logosdb 1.0.2:** `normalizeL2()` helper; JS-side dimension mismatch
+    errors on `put` / `search` / `update`.
+  * **logosdb-mcp-server 1.2.0:** `--path` / `-p` sets `LOGOSDB_PATH` before
+    the stdio server starts.
+  * **n8n-nodes-logosdb 1.0.3:** embed HTTP errors include a short response
+    body snippet.
+
+1.1.0  (2026-08-18) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * **CLI:** `logosdb-mcp-server --help` / `--version` (`-h` / `-v`) print to
+    stdout and exit; no flags still starts the MCP stdio server.
+  * **Version no longer hardcoded:** the MCP `initialize` handshake reports
+    `package.json` version (was a stale string after each bump).
+  * **npm / registry packaging:** `files` whitelist, `mcpName`, `server.json`
+    for the official MCP Registry, `repository.directory`, Cursor keywords,
+    and test artifacts excluded from the tarball.
+  * **Docs:** Cursor / Claude Desktop snippet; tools table now lists hybrid
+    search, filters, tags, and quotas.
+  * **Codex plugin `codex-semantic-memory` 0.2.0:** pin MCP launch to
+    `logosdb-mcp-server@1.1.0` (`.mcp.json` + wrap script).
+
+1.0.1  (2026-07-21) — release hygiene
+-------------------------------------
+
+  * **cibuildwheel Linux test install:** set `PIP_ONLY_BINARY=numpy` so the
+    manylinux2014 test env does not try to build NumPy 2.5 from sdist (fails
+    with GCC 10.2.1 / "requires GCC >= 10.3").
+
+  * **#116 — Post-1.0.0 version and docs sync.** Align library and package
+    version metadata that lagged after the `1.0.0` tag:
+    - `LOGOSDB_VERSION_*` / `LOGOSDB_VERSION_STRING` in
+      `include/logosdb/logosdb.h` (was still `0.9.0`)
+    - CMake `project(VERSION ...)`, Python `pyproject.toml`, and npm packages
+      `logosdb`, `logosdb-mcp-server`, `n8n-nodes-logosdb` → `1.0.1`
+    - MCP server self-reported version (was `0.11.0`) → `1.0.1`
+    - Workspace `logosdb` dependency ranges → `^1.0.1`
+  * **CHANGELOG catch-up:** date previously *(unreleased)* entries for shipped
+    `0.9.1`–`0.12.0` and record the `1.0.0` stable release.
+  * **Docs:** README post-1.0 semver / roadmap, `SECURITY.md` supported
+    versions, and `RELEASING.md` examples updated for the `1.x` line.
+
+1.0.0  (2026-05-17) — first stable release
+------------------------------------------
+
+  * **Smart chunking** (#98, #112): `auto` / `line` / `section` / `legacy`
+    modes for `logosdb_index_file`. `auto` picks strategy from file extension.
+    Configure via `LOGOSDB_CHUNK_MODE` or the `chunking` tool parameter.
+  * **Incremental index fingerprints `chunkMode`** (#112): changing chunking
+    strategy on an existing incremental namespace forces a clean re-index.
+    Old manifests without `chunkMode` compare equal to `auto`.
+  * **UTF-8 NFC normalization + bidi/invisible-char rejection** (#109, #112).
+  * **Path traversal hardening** for MCP (`security.ts`) and the Python
+    `vibe.py` adapter (#108, #111, #112).
+  * **Expanded fuzz/unit coverage** for chunker and security surfaces (#110).
+  * Package train bumped to **1.0.0** (Python, Node.js, MCP, n8n, CMake);
+    PyPI classifier set to Production/Stable.
+  * Bug fixes: `sanitizeEntry` omits `chunkMode: undefined`; `splitLongText`
+    correctly sub-splits oversized single paragraphs.
+
+0.12.0  (2026-05-17) — integrations
+------------------------------------
+
+  * **#78 — Codex plugin marketplace integration** (`plugins/codex-semantic-memory`).
+    New first-party plugin for OpenAI Codex CLI. Registers `logosdb-mcp-server` as an
+    MCP server via a self-contained `.mcp.json` (inline `bash -c` — no external script
+    dependency, path-agnostic for both home-local and repo-local installs). Provides:
+    - `AGENTS.md` — automatic silent indexing on session start, semantic search before
+      every response, turn-record persistence after every response.
+    - `skills/semantic-memory/SKILL.md` — explicit commands: `/memory-recall`,
+      `/memory-remember`, `/memory-index`, `/memory-status`.
+    - `scripts/logosdb-mcp-wrap.sh` — standalone convenience wrapper (also documents
+      the `LOGOS_MEMORY_MODE=global|project` env var).
+    - `.codex-plugin/plugin.json` + `marketplace.json` — Codex plugin manifests.
+    Namespace prefix `codex-` isolates Codex turn records from Claude Code (`claude-`)
+    and Pi (`pi-`) agents when sharing a global DB.
+
+0.11.0  (2026-05-14) — `logosdb-mcp-server` + bench tool
 ----------------------------------------------------------
 
   * **#86 — Multi-tenant namespaces: quota and isolation** (`logosdb-mcp-server`).
@@ -21,7 +152,7 @@ logosdb change log
     column — ideal for choosing `efSearch` for a given accuracy/speed target.
     Options: `--sweep-n`, `--sweep-M`, `--sweep-efc`, `--sweep-ef`, `--sweep-queries`.
 
-0.10.1  (unreleased) — `logosdb` (Node.js + Python bindings) + `logosdb-mcp-server`
+0.10.1  (2026-05-14) — `logosdb` (Node.js + Python bindings) + `logosdb-mcp-server`
 --------------------------------------------------------------------------
 
   * **`putBatch` exposed to Node.js binding** (`nodejs/src/node_logosdb.cpp`,
@@ -46,7 +177,7 @@ logosdb change log
     New formula `max(50, min(500, N/50))` with `M=32`, `efConstruction=400` yields
     96.5% recall@10 at N=1000 and 93.4% at N=10000 (dim=384).
 
-0.10.0  (unreleased) — `logosdb-mcp-server` only
+0.10.0  (2026-05-14) — `logosdb-mcp-server` only
 -------------------------------------------------
 
   * **#85 — Hybrid retrieval: ANN score + lexical score fusion** (`logosdb_search`).
@@ -72,7 +203,7 @@ logosdb change log
 
   * Server self-reported version corrected from `"0.7.14"` to `"0.10.0"`.
 
-0.9.1  (unreleased) — `logosdb-mcp-server` only
+0.9.1  (2026-05-13) — `logosdb-mcp-server` only
 -----------------------------------------------
 
   * **#101 — `.gitignore`-aware indexing in `logosdb_index_file`:** when the
