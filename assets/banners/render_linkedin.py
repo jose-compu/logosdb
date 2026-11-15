@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render LinkedIn release banner (1200x627) using bundled fonts and release metadata."""
+"""Render LinkedIn release banner (default 1200x675) using bundled fonts and release metadata."""
 
 from __future__ import annotations
 
@@ -16,12 +16,12 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 FONTS = HERE / "fonts"
 DEFAULT_LOGO = ROOT / "logo.png"
-CANVAS_W, CANVAS_H = 1200, 627
+CANVAS_W, CANVAS_H = 1200, 675
 MARGIN_X = 72
-MARGIN_BOTTOM = 42
-HEADLINE_TO_RELEASE_GAP = 18
-RELEASE_TO_HIGHLIGHTS_GAP = 14
-HIGHLIGHT_GAP = 8
+MARGIN_BOTTOM = 36
+HEADLINE_TO_RELEASE_GAP = 20
+RELEASE_TO_HIGHLIGHTS_GAP = 16
+HIGHLIGHT_GAP = 10
 BLOCK_GAP = 10
 
 BG = (10, 10, 11)
@@ -37,7 +37,7 @@ TEAL_DIM = (20, 184, 166)
 RULE = (39, 39, 42)
 ACCENT_BAR = (45, 212, 191)
 
-TAGLINE_DEFAULT = "The SQLite for AI agents and RAG"
+TAGLINE_DEFAULT = "Embedded vector DB for AI agents and RAG"
 GITHUB_DEFAULT = "github.com/jose-compu/logosdb"
 
 
@@ -61,19 +61,18 @@ class BannerData:
 
 
 class FontSet:
-    def __init__(self, compact: bool = False) -> None:
-        sm = 16 if compact else 18
-        mono_sz = 17 if compact else 19
+    def __init__(self) -> None:
         self.display_xl = _load("SpaceGrotesk-Bold.woff", 64)
         self.display_lg = _load("SpaceGrotesk-Bold.woff", 52)
         self.heading = _load("SpaceGrotesk-Medium.woff", 28)
         self.body = _load("Inter-Regular.ttf", 22)
-        self.body_sm = _load("Inter-Regular.ttf", sm)
+        self.tagline = _load("Inter-Regular.ttf", 20)
+        self.body_sm = _load("Inter-Regular.ttf", 20)
         self.label = _load("Inter-SemiBold.ttf", 16)
         self.footer = _load("Inter-Regular.ttf", 17)
-        self.mono = _load("JetBrainsMono-Medium.ttf", mono_sz)
-        self.mono_sm = _load("JetBrainsMono-Regular.ttf", 16)
-        self.chip = _load("Inter-SemiBold.ttf", 15)
+        self.mono = _load("JetBrainsMono-Medium.ttf", 21)
+        self.mono_sm = _load("JetBrainsMono-Medium.ttf", 18)
+        self.chip = _load("Inter-SemiBold.ttf", 17)
 
 
 def _font_path(name: str) -> Path:
@@ -116,7 +115,7 @@ def _draw_chip(
     fonts: FontSet,
 ) -> tuple[int, int]:
     text = f"{label}  {version}"
-    pad_x, pad_y = 14, 8
+    pad_x, pad_y = 14, 9
     tw = _text_w(draw, text, fonts.chip)
     th = _text_h(draw, text, fonts.chip)
     w, h = tw + pad_x * 2, th + pad_y * 2
@@ -231,9 +230,7 @@ def build_banner_data(args: argparse.Namespace) -> BannerData:
 
 
 def render(data: BannerData, logo_path: Path, out_path: Path) -> None:
-    x0, x1 = 292, CANVAS_W - MARGIN_X
-    dense_body = bool(data.release_tagline) or any(h.desc for h in data.highlights)
-    fonts = FontSet(compact=dense_body)
+    fonts = FontSet()
     img = Image.new("RGB", (CANVAS_W, CANVAS_H), BG)
     draw = ImageDraw.Draw(img)
 
@@ -250,7 +247,7 @@ def render(data: BannerData, logo_path: Path, out_path: Path) -> None:
     x0 = 292
     x1 = CANVAS_W - MARGIN_X
     draw.text((x0, 76), "LogosDB", fill=TITLE, font=fonts.display_lg)
-    draw.text((x0, 134), data.tagline, fill=MUTED, font=fonts.body_sm)
+    draw.text((x0, 134), data.tagline, fill=MUTED, font=fonts.tagline)
     draw.line([(x0, 168), (x1, 168)], fill=RULE, width=2)
 
     ver_top = 192
@@ -350,11 +347,11 @@ def render(data: BannerData, logo_path: Path, out_path: Path) -> None:
     img.save(out_path, format="PNG", optimize=True)
     with Image.open(out_path) as check:
         w, h = check.size
-        assert (w, h) == (CANVAS_W, CANVAS_H), f"expected 1200x627, got {w}x{h}"
+        assert (w, h) == (CANVAS_W, CANVAS_H), f"expected {CANVAS_W}x{CANVAS_H}, got {w}x{h}"
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Render LogosDB LinkedIn release banner (1200×627 PNG)")
+    p = argparse.ArgumentParser(description="Render LogosDB LinkedIn release banner (1200×675 PNG)")
     p.add_argument("--config", type=Path, help="JSON or YAML file with banner fields")
     p.add_argument("--version", help="Release version (e.g. 1.3.0)")
     p.add_argument("--title", help="Release title headline")
