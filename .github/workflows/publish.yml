@@ -1,5 +1,9 @@
 name: Publish
 
+permissions:
+  contents: read
+  id-token: write
+
 on:
   # Release flow: push an annotated tag matching v*.*.*
   #   git tag v0.2.0 && git push origin v0.2.0
@@ -98,8 +102,6 @@ jobs:
     environment:
       name: pypi
       url: https://pypi.org/project/logosdb/
-    permissions:
-      id-token: write   # Trusted Publishing (OIDC)
     steps:
       - name: Download all artifacts into dist/
         uses: actions/download-artifact@v4
@@ -120,9 +122,6 @@ jobs:
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
       (github.event_name == 'workflow_dispatch' && inputs.target == 'npm')
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -163,7 +162,7 @@ jobs:
           if npm view "logosdb@${VERSION}" version 2>/dev/null; then
             echo "logosdb ${VERSION} already on npm — skipping"
           else
-            npm publish --access public
+            env -u NODE_AUTH_TOKEN -u NPM_TOKEN npm publish --access public --provenance
           fi
 
       - name: Build MCP server
@@ -177,5 +176,5 @@ jobs:
           if npm view "logosdb-mcp-server@${VERSION}" version 2>/dev/null; then
             echo "logosdb-mcp-server ${VERSION} already on npm — skipping"
           else
-            npm publish --access public
+            env -u NODE_AUTH_TOKEN -u NPM_TOKEN npm publish --access public --provenance
           fi
