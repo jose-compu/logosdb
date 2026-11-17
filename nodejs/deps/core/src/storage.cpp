@@ -317,12 +317,14 @@ bool VectorStorage::open(const std::string& path, int dim, StorageDtype dtype, s
             return false;
         }
 
-        // Check dtype compatibility
+        // Check dtype compatibility (must match on reopen; search dequantizes to float32)
         StorageDtype file_dtype = static_cast<StorageDtype>(header_.dtype);
-        if (file_dtype != dtype && file_dtype != DTYPE_FLOAT32)
+        if (file_dtype != dtype && header_.n_rows > 0)
         {
-            // Allow opening existing files even if requested dtype differs
-            // We'll use the file's dtype
+            err = "dtype mismatch (file=" + std::to_string((int)file_dtype) +
+                  " requested=" + std::to_string((int)dtype) + ")";
+            close();
+            return false;
         }
 
         if (header_.dim != (uint32_t)dim && dim > 0 && header_.dim > 0)

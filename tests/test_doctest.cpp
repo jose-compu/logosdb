@@ -1843,7 +1843,7 @@ TEST_SUITE("storage")
         CHECK(hits[0].score > 0.99f);
 
         {
-            logosdb::DB db2(path, {.dim = dim});
+            logosdb::DB db2(path, {.dim = dim, .dtype = LOGOSDB_DTYPE_FLOAT16});
             CHECK(db2.count() == 3);
 
             auto hits2 = db2.search(v1, 3);
@@ -1878,7 +1878,7 @@ TEST_SUITE("storage")
         CHECK(hits[0].score > 0.90f);
 
         {
-            logosdb::DB db2(path, {.dim = dim});
+            logosdb::DB db2(path, {.dim = dim, .dtype = LOGOSDB_DTYPE_INT8});
             CHECK(db2.count() == 3);
 
             auto hits2 = db2.search(v1, 3);
@@ -1889,9 +1889,9 @@ TEST_SUITE("storage")
         std::filesystem::remove_all(path);
     }
 
-    TEST_CASE("storage: dtype persistence")
+    TEST_CASE("storage: dtype mismatch on reopen")
     {
-        std::string path = tmp_path("logosdb_test_dtype_persist");
+        std::string path = tmp_path("logosdb_test_dtype_mismatch");
         std::filesystem::remove_all(path);
 
         int dim = 32;
@@ -1902,14 +1902,8 @@ TEST_SUITE("storage")
             db.put(v, "test");
         }
 
-        {
-            logosdb::DB db(path, {.dim = dim});
-            CHECK(db.count() == 1);
-
-            auto v = unit_vec(dim, 10000);
-            auto hits = db.search(v, 1);
-            CHECK(!hits.empty());
-        }
+        CHECK_THROWS_AS(logosdb::DB(path, {.dim = dim, .dtype = LOGOSDB_DTYPE_FLOAT32}),
+                        std::runtime_error);
 
         std::filesystem::remove_all(path);
     }

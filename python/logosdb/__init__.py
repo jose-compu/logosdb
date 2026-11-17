@@ -15,6 +15,7 @@ Example:
 from ._core import (
     DB, SearchHit, Row, LOGOSDB_VERSION, __version__,
     DIST_IP, DIST_COSINE, DIST_L2,
+    DTYPE_FLOAT32, DTYPE_FLOAT16, DTYPE_INT8,
 )
 
 # LangChain adapter is available as optional import
@@ -42,6 +43,7 @@ except ImportError:
 __all__ = [
     "DB", "SearchHit", "Row", "LOGOSDB_VERSION", "__version__",
     "DIST_IP", "DIST_COSINE", "DIST_L2",
+    "DTYPE_FLOAT32", "DTYPE_FLOAT16", "DTYPE_INT8",
 ]
 
 if LANGCHAIN_AVAILABLE:

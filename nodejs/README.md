@@ -71,6 +71,7 @@ Create a new database instance.
 - `M` (number): HNSW graph degree (default: 16)
 - `efSearch` (number): HNSW search width (default: 50)
 - `distance` (number): Distance metric (`DIST_IP`, `DIST_COSINE`, `DIST_L2`)
+- `dtype` (number): On-disk storage (`DTYPE_FLOAT32`, `DTYPE_FLOAT16`, `DTYPE_INT8`; default `DTYPE_FLOAT32`). Must match when reopening.
 
 ### `db.put(embedding, text?, timestamp?)`
 
@@ -113,6 +114,14 @@ Module-level helper (not a method on `DB`). Copies **live** rows from `src` into
 ### `db.close()`
 
 Close the database.
+
+## Storage dtype
+
+- `DTYPE_FLOAT32` (0): default, 4 bytes per dimension
+- `DTYPE_FLOAT16` (1): ~half the disk footprint; small accuracy cost
+- `DTYPE_INT8` (2): ~quarter size; per-vector scale; search quality may differ from float32
+
+Search still uses float32 internally (vectors are dequantized on read). Pass the same `dtype` when reopening a database.
 
 ## Distance Metrics
 

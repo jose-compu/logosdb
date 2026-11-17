@@ -13,6 +13,9 @@ const {
   DIST_IP,
   DIST_COSINE,
   DIST_L2,
+  DTYPE_FLOAT32,
+  DTYPE_FLOAT16,
+  DTYPE_INT8,
   VERSION,
   normalizeL2,
   compact,
@@ -334,6 +337,68 @@ describe('LogosDB Node.js', function() {
       assert.throws(() => {
         db.put(randomUnitVector(64));
       }, /closed/);
+    });
+  });
+
+  describe('storage dtype', () => {
+    let dbPath;
+
+    afterEach(() => {
+      cleanup(dbPath);
+    });
+
+    it('float16 create, search, reopen, and compact keep dtype', () => {
+      dbPath = createTempDir();
+      const dim = 16;
+      const db = new DB(dbPath, { dim, dtype: DTYPE_FLOAT16 });
+      const v = randomUnitVector(dim, 77);
+      db.put(v, 'fp16');
+      const hits = db.search(v, 1);
+      assert.strictEqual(hits[0].id, 0);
+      assert.strictEqual(db.stats().storage_dtype, DTYPE_FLOAT16);
+      db.close();
+
+      const db2 = new DB(dbPath, { dim, dtype: DTYPE_FLOAT16 });
+      assert.strictEqual(db2.countLive(), 1);
+      db2.close();
+
+      const dst = createTempDir('logosdb-fp16-compact-');
+      compact(dbPath, dst);
+      const db3 = new DB(dst, { dim, dtype: DTYPE_FLOAT16 });
+      assert.strictEqual(db3.stats().storage_dtype, DTYPE_FLOAT16);
+      db3.close();
+      cleanup(dst);
+    });
+
+    it('reopen with wrong dtype throws', () => {
+      dbPath = createTempDir();
+      const dim = 8;
+      const db = new DB(dbPath, { dim, dtype: DTYPE_FLOAT16 });
+      db.put(randomUnitVector(dim, 1));
+      db.close();
+
+      assert.throws(
+        () => new DB(dbPath, { dim, dtype: DTYPE_FLOAT32 }),
+        /dtype mismatch/i
+      );
+    });
+
+    it('int8 create and search', () => {
+      dbPath = createTempDir();
+      const dim = 12;
+      const db = new DB(dbPath, { dim, dtype: DTYPE_INT8, distance: DIST_COSINE });
+      const v = randomUnitVector(dim, 55);
+      db.put(v, 'q8');
+      const hits = db.search(v, 1);
+      assert.strictEqual(hits.length, 1);
+      assert.strictEqual(db.stats().storage_dtype, DTYPE_INT8);
+      db.close();
+    });
+
+    it('exports dtype constants', () => {
+      assert.strictEqual(DTYPE_FLOAT32, 0);
+      assert.strictEqual(DTYPE_FLOAT16, 1);
+      assert.strictEqual(DTYPE_INT8, 2);
     });
   });
 

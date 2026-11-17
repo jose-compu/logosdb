@@ -47,6 +47,8 @@ export interface DBOptions {
   efSearch?: number;
   /** Distance metric (default: DIST_IP) */
   distance?: number;
+  /** On-disk storage dtype (default: DTYPE_FLOAT32) */
+  dtype?: number;
 }
 
 /**
@@ -199,6 +201,15 @@ export const DIST_COSINE: number;
 
 /** Euclidean distance (L2 space) */
 export const DIST_L2: number;
+
+/** On-disk float32 storage (default) */
+export const DTYPE_FLOAT32: number;
+
+/** On-disk float16 storage (~half size) */
+export const DTYPE_FLOAT16: number;
+
+/** On-disk int8 storage (~quarter size) */
+export const DTYPE_INT8: number;
 
 /** Library version string */
 export const VERSION: string;

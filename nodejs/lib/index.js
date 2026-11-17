@@ -51,6 +51,7 @@ class DB {
    * @param {number} [options.M=16] - HNSW M parameter
    * @param {number} [options.efSearch=50] - HNSW search parameter
    * @param {number} [options.distance=DIST_IP] - Distance metric (DIST_IP, DIST_COSINE, DIST_L2)
+   * @param {number} [options.dtype=DTYPE_FLOAT32] - On-disk storage (DTYPE_FLOAT32, DTYPE_FLOAT16, DTYPE_INT8)
    */
   constructor(path, options = {}) {
     this._db = new bindings.DB(path, options);
@@ -208,6 +209,15 @@ const DIST_COSINE = bindings.DIST_COSINE;
  */
 const DIST_L2 = bindings.DIST_L2;
 
+/** @constant {number} */
+const DTYPE_FLOAT32 = bindings.DTYPE_FLOAT32;
+
+/** @constant {number} */
+const DTYPE_FLOAT16 = bindings.DTYPE_FLOAT16;
+
+/** @constant {number} */
+const DTYPE_INT8 = bindings.DTYPE_INT8;
+
 /**
  * Library version string
  * @constant {string}
@@ -264,6 +274,9 @@ module.exports = {
   DIST_IP,
   DIST_COSINE,
   DIST_L2,
+  DTYPE_FLOAT32,
+  DTYPE_FLOAT16,
+  DTYPE_INT8,
   VERSION,
   normalizeL2,
   compact,
