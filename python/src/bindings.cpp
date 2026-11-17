@@ -1,8 +1,8 @@
+#include <logosdb/logosdb.h>
+
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include <pybind11/numpy.h>
-
-#include <logosdb/logosdb.h>
 
 #include <cstring>
 #include <memory>
@@ -13,16 +13,19 @@ namespace py = pybind11;
 
 using FloatArray = py::array_t<float, py::array::c_style | py::array::forcecast>;
 
-static std::vector<float> to_vector(const FloatArray & arr, const char * name) {
+static std::vector<float> to_vector(const FloatArray& arr, const char* name)
+{
     auto buf = arr.request();
-    if (buf.ndim != 1) {
+    if (buf.ndim != 1)
+    {
         throw py::value_error(std::string(name) + " must be a 1-D float32 array");
     }
-    const float * data = static_cast<const float *>(buf.ptr);
+    const float* data = static_cast<const float*>(buf.ptr);
     return std::vector<float>(data, data + buf.shape[0]);
 }
 
-PYBIND11_MODULE(_core, m) {
+PYBIND11_MODULE(_core, m)
+{
     m.doc() = "LogosDB — fast semantic vector database (HNSW + mmap)";
 
 #ifdef LOGOSDB_PY_VERSION
@@ -33,85 +36,97 @@ PYBIND11_MODULE(_core, m) {
     m.attr("LOGOSDB_VERSION") = LOGOSDB_VERSION_STRING;
 
     // Distance metric constants
-    m.attr("DIST_IP")     = LOGOSDB_DIST_IP;
+    m.attr("DIST_IP") = LOGOSDB_DIST_IP;
     m.attr("DIST_COSINE") = LOGOSDB_DIST_COSINE;
-    m.attr("DIST_L2")     = LOGOSDB_DIST_L2;
+    m.attr("DIST_L2") = LOGOSDB_DIST_L2;
+    m.attr("DTYPE_FLOAT32") = LOGOSDB_DTYPE_FLOAT32;
+    m.attr("DTYPE_FLOAT16") = LOGOSDB_DTYPE_FLOAT16;
+    m.attr("DTYPE_INT8") = LOGOSDB_DTYPE_INT8;
 
-    m.def("compact",
-          [](const std::string& src, const std::string& dst) { logosdb::compact(src, dst); },
-          py::arg("src"),
-          py::arg("dst"),
-          "Copy live rows from src database directory into dst (drops tombstones; dst must be "
-          "empty).");
+    m.def(
+        "compact",
+        [](const std::string& src, const std::string& dst) { logosdb::compact(src, dst); },
+        py::arg("src"),
+        py::arg("dst"),
+        "Copy live rows from src database directory into dst (drops tombstones; dst must be "
+        "empty).");
 
     // ── SearchHit ──────────────────────────────────────────────────
-    py::class_<logosdb::SearchHit>(m, "SearchHit",
-        "A single search result: id, score, and optional text/timestamp metadata.")
-        .def_readonly("id",        &logosdb::SearchHit::id)
-        .def_readonly("score",     &logosdb::SearchHit::score)
-        .def_readonly("text",      &logosdb::SearchHit::text)
+    py::class_<logosdb::SearchHit>(
+        m, "SearchHit", "A single search result: id, score, and optional text/timestamp metadata.")
+        .def_readonly("id", &logosdb::SearchHit::id)
+        .def_readonly("score", &logosdb::SearchHit::score)
+        .def_readonly("text", &logosdb::SearchHit::text)
         .def_readonly("timestamp", &logosdb::SearchHit::timestamp)
-        .def("__repr__", [](const logosdb::SearchHit & h) {
-            return "SearchHit(id=" + std::to_string(h.id) +
-                   ", score=" + std::to_string(h.score) +
-                   ", text=" + h.text +
-                   ", timestamp=" + h.timestamp + ")";
-        })
-        .def("__iter__", [](const logosdb::SearchHit & h) {
-            return py::iter(py::make_tuple(h.id, h.score, h.text, h.timestamp));
-        });
+        .def("__repr__",
+             [](const logosdb::SearchHit& h)
+             {
+                 return "SearchHit(id=" + std::to_string(h.id) +
+                        ", score=" + std::to_string(h.score) + ", text=" + h.text +
+                        ", timestamp=" + h.timestamp + ")";
+             })
+        .def("__iter__",
+             [](const logosdb::SearchHit& h)
+             { return py::iter(py::make_tuple(h.id, h.score, h.text, h.timestamp)); });
 
     // ── Row (get-by-id) ────────────────────────────────────────────
-    py::class_<logosdb::Row>(m, "Row",
-        "A fetched live row: id, embedding (float32), and optional text/timestamp.")
-        .def_readonly("id",        &logosdb::Row::id)
-        .def_readonly("text",      &logosdb::Row::text)
+    py::class_<logosdb::Row>(
+        m, "Row", "A fetched live row: id, embedding (float32), and optional text/timestamp.")
+        .def_readonly("id", &logosdb::Row::id)
+        .def_readonly("text", &logosdb::Row::text)
         .def_readonly("timestamp", &logosdb::Row::timestamp)
-        .def_property_readonly(
-            "embedding",
-            [](const logosdb::Row& row) {
-                py::array_t<float> arr(static_cast<py::ssize_t>(row.embedding.size()));
-                if (!row.embedding.empty()) {
-                    std::memcpy(arr.mutable_data(),
-                                row.embedding.data(),
-                                row.embedding.size() * sizeof(float));
-                }
-                return arr;
-            })
-        .def("__repr__", [](const logosdb::Row& row) {
-            return "Row(id=" + std::to_string(row.id) +
-                   ", dim=" + std::to_string(row.embedding.size()) +
-                   ", text=" + row.text +
-                   ", timestamp=" + row.timestamp + ")";
-        });
+        .def_property_readonly("embedding",
+                               [](const logosdb::Row& row)
+                               {
+                                   py::array_t<float> arr(
+                                       static_cast<py::ssize_t>(row.embedding.size()));
+                                   if (!row.embedding.empty())
+                                   {
+                                       std::memcpy(arr.mutable_data(),
+                                                   row.embedding.data(),
+                                                   row.embedding.size() * sizeof(float));
+                                   }
+                                   return arr;
+                               })
+        .def("__repr__",
+             [](const logosdb::Row& row)
+             {
+                 return "Row(id=" + std::to_string(row.id) +
+                        ", dim=" + std::to_string(row.embedding.size()) + ", text=" + row.text +
+                        ", timestamp=" + row.timestamp + ")";
+             });
 
     // ── DB ─────────────────────────────────────────────────────────
-    py::class_<logosdb::DB>(m, "DB",
-        "A LogosDB database handle. One process per database path.")
-        .def(py::init([](const std::string & path,
-                         int dim,
-                         size_t max_elements,
-                         int ef_construction,
-                         int M,
-                         int ef_search,
-                         int distance) {
-            logosdb::Options o;
-            o.dim              = dim;
-            o.max_elements     = max_elements;
-            o.ef_construction  = ef_construction;
-            o.M                = M;
-            o.ef_search        = ef_search;
-            o.distance         = distance;
-            return std::make_unique<logosdb::DB>(path, o);
-        }),
-        py::arg("path"),
-        py::arg("dim"),
-        py::arg("max_elements")    = 1000000,
-        py::arg("ef_construction") = 200,
-        py::arg("M")               = 16,
-        py::arg("ef_search")       = 50,
-        py::arg("distance")        = LOGOSDB_DIST_IP,
-        R"doc(Open or create a database at `path`.
+    py::class_<logosdb::DB>(m, "DB", "A LogosDB database handle. One process per database path.")
+        .def(py::init(
+                 [](const std::string& path,
+                    int dim,
+                    size_t max_elements,
+                    int ef_construction,
+                    int M,
+                    int ef_search,
+                    int distance,
+                    int dtype)
+                 {
+                     logosdb::Options o;
+                     o.dim = dim;
+                     o.max_elements = max_elements;
+                     o.ef_construction = ef_construction;
+                     o.M = M;
+                     o.ef_search = ef_search;
+                     o.distance = distance;
+                     o.dtype = dtype;
+                     return std::make_unique<logosdb::DB>(path, o);
+                 }),
+             py::arg("path"),
+             py::arg("dim"),
+             py::arg("max_elements") = 1000000,
+             py::arg("ef_construction") = 200,
+             py::arg("M") = 16,
+             py::arg("ef_search") = 50,
+             py::arg("distance") = LOGOSDB_DIST_IP,
+             py::arg("dtype") = LOGOSDB_DTYPE_FLOAT32,
+             R"doc(Open or create a database at `path`.
 
 Args:
     path: directory to store vectors/metadata/index files.
@@ -121,45 +136,53 @@ Args:
     M: HNSW graph out-degree (default 16).
     ef_search: HNSW query-time search width (default 50).
     distance: distance metric (DIST_IP, DIST_COSINE, or DIST_L2; default DIST_IP).
+    dtype: on-disk storage (DTYPE_FLOAT32, DTYPE_FLOAT16, or DTYPE_INT8; default DTYPE_FLOAT32).
+           Must match when reopening an existing database.
 )doc")
 
-        .def("put",
-            [](logosdb::DB & self,
+        .def(
+            "put",
+            [](logosdb::DB& self,
                FloatArray embedding,
-               const std::string & text,
-               const std::string & timestamp) {
-                return self.put(to_vector(embedding, "embedding"), text, timestamp);
-            },
+               const std::string& text,
+               const std::string& timestamp)
+            { return self.put(to_vector(embedding, "embedding"), text, timestamp); },
             py::arg("embedding"),
             py::arg("text") = "",
             py::arg("timestamp") = "",
             "Insert a vector. Returns the new row id.")
 
-        .def("put_batch",
-            [](logosdb::DB & self,
+        .def(
+            "put_batch",
+            [](logosdb::DB& self,
                py::array_t<float, py::array::c_style | py::array::forcecast> embeddings,
                py::object texts_obj,
-               py::object timestamps_obj) {
+               py::object timestamps_obj)
+            {
                 auto buf = embeddings.request();
-                if (buf.ndim != 2) {
+                if (buf.ndim != 2)
+                {
                     throw py::value_error("embeddings must be a 2-D float32 array (n, dim)");
                 }
                 int n = (int)buf.shape[0];
                 int dim = (int)buf.shape[1];
-                if (dim != self.dim()) {
+                if (dim != self.dim())
+                {
                     throw py::value_error("embeddings dim does not match DB.dim");
                 }
                 std::vector<float> flat(static_cast<size_t>(n) * static_cast<size_t>(dim));
                 std::memcpy(flat.data(), buf.ptr, flat.size() * sizeof(float));
 
                 std::vector<std::string> texts;
-                if (!texts_obj.is_none()) {
+                if (!texts_obj.is_none())
+                {
                     texts = py::cast<std::vector<std::string>>(texts_obj);
                     if ((int)texts.size() != n)
                         throw py::value_error("len(texts) must equal embeddings.shape[0]");
                 }
                 std::vector<std::string> timestamps;
-                if (!timestamps_obj.is_none()) {
+                if (!timestamps_obj.is_none())
+                {
                     timestamps = py::cast<std::vector<std::string>>(timestamps_obj);
                     if ((int)timestamps.size() != n)
                         throw py::value_error("len(timestamps) must equal embeddings.shape[0]");
@@ -189,11 +212,13 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
 (default chunk size 1024; override with `LOGOSDB_BATCH_CHUNK_SIZE`).
 )doc")
 
-        .def("export_ndjson",
-            [](logosdb::DB & self,
-               const std::string & out_path,
+        .def(
+            "export_ndjson",
+            [](logosdb::DB& self,
+               const std::string& out_path,
                uint64_t start_id,
-               uint64_t end_id_exclusive) {
+               uint64_t end_id_exclusive)
+            {
                 py::gil_scoped_release release;
                 self.export_ndjson(out_path, start_id, end_id_exclusive);
             },
@@ -203,12 +228,14 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
             "Stream live rows in [start_id, end_id_exclusive) to `out_path` as NDJSON. "
             "Bounded memory (O(dim) per row). Pass end_id_exclusive=0 for 'until count()'.")
 
-        .def("import_ndjson",
-            [](logosdb::DB & self,
-               const std::string & in_path,
+        .def(
+            "import_ndjson",
+            [](logosdb::DB& self,
+               const std::string& in_path,
                int chunk_size,
-               const std::string & checkpoint_path,
-               bool resume) {
+               const std::string& checkpoint_path,
+               bool resume)
+            {
                 py::gil_scoped_release release;
                 self.import_ndjson(in_path, chunk_size, checkpoint_path, resume);
             },
@@ -219,19 +246,20 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
             "Stream NDJSON into the DB with chunked, WAL-aware put_batch. "
             "Optional `checkpoint_path` lets a later call `--resume` past the byte_offset.")
 
-        .def("delete",
-            [](logosdb::DB & self, uint64_t id) { self.del(id); },
+        .def(
+            "delete",
+            [](logosdb::DB& self, uint64_t id) { self.del(id); },
             py::arg("id"),
             "Tombstone the row with the given id. Excluded from future searches.")
 
-        .def("update",
-            [](logosdb::DB & self,
+        .def(
+            "update",
+            [](logosdb::DB& self,
                uint64_t id,
                FloatArray embedding,
-               const std::string & text,
-               const std::string & timestamp) {
-                return self.update(id, to_vector(embedding, "embedding"), text, timestamp);
-            },
+               const std::string& text,
+               const std::string& timestamp)
+            { return self.update(id, to_vector(embedding, "embedding"), text, timestamp); },
             py::arg("id"),
             py::arg("embedding"),
             py::arg("text") = "",
@@ -239,25 +267,26 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
             "Replace the row with the given id. Returns the NEW id (delete + put).")
 
         .def("get",
-            &logosdb::DB::get,
-            py::arg("id"),
-            "Fetch a live row by id. Returns Row(id, embedding, text, timestamp). "
-            "Raises RuntimeError if the id is out of range or tombstoned.")
+             &logosdb::DB::get,
+             py::arg("id"),
+             "Fetch a live row by id. Returns Row(id, embedding, text, timestamp). "
+             "Raises RuntimeError if the id is out of range or tombstoned.")
 
-        .def("search",
-            [](logosdb::DB & self, FloatArray query, int top_k) {
-                return self.search(to_vector(query, "query"), top_k);
-            },
+        .def(
+            "search",
+            [](logosdb::DB& self, FloatArray query, int top_k)
+            { return self.search(to_vector(query, "query"), top_k); },
             py::arg("query"),
             py::arg("top_k") = 5,
             "Top-k approximate nearest-neighbor search. Returns list[SearchHit].")
 
-        .def("search_ts_range",
-            [](logosdb::DB & self,
+        .def(
+            "search_ts_range",
+            [](logosdb::DB& self,
                FloatArray query,
                int top_k,
-               const std::string & ts_from,
-               const std::string & ts_to,
+               const std::string& ts_from,
+               const std::string& ts_to,
                int candidate_k) {
                 return self.search_ts_range(
                     to_vector(query, "query"), top_k, ts_from, ts_to, candidate_k);
@@ -280,21 +309,18 @@ Returns:
     list[SearchHit]: filtered results sorted by score.
 )doc")
 
-        .def("count",
-            &logosdb::DB::count,
-            "Total row count including tombstoned rows.")
+        .def("count", &logosdb::DB::count, "Total row count including tombstoned rows.")
 
-        .def("count_live",
-            &logosdb::DB::count_live,
-            "Live row count (total minus tombstoned).")
+        .def("count_live", &logosdb::DB::count_live, "Live row count (total minus tombstoned).")
 
         .def("sync",
-            &logosdb::DB::sync,
-            "Flush WAL, persist HNSW index, and fsync vector + metadata stores.")
+             &logosdb::DB::sync,
+             "Flush WAL, persist HNSW index, and fsync vector + metadata stores.")
 
         .def(
             "stats",
-            [](const logosdb::DB& self) {
+            [](const logosdb::DB& self)
+            {
                 logosdb_stats_t s = self.get_stats();
                 py::dict d;
                 d["rows_total"] = s.rows_total;
@@ -321,25 +347,25 @@ Returns:
             },
             "Operation counters and store health fields.")
 
-        .def_property_readonly("dim",
-            &logosdb::DB::dim,
-            "Vector dimensionality.")
+        .def_property_readonly("dim", &logosdb::DB::dim, "Vector dimensionality.")
 
-        .def("raw_vectors",
-            [](py::object self) {
-                auto & db = self.cast<logosdb::DB &>();
+        .def(
+            "raw_vectors",
+            [](py::object self)
+            {
+                auto& db = self.cast<logosdb::DB&>();
                 size_t n = 0;
-                int    d = 0;
+                int d = 0;
                 // raw_vectors now returns a vector<float> (handles quantized storage)
                 std::vector<float> data = db.raw_vectors(n, d);
-                if (data.empty() || n == 0) {
+                if (data.empty() || n == 0)
+                {
                     // Empty array (0 rows × d cols).
-                    return py::array_t<float>(
-                        std::vector<py::ssize_t>{0, (py::ssize_t)d});
+                    return py::array_t<float>(std::vector<py::ssize_t>{0, (py::ssize_t)d});
                 }
                 // Return a numpy array. This copies the data (required because
                 // data is a local vector that will be destroyed).
-                std::vector<py::ssize_t> shape   = {(py::ssize_t)n, (py::ssize_t)d};
+                std::vector<py::ssize_t> shape = {(py::ssize_t)n, (py::ssize_t)d};
                 py::array_t<float> arr(shape, data.data());
                 // Mark as read-only.
                 py::detail::array_proxy(arr.ptr())->flags &=
@@ -355,9 +381,11 @@ This is safe to read but should NOT be modified.
 
         .def("__len__", &logosdb::DB::count_live)
 
-        .def("__repr__", [](const logosdb::DB & db) {
-            return "DB(dim=" + std::to_string(db.dim()) +
-                   ", count=" + std::to_string(db.count()) +
-                   ", count_live=" + std::to_string(db.count_live()) + ")";
-        });
+        .def("__repr__",
+             [](const logosdb::DB& db)
+             {
+                 return "DB(dim=" + std::to_string(db.dim()) +
+                        ", count=" + std::to_string(db.count()) +
+                        ", count_live=" + std::to_string(db.count_live()) + ")";
+             });
 }
