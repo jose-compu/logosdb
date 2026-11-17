@@ -33,7 +33,7 @@
       <div class="container hero-grid">
         <div>
           <p class="section-label">Semantic memory</p>
-          <p class="version-badge">1.3.0</p>
+          <p class="version-badge">1.4.0</p>
           <h1>
             <span class="word-cyan">Semantic.</span>
             <span class="word-blue">Fast.</span>
@@ -144,11 +144,11 @@
       <div class="container">
         <span class="section-label">Features</span>
         <!-- RELEASE_HEADLINE_START -->
-        <h2>1.3.0 — Node sync, stats, compact</h2>
+<h2>1.4.0 — Float16 and int8 storage</h2>
         <p class="section-intro">
-          Core, PyPI, and npm <code>logosdb</code> at <strong>1.3.0</strong>. Node catches up with Python for durability and observability:
-          <code>db.sync()</code> flushes WAL, index, vectors, and metadata; <code>db.stats()</code> returns the same counters as
-          <code>DB.stats()</code>; <code>compact(src, dst)</code> copies live rows into a fresh directory and drops tombstones (#138). C API unchanged.
+          Core, PyPI, and npm <code>logosdb</code> at <strong>1.4.0</strong>. Node and Python constructors accept an optional
+          <code>dtype</code> (<code>DTYPE_FLOAT32</code>, <code>DTYPE_FLOAT16</code>, <code>DTYPE_INT8</code>) to store vectors at half or quarter size on disk (#139).
+          Default remains float32. Search still uses float32 internally. Reopening with the wrong dtype fails with a clear error.
         </p>
 
         <table class="pkg-table" aria-label="Published package versions">
@@ -156,57 +156,56 @@
             <tr><th>Package</th><th>Version</th><th>Registry</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>logosdb</code></td><td><strong>1.3.0</strong></td><td>PyPI, npm</td></tr>
-            <tr><td><code>logosdb-mcp-server</code></td><td><strong>1.4.2</strong></td><td>npm (<code>^1.3.0</code>)</td></tr>
+            <tr><td><code>logosdb</code></td><td><strong>1.4.0</strong></td><td>PyPI, npm</td></tr>
+            <tr><td><code>logosdb-mcp-server</code></td><td><strong>1.4.3</strong></td><td>npm (<code>^1.4.0</code>)</td></tr>
             <tr><td><code>n8n-nodes-logosdb</code></td><td>1.0.3</td><td>npm (unchanged)</td></tr>
           </tbody>
         </table>
 
-        <a class="release-banner" href="https://github.com/jose-compu/logosdb/releases/tag/v1.3.0" target="_blank" rel="noopener">
-          <img src="https://github.com/jose-compu/logosdb/releases/download/v1.3.0/linkedin-v1.3.0.png" alt="LogosDB 1.3.0 release" width="1200" height="627" loading="lazy" />
+        <a class="release-banner" href="https://github.com/jose-compu/logosdb/releases/tag/v1.4.0" target="_blank" rel="noopener">
+          <img src="https://github.com/jose-compu/logosdb/releases/download/v1.4.0/linkedin-v1.4.0.png" alt="LogosDB 1.4.0 release" width="1200" height="627" loading="lazy" />
         </a>
         <!-- RELEASE_HEADLINE_END -->
 
         <div class="flyer-grid">
           <article class="flyer-box cyan">
-            <h3>Node <code>db.sync()</code></h3>
-            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Durability before shutdown or backup.</p>
+            <h3><code>dtype</code> on create</h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Smaller on-disk vectors for large agent memory stores.</p>
             <ul style="list-style: none; padding: 0; margin: 0;">
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> WAL, HNSW index, vector store, metadata</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Mirrors C <code>logosdb_sync</code> / Python <code>DB.sync()</code></li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Throws on I/O failure</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> <code>DTYPE_FLOAT16</code> — ~half bytes per dimension</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> <code>DTYPE_INT8</code> — ~quarter size with per-vector scale</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Default <code>DTYPE_FLOAT32</code> unchanged for existing DBs</li>
             </ul>
           </article>
           <article class="flyer-box purple">
-            <h3><code>db.stats()</code> &amp; <code>compact()</code></h3>
-            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Inspect and reclaim space without new C calls.</p>
+            <h3>Reopen &amp; search</h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Same precision contract as dimension on open.</p>
             <ul style="list-style: none; padding: 0; margin: 0;">
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> <code>DbStats</code>: row counts, tombstones, WAL pending, op counters</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Top-level <code>compact(src, dst)</code> — live rows only</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Fetch-by-id, batch ingest, hybrid search still in 1.x</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Mismatched <code>dtype</code> on reopen → clear error</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> HNSW search still uses float32 (dequantize on read)</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> <code>compact</code> preserves source storage dtype</li>
             </ul>
           </article>
         </div>
 
         <div class="feature-grid" style="margin-top: 1.5rem;">
           <article class="feature-card cyan">
-            <h3>Node API (<code>logosdb@1.3.0</code>)</h3>
+            <h3>Node API (<code>logosdb@1.4.0</code>)</h3>
             <p>
-              <code>db.sync(): void</code> · <code>db.stats(): DbStats</code> ·
-              <code>compact(src: string, dst: string): void</code> ·
-              <code>db.get(id): Row</code> · <code>normalizeL2()</code>
+              <code>options.dtype</code> · <code>DTYPE_FLOAT32</code> / <code>DTYPE_FLOAT16</code> / <code>DTYPE_INT8</code> ·
+              <code>db.stats().storage_dtype</code> · <code>db.sync()</code> · <code>compact(src, dst)</code>
             </p>
           </article>
           <article class="feature-card blue">
-            <h3><code>DbStats</code> fields</h3>
+            <h3>Python <code>dtype=</code></h3>
             <p>
-              <code>rows_total</code>, <code>rows_live</code>, <code>tombstones</code>, <code>index_elements</code>,
-              <code>wal_pending</code>, <code>distance_metric</code>, <code>storage_dtype</code>, per-op success/fail counters, <code>sync_calls</code>.
+              <code>DB(path, dim, dtype=logosdb.DTYPE_FLOAT16)</code> — same constants as the C API.
+              <code>stats()["storage_dtype"]</code> reports the on-disk format.
             </p>
           </article>
           <article class="feature-card purple">
-            <h3>Python parity</h3>
-            <p><code>DB.sync()</code> and <code>DB.stats()</code> already exposed the same C surface; 1.3.0 brings Node to parity without changing the C API.</p>
+            <h3>When to use int8</h3>
+            <p>Very large static corpora where disk dominates cost; expect small recall differences vs float32. Prefer float16 for a balance of size and quality.</p>
           </article>
           <article class="feature-card cyan">
             <h3>Fetch-by-id</h3>
@@ -218,7 +217,7 @@
           </article>
           <article class="feature-card purple">
             <h3>MCP &amp; n8n</h3>
-            <p><code>logosdb-mcp-server@1.4.2</code> depends on <code>logosdb@^1.3.0</code>. <code>n8n-nodes-logosdb@1.0.3</code> unchanged.</p>
+            <p><code>logosdb-mcp-server@1.4.3</code> depends on <code>logosdb@^1.4.0</code>. <code>n8n-nodes-logosdb@1.0.3</code> unchanged.</p>
           </article>
         </div>
       </div>
@@ -238,7 +237,7 @@
             <div class="badge-icon">🧩</div>
             <div>
               <h3>MCP server — Claude Code</h3>
-              <p><code>logosdb-mcp-server@1.4.2</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default. Launch with <code>npx -y logosdb-mcp-server --path ./.logosdb</code>.</p>
+              <p><code>logosdb-mcp-server@1.4.3</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default. Launch with <code>npx -y logosdb-mcp-server --path ./.logosdb</code>.</p>
             </div>
           </article>
           <article class="integration-card">
@@ -275,7 +274,7 @@
       <div class="container">
         <span class="section-label">Developers</span>
         <h2>Quick start</h2>
-        <p class="section-intro">Install from PyPI or npm, open a database, embed with your model, search, sync, and inspect stats.</p>
+        <p class="section-intro">Install from PyPI or npm, open a database (optionally with float16 storage), embed with your model, and search.</p>
 
         <pre class="code-block"><code class="language-bash">pip install logosdb</code></pre>
 
@@ -285,7 +284,12 @@ from sentence_transformers import SentenceTransformer
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 dim = model.get_sentence_embedding_dimension()
 
-db = logosdb.DB("/tmp/agent_memory", dim=dim, distance=logosdb.DIST_COSINE)
+db = logosdb.DB(
+    "/tmp/agent_memory",
+    dim=dim,
+    distance=logosdb.DIST_COSINE,
+    dtype=logosdb.DTYPE_FLOAT16,  # optional: half-size on disk (default: DTYPE_FLOAT32)
+)
 
 for text, ts in [
     ("Retrying API calls with exponential backoff reduced failures by 42%.", "2026-05-06T09:00:00Z"),
@@ -304,14 +308,15 @@ print(row.id, row.text, row.embedding.shape)
 print(db.stats())  # rows_live, tombstones, sync_calls, …
 db.sync()</code></pre>
 
-        <pre class="code-block"><code class="language-javascript">const { DB, compact } = require("logosdb");
+        <pre class="code-block"><code class="language-javascript">const { DB, DTYPE_FLOAT16 } = require("logosdb");
 
-const db = new DB("/tmp/node_memory", { dim: 384, distance: 1 /* DIST_COSINE */ });
-db.put(embedding, "note", "2026-11-14T12:00:00Z");
-db.sync();
-const s = db.stats();
-console.log(s.rows_live, s.tombstones, s.sync_calls);
-compact("/tmp/node_memory", "/tmp/node_memory_compact");
+const db = new DB("/tmp/node_memory", {
+  dim: 384,
+  distance: 1 /* DIST_COSINE */,
+  dtype: DTYPE_FLOAT16,
+});
+db.put(embedding, "note", "2026-11-17T12:00:00Z");
+console.log(db.stats().storage_dtype); // 1 === DTYPE_FLOAT16
 db.close();</code></pre>
 
         <pre class="code-block"><code><span class="prompt">&gt;</span> logosdb-cli info /tmp/agent_memory
@@ -347,7 +352,7 @@ db.close();</code></pre>
         <a href="https://www.npmjs.com/package/logosdb-mcp-server">MCP server</a>
         <a href="https://github.com/jose-compu/logosdb/blob/main/LICENSE">MIT License</a>
       </div>
-      <p class="footer-copy">LogosDB 1.3.0 · MCP 1.4.2 · n8n 1.0.3 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
+      <p class="footer-copy">LogosDB 1.4.0 · MCP 1.4.3 · n8n 1.0.3 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
     </div>
   </footer>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
