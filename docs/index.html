@@ -33,7 +33,7 @@
       <div class="container hero-grid">
         <div>
           <p class="section-label">Semantic memory</p>
-          <p class="version-badge">1.4.0</p>
+          <p class="version-badge">1.5.0</p>
           <h1>
             <span class="word-cyan">Semantic.</span>
             <span class="word-blue">Fast.</span>
@@ -144,11 +144,10 @@
       <div class="container">
         <span class="section-label">Features</span>
         <!-- RELEASE_HEADLINE_START -->
-<h2>1.4.0 — Float16 and int8 storage</h2>
+<h2>1.5.0 — Live ids and bulk export</h2>
         <p class="section-intro">
-          Core, PyPI, and npm <code>logosdb</code> at <strong>1.4.0</strong>. Node and Python constructors accept an optional
-          <code>dtype</code> (<code>DTYPE_FLOAT32</code>, <code>DTYPE_FLOAT16</code>, <code>DTYPE_INT8</code>) to store vectors at half or quarter size on disk (#139).
-          Default remains float32. Search still uses float32 internally. Reopening with the wrong dtype fails with a clear error.
+          Core, PyPI, and npm <code>logosdb</code> at <strong>1.5.0</strong>. List active row ids, read decoded float32 vectors in bulk, or stream live rows to NDJSON without looping <code>get()</code> on every id (#135).
+          Node adds <code>liveIds()</code>, <code>rawVectors()</code>, and <code>exportNdjson()</code>; C and Python expose the same C API.
         </p>
 
         <table class="pkg-table" aria-label="Published package versions">
@@ -156,51 +155,51 @@
             <tr><th>Package</th><th>Version</th><th>Registry</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>logosdb</code></td><td><strong>1.4.0</strong></td><td>PyPI, npm</td></tr>
-            <tr><td><code>logosdb-mcp-server</code></td><td><strong>1.4.3</strong></td><td>npm (<code>^1.4.0</code>)</td></tr>
+            <tr><td><code>logosdb</code></td><td><strong>1.5.0</strong></td><td>PyPI, npm</td></tr>
+            <tr><td><code>logosdb-mcp-server</code></td><td><strong>1.4.4</strong></td><td>npm (<code>^1.5.0</code>)</td></tr>
             <tr><td><code>n8n-nodes-logosdb</code></td><td>1.0.3</td><td>npm (unchanged)</td></tr>
           </tbody>
         </table>
 
-        <a class="release-banner" href="https://github.com/jose-compu/logosdb/releases/tag/v1.4.0" target="_blank" rel="noopener">
-          <img src="https://github.com/jose-compu/logosdb/releases/download/v1.4.0/linkedin-v1.4.0.png" alt="LogosDB 1.4.0 release" width="1200" height="627" loading="lazy" />
+        <a class="release-banner" href="https://github.com/jose-compu/logosdb/releases/tag/v1.5.0" target="_blank" rel="noopener">
+          <img src="https://github.com/jose-compu/logosdb/releases/download/v1.5.0/linkedin-v1.5.0.png" alt="LogosDB 1.5.0 release" width="1200" height="627" loading="lazy" />
         </a>
         <!-- RELEASE_HEADLINE_END -->
 
         <div class="flyer-grid">
           <article class="flyer-box cyan">
-            <h3><code>dtype</code> on create</h3>
-            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Smaller on-disk vectors for large agent memory stores.</p>
+            <h3><code>liveIds()</code></h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">One call to list active row ids — deleted rows omitted.</p>
             <ul style="list-style: none; padding: 0; margin: 0;">
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> <code>DTYPE_FLOAT16</code> — ~half bytes per dimension</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> <code>DTYPE_INT8</code> — ~quarter size with per-vector scale</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Default <code>DTYPE_FLOAT32</code> unchanged for existing DBs</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> C <code>logosdb_live_ids</code>, Python <code>live_ids()</code></li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Same mutex as search and export</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Matches <code>count_live()</code> after deletes</li>
             </ul>
           </article>
           <article class="flyer-box purple">
-            <h3>Reopen &amp; search</h3>
-            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Same precision contract as dimension on open.</p>
+            <h3>Bulk vectors &amp; NDJSON</h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Scan the corpus without per-id <code>get()</code> loops.</p>
             <ul style="list-style: none; padding: 0; margin: 0;">
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Mismatched <code>dtype</code> on reopen → clear error</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> HNSW search still uses float32 (dequantize on read)</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> <code>compact</code> preserves source storage dtype</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> <code>rawVectors()</code> — float32 decode for float16/int8</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> <code>exportNdjson(path)</code> — live rows, one JSON per line</li>
+              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Large DBs need RAM for the decoded matrix</li>
             </ul>
           </article>
         </div>
 
         <div class="feature-grid" style="margin-top: 1.5rem;">
           <article class="feature-card cyan">
-            <h3>Node API (<code>logosdb@1.4.0</code>)</h3>
+            <h3>Node API (<code>logosdb@1.5.0</code>)</h3>
             <p>
-              <code>options.dtype</code> · <code>DTYPE_FLOAT32</code> / <code>DTYPE_FLOAT16</code> / <code>DTYPE_INT8</code> ·
-              <code>db.stats().storage_dtype</code> · <code>db.sync()</code> · <code>compact(src, dst)</code>
+              <code>db.liveIds()</code> · <code>db.rawVectors()</code> · <code>db.exportNdjson(path)</code> ·
+              <code>options.dtype</code> · <code>db.sync()</code> · <code>compact(src, dst)</code>
             </p>
           </article>
           <article class="feature-card blue">
-            <h3>Python <code>dtype=</code></h3>
+            <h3>Python bulk scan</h3>
             <p>
-              <code>DB(path, dim, dtype=logosdb.DTYPE_FLOAT16)</code> — same constants as the C API.
-              <code>stats()["storage_dtype"]</code> reports the on-disk format.
+              <code>db.live_ids()</code> · <code>db.raw_vectors()</code> (dequantizes float16/int8) ·
+              <code>db.export_ndjson(path)</code>. Same C API as Node <code>liveIds</code> / bulk export.
             </p>
           </article>
           <article class="feature-card purple">
@@ -217,7 +216,7 @@
           </article>
           <article class="feature-card purple">
             <h3>MCP &amp; n8n</h3>
-            <p><code>logosdb-mcp-server@1.4.3</code> depends on <code>logosdb@^1.4.0</code>. <code>n8n-nodes-logosdb@1.0.3</code> unchanged.</p>
+            <p><code>logosdb-mcp-server@1.4.4</code> depends on <code>logosdb@^1.5.0</code>. <code>n8n-nodes-logosdb@1.0.3</code> unchanged.</p>
           </article>
         </div>
       </div>
@@ -237,7 +236,7 @@
             <div class="badge-icon">🧩</div>
             <div>
               <h3>MCP server — Claude Code</h3>
-              <p><code>logosdb-mcp-server@1.4.3</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default. Launch with <code>npx -y logosdb-mcp-server --path ./.logosdb</code>.</p>
+              <p><code>logosdb-mcp-server@1.4.4</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default. Launch with <code>npx -y logosdb-mcp-server --path ./.logosdb</code>.</p>
             </div>
           </article>
           <article class="integration-card">
@@ -308,15 +307,13 @@ print(row.id, row.text, row.embedding.shape)
 print(db.stats())  # rows_live, tombstones, sync_calls, …
 db.sync()</code></pre>
 
-        <pre class="code-block"><code class="language-javascript">const { DB, DTYPE_FLOAT16 } = require("logosdb");
+        <pre class="code-block"><code class="language-javascript">const { DB } = require("logosdb");
 
-const db = new DB("/tmp/node_memory", {
-  dim: 384,
-  distance: 1 /* DIST_COSINE */,
-  dtype: DTYPE_FLOAT16,
-});
-db.put(embedding, "note", "2026-11-17T12:00:00Z");
-console.log(db.stats().storage_dtype); // 1 === DTYPE_FLOAT16
+const db = new DB("/tmp/node_memory", { dim: 384, distance: 1 /* DIST_COSINE */ });
+db.put(embedding, "note", "2026-11-24T12:00:00Z");
+console.log(db.liveIds()); // active row ids
+const raw = db.rawVectors(); // Float32Array, count()*dim()
+db.exportNdjson("/tmp/rows.ndjson");
 db.close();</code></pre>
 
         <pre class="code-block"><code><span class="prompt">&gt;</span> logosdb-cli info /tmp/agent_memory
@@ -352,7 +349,7 @@ db.close();</code></pre>
         <a href="https://www.npmjs.com/package/logosdb-mcp-server">MCP server</a>
         <a href="https://github.com/jose-compu/logosdb/blob/main/LICENSE">MIT License</a>
       </div>
-      <p class="footer-copy">LogosDB 1.4.0 · MCP 1.4.3 · n8n 1.0.3 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
+      <p class="footer-copy">LogosDB 1.5.0 · MCP 1.4.4 · n8n 1.0.3 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
     </div>
   </footer>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
