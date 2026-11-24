@@ -312,6 +312,7 @@ Returns:
         .def("count", &logosdb::DB::count, "Total row count including tombstoned rows.")
 
         .def("count_live", &logosdb::DB::count_live, "Live row count (total minus tombstoned).")
+        .def("live_ids", &logosdb::DB::live_ids, "Ids of live rows (tombstones omitted).")
 
         .def("sync",
              &logosdb::DB::sync,

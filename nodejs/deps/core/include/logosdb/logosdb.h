@@ -5,9 +5,9 @@
 #include <stdint.h>
 
 #define LOGOSDB_VERSION_MAJOR 1
-#define LOGOSDB_VERSION_MINOR 4
+#define LOGOSDB_VERSION_MINOR 5
 #define LOGOSDB_VERSION_PATCH 0
-#define LOGOSDB_VERSION_STRING "1.4.0"
+#define LOGOSDB_VERSION_STRING "1.5.0"
 
 /* Distance metrics for vector similarity search */
 #define LOGOSDB_DIST_IP 0     /* Inner product (default, requires L2-normalized vectors) */
@@ -219,11 +219,26 @@ extern "C"
     /* Live row count: total rows minus rows marked deleted. */
     size_t logosdb_count_live(logosdb_t* db);
 
+    /* Write live row ids into `out_ids` (length `cap`). On success sets
+     * `*n_out` to the number written (≤ cap). Tombstoned rows are omitted.
+     * If `cap` is smaller than the live count, returns -1 and sets `*n_out` to
+     * the required capacity. Pass `out_ids == NULL` and `cap == 0` to query
+     * `*n_out` only. Takes the same mutex as search and export. */
+    int logosdb_live_ids(logosdb_t* db, uint64_t* out_ids, size_t cap, size_t* n_out);
+
     int logosdb_dim(logosdb_t* db);
 
     /* ── Bulk read (for tensor construction) ───────────────────────────── */
 
     const float* logosdb_raw_vectors(logosdb_t* db, size_t* n_rows, int* dim);
+
+    /* Copy every stored row as float32 into `out` (`out_cap` floats).
+     * Includes tombstone slots (decode either way). For float32 storage this
+     * mirrors the mmap matrix; for float16/int8 each row is dequantized.
+     * Returns 0 on success, -1 if `out` is too small (*n_out set to required
+     * float count). Pass `out == NULL` and `out_cap == 0` to query size. */
+    int
+    logosdb_raw_vectors_decode(logosdb_t* db, float* out, size_t out_cap, size_t* n_rows, int* dim);
 
     /* ── Streaming import/export (#87) ─────────────────────────────────── */
 
@@ -608,6 +623,24 @@ class DB
     size_t count_live() const { return logosdb_count_live(db_); }
     int dim() const { return logosdb_dim(db_); }
 
+    /* Ids of rows that are still in the index (tombstones omitted). */
+    std::vector<uint64_t> live_ids() const
+    {
+        size_t n_live = count_live();
+        if (n_live == 0)
+            return {};
+        std::vector<uint64_t> ids(n_live);
+        size_t n_out = 0;
+        if (logosdb_live_ids(db_, ids.data(), ids.size(), &n_out) != 0)
+        {
+            ids.resize(n_out);
+            if (logosdb_live_ids(db_, ids.data(), ids.size(), &n_out) != 0)
+                throw std::runtime_error("logosdb_live_ids failed");
+        }
+        ids.resize(n_out);
+        return ids;
+    }
+
     /* Streaming NDJSON export of live rows in [start_id, end_id_exclusive) to `out_path`.
      * Pass end_id_exclusive == 0 to export until count(). */
     void
@@ -643,26 +676,25 @@ class DB
         }
     }
 
-    // Get raw vectors as float32. For quantized storage, this allocates and dequantizes.
-    // The caller receives a vector they own (copy for quantized, view for float32).
+    /* Every stored row as float32 (n_rows × dim), including tombstone slots. */
     std::vector<float> raw_vectors(size_t& n_rows, int& d) const
     {
         const float* raw = logosdb_raw_vectors(db_, &n_rows, &d);
         if (raw)
-        {
-            // Float32 storage - return a copy for API consistency
-            return std::vector<float>(raw, raw + n_rows * d);
-        }
-        // Quantized storage - need to dequantize
-        n_rows = count();
-        d = dim();
-        if (n_rows == 0 || d == 0)
+            return std::vector<float>(raw, raw + n_rows * static_cast<size_t>(d));
+
+        size_t nr = 0;
+        int dim_out = 0;
+        if (logosdb_raw_vectors_decode(db_, nullptr, 0, &nr, &dim_out) != 0 || nr == 0 ||
+            dim_out <= 0)
             return {};
 
-        std::vector<float> result(n_rows * d);
-        // Note: This is a simplified version - actual implementation would
-        // access the storage layer directly. For now, we return empty.
-        // Full implementation requires exposing row_to_float32 to C API.
+        const size_t nfloats = nr * static_cast<size_t>(dim_out);
+        std::vector<float> result(nfloats);
+        if (logosdb_raw_vectors_decode(db_, result.data(), result.size(), &nr, &dim_out) != 0)
+            return {};
+        n_rows = nr;
+        d = dim_out;
         return result;
     }
 

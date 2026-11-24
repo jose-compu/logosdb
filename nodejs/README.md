@@ -1,4 +1,4 @@
-# LogosDB - Node.js Bindings
+#LogosDB - Node.js Bindings
 
 Fast semantic vector database (HNSW + mmap) for Node.js. Zero-copy memory-mapped storage with local-only deployment.
 
@@ -20,24 +20,30 @@ Prebuilt binaries may be attached to GitHub releases as **N-API** tarballs (`nap
 
 ## Publishing (maintainers)
 
-Run **`npm publish` from this directory** (`nodejs/` in the git repo), not from the repository root. The root `package.json` is a **private** workspace (`logosdb-workspace`) for the MCP subpackage; publishing there hits `EPRIVATE` and can pack the wrong tree.
+Run **`npm publish` from this directory** (`nodejs/` in the git repo), not from the repository root. The root `package.json` is a **private** workspace (`logosdb-workspace`) for the MCP subpackage;
+publishing there hits `EPRIVATE` and can pack the wrong tree.
 
-**`prepublishOnly`** runs **`npm run vendor-core`**, which refreshes **`deps/core/`** from the monorepo parent (`../include`, `../src`, `../third_party/...`) so the published tarball stays self-contained. Maintainer prebuild tarballs: **`npm run native:prebuild`** (not `prebuild` — that name is reserved as an npm lifecycle hook and would run before every `npm run build`).
+        **`prepublishOnly`**runs **`npm run vendor -
+    core`**,
+    which refreshes **`deps /
+            core /`**from the monorepo parent(`../ include `, `../ src`, `../ third_party / ...`)
+                so the published tarball stays self
+        - contained.Maintainer prebuild tarballs : **`npm run native : prebuild`* *
+              (not `prebuild` — that name is reserved as an npm lifecycle hook and
+               would run before every `npm run build`)
+                  .
 
-```bash
-cd nodejs
-npm publish
+```bash cd nodejs npm publish
 ```
 
-## Quick Start
+              ##Quick Start
 
-```javascript
-const { DB, DIST_COSINE } = require('logosdb');
+```javascript const {DB, DIST_COSINE} = require('logosdb');
 
 // Create database
 const db = new DB('/tmp/mydb', {
-  dim: 384,              // Vector dimension
-  distance: DIST_COSINE  // Auto-normalizes vectors
+    dim: 384,              // Vector dimension
+    distance: DIST_COSINE  // Auto-normalizes vectors
 });
 
 // Insert documents with embeddings
@@ -48,15 +54,16 @@ const id = db.put(embedding, 'My document text', '2025-01-01T00:00:00Z');
 const query = [0.15, 0.25, /* ... */];
 const hits = db.search(query, 5);
 
-for (const hit of hits) {
-  console.log(`${hit.score.toFixed(4)}  ${hit.text}`);
+for (const hit of hits)
+{
+    console.log(`${hit.score.toFixed(4)} $ { hit.text }`);
 }
 
 // Close
 db.close();
 ```
 
-The Node binding only stores vectors; it does **not** embed text. For **local embeddings** in your own app, use `@xenova/transformers`, call OpenAI/Voyage, etc., and pass `float` arrays whose length matches `dim`. The **`logosdb-mcp-server`** package bundles Transformers.js as the default embedding backend — see [`mcp/README.md`](../mcp/README.md).
+    The Node binding only stores vectors; it does **not** embed text. For **local embeddings** in your own app, use `@xenova/transformers`, call OpenAI/Voyage, etc., and pass `float` arrays whose length matches `dim`. The **`logosdb-mcp-server`** package bundles Transformers.js as the default embedding backend — see [`mcp/README.md`](../mcp/README.md).
 
 ## API
 
@@ -103,6 +110,14 @@ Delete a row by ID.
 
 Get total/live row counts.
 
+### `db.liveIds()` / `db.rawVectors()` / `db.exportNdjson(path, options?)`
+
+`liveIds()` returns ids of rows still in the index (tombstones omitted). `rawVectors()` returns a `Float32Array` of length `count() × dim()` with every stored row decoded to float32 (including float16/int8 stores). `exportNdjson(path)` writes live rows to NDJSON;
+optional `
+{
+    startId, endIdExclusive
+}` bound the id range (`endIdExclusive` 0 means until `count()`).
+
 ### `db.sync()` / `db.stats()`
 
 `sync()` flushes the WAL, persists the HNSW index, and fsyncs vector and metadata files (point-in-time durability for backups). `stats()` returns operation counters and store health fields with the same keys as Python `DB.stats()`.
@@ -118,8 +133,10 @@ Close the database.
 ## Storage dtype
 
 - `DTYPE_FLOAT32` (0): default, 4 bytes per dimension
-- `DTYPE_FLOAT16` (1): ~half the disk footprint; small accuracy cost
-- `DTYPE_INT8` (2): ~quarter size; per-vector scale; search quality may differ from float32
+- `DTYPE_FLOAT16` (1): ~half the disk footprint;
+small accuracy cost - `DTYPE_INT8` (2)
+    : ~quarter size;
+per - vector scale; search quality may differ from float32
 
 Search still uses float32 internally (vectors are dequantized on read). Pass the same `dtype` when reopening a database.
 
@@ -148,29 +165,32 @@ RAM scales with query patterns, not dataset size.
 ```typescript
 import { DB, SearchHit, DIST_COSINE } from 'logosdb';
 
-const db = new DB('/tmp/mydb', { dim: 384, distance: DIST_COSINE });
-const hits: SearchHit[] = db.search(embedding, 5);
+const db = new DB('/tmp/mydb', {dim: 384, distance: DIST_COSINE});
+const hits : SearchHit[] = db.search(embedding, 5);
 ```
 
-## Building from source
+    ##Building from source
 
-From a **full monorepo** checkout, regenerate vendored core C++ (same step as publish):
+        From a **full monorepo **checkout,
+    regenerate vendored core C++(same step as publish)
+    :
 
-```bash
-cd nodejs
-npm run vendor-core
-npm install
-npm run build
+```bash cd nodejs npm run vendor -
+      core npm install npm run build
 ```
 
-Requirements: Python usable by **node-gyp** (often 3.10–3.13), C++17 (Clang/GCC/MSVC). The Node addon does **not** use CMake.
+          Requirements : Python usable by
+                         *
+                         *node
+      - gyp * *(often 3.10–3.13),
+    C++ 17(Clang / GCC / MSVC).The Node addon does * * not **use CMake.
 
-## License
+                                                             ##License
 
-MIT — see [LICENSE](../LICENSE)
+                                                             MIT — see[LICENSE](../ LICENSE)
 
-## Links
+                                                                 ##Links
 
-- GitHub: https://github.com/jose-compu/logosdb
-- Issues: https://github.com/jose-compu/logosdb/issues
-- Python bindings: `pip install logosdb`
+        - GitHub : https :                     // github.com/jose-compu/logosdb
+                            -Issues : https :  // github.com/jose-compu/logosdb/issues
+                                               -Python bindings : `pip install logosdb`

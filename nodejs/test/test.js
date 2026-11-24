@@ -463,6 +463,57 @@ describe('LogosDB Node.js', function() {
     });
   });
 
+  describe('liveIds, rawVectors, exportNdjson', () => {
+    let dbPath;
+
+    afterEach(() => {
+      cleanup(dbPath);
+    });
+
+    it('liveIds omits deleted ids', () => {
+      dbPath = createTempDir();
+      const db = new DB(dbPath, { dim: 8, distance: DIST_COSINE });
+      db.put(randomUnitVector(8, 1), 'a');
+      db.put(randomUnitVector(8, 2), 'b');
+      db.put(randomUnitVector(8, 3), 'c');
+      db.delete(1);
+      const ids = db.liveIds();
+      assert.deepStrictEqual(ids, [0, 2]);
+      assert.strictEqual(ids.length, db.countLive());
+      db.close();
+    });
+
+    it('rawVectors decodes float16 storage', () => {
+      dbPath = createTempDir();
+      const v0 = randomUnitVector(16, 77);
+      const db = new DB(dbPath, { dim: 16, dtype: DTYPE_FLOAT16, distance: DIST_COSINE });
+      db.put(v0, 'f16');
+      const raw = db.rawVectors();
+      assert.strictEqual(raw.length, 16);
+      for (let i = 0; i < 16; i++) {
+        assert.ok(Math.abs(raw[i] - v0[i]) < 0.05);
+      }
+      db.close();
+    });
+
+    it('exportNdjson writes live rows', () => {
+      dbPath = createTempDir();
+      const db = new DB(dbPath, { dim: 4, distance: DIST_COSINE });
+      const v = randomUnitVector(4, 9);
+      db.put(v, 'row0');
+      db.put(randomUnitVector(4, 10), 'row1');
+      db.delete(1);
+      const out = path.join(dbPath, 'out.ndjson');
+      db.exportNdjson(out);
+      const lines = fs.readFileSync(out, 'utf8').trim().split('\n');
+      assert.strictEqual(lines.length, 1);
+      const row = JSON.parse(lines[0]);
+      assert.strictEqual(row.id, 0);
+      assert.strictEqual(row.text, 'row0');
+      db.close();
+    });
+  });
+
   describe('Persistence', () => {
     let dbPath;
 

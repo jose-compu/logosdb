@@ -2,7 +2,7 @@
 
 <img width="1248" height="832" alt="image" src="https://github.com/user-attachments/assets/490d2c94-bebf-4841-a12f-cd230600c65a" />
 
-[![LogosDB v1.4.0 release banner](assets/banners/linkedin-v1.4.0.png)](https://github.com/jose-compu/logosdb/releases/tag/v1.4.0)
+[![LogosDB v1.5.0 release banner](assets/banners/linkedin-v1.5.0.png)](https://github.com/jose-compu/logosdb/releases/tag/v1.5.0)
 
 [![CI](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml)
 [![Python](https://github.com/jose-compu/logosdb/actions/workflows/python.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/python.yml)
@@ -17,18 +17,18 @@ Authors: Jose ([@jose-compu](https://github.com/jose-compu))
 
 **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, style guide, and PR workflow.
 
-## Packages (release 1.4.0)
+## Packages (release 1.5.0)
 
 | Package | Version | Install |
 |---------|---------|---------|
-| [logosdb](https://pypi.org/project/logosdb/) (Python / PyPI) | 1.4.0 | `pip install logosdb==1.4.0` |
-| [logosdb](https://www.npmjs.com/package/logosdb) (Node.js) | 1.4.0 | `npm install logosdb@1.4.0` |
-| [logosdb-mcp-server](https://www.npmjs.com/package/logosdb-mcp-server) | 1.4.3 | `npm install logosdb-mcp-server@1.4.3` |
+| [logosdb](https://pypi.org/project/logosdb/) (Python / PyPI) | 1.5.0 | `pip install logosdb==1.5.0` |
+| [logosdb](https://www.npmjs.com/package/logosdb) (Node.js) | 1.5.0 | `npm install logosdb@1.5.0` |
+| [logosdb-mcp-server](https://www.npmjs.com/package/logosdb-mcp-server) | 1.4.4 | `npm install logosdb-mcp-server@1.4.4` |
 | [n8n-nodes-logosdb](https://www.npmjs.com/package/n8n-nodes-logosdb) | 1.0.3 | `npm install n8n-nodes-logosdb@1.0.3` |
 
 Omit the `==` / `@version` pin to get the latest matching release on each registry.
 
-# Features
+#Features
 
   * Vectors and metadata are stored as flat binary files, memory-mapped for zero-copy reads.
   * Approximate nearest-neighbor search via [HNSW](https://arxiv.org/abs/1603.09320) (hnswlib), O(log n) query time.
@@ -39,13 +39,14 @@ Omit the `==` / `@version` pin to get the latest matching release on each regist
   * Bulk vector access for direct tensor construction (e.g. loading into GPU memory).
   * Thread-safe API on a single open handle: an internal mutex serializes operations that touch the index and metadata (including search).
   * Crash recovery: HNSW index is automatically backfilled from the append-only vector store on open.
+  * **`liveIds()` / `rawVectors()` / `exportNdjson()`** (1.5.0): list active row ids, read decoded float32 vectors in bulk, or stream live rows to NDJSON (Node; C/Python expose the same C API).
   * **`dtype` storage option** (1.4.0): store vectors as float32 (default), float16 (~half size), or int8 (~quarter size) on Node and Python; search still dequantizes to float32.
   * **`sync()` / `stats()` / `compact()`** (1.3.0): explicit durability flush, operation counters, and tombstone-free copy into a new directory (Python, Node.js, C++).
   * Scales to millions of vectors.
   * **Framework integrations**: LangChain and LlamaIndex VectorStore adapters.
   * **MCP server**: first-class [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) integration via `logosdb-mcp-server`.
 
-# Documentation
+#Documentation
 
 The public interface is in `include/logosdb/logosdb.h`. Callers should not include or rely on the details of any other header files in this package. Those internal APIs may be changed without warning.
 
@@ -60,7 +61,7 @@ Guide to header files:
   - `logosdb::SearchHit` result struct
   - `logosdb_search_ts_range()` for timestamp-filtered search
 
-# Limitations
+#Limitations
 
   * This is not a general-purpose vector database. It is purpose-built for embedding-based memory retrieval in LLM inference ([funes.cpp](../funes.cpp)).
   * Only a single process (possibly multi-threaded) can access a particular database at a time.
@@ -68,7 +69,7 @@ Guide to header files:
   * For inner-product distance (`LOGOSDB_DIST_IP`, the default), vectors must be L2-normalized before insertion. Use `LOGOSDB_DIST_COSINE` for automatic normalization.
   * Embedding generation is external — the caller provides pre-computed float vectors.
 
-# Roadmap
+#Roadmap
 
 Work is tracked in [open issues](https://github.com/jose-compu/logosdb/issues?q=is%3Aissue+is%3Aopen). **1.0.0** shipped on 2026-05-17; the public C API and supported language bindings follow [Semantic Versioning](https://semver.org/) on the `1.x` line:
 
@@ -111,6 +112,10 @@ Past releases are summarized in the [CHANGELOG](CHANGELOG) and the [closed miles
 
   * [#116](https://github.com/jose-compu/logosdb/issues/116) — Sync `CHANGELOG`, version macros, package metadata, and post-1.0 docs.
 
+### **SHIPPED** [1.5.0](https://github.com/jose-compu/logosdb/releases/tag/v1.5.0) — minor — live ids and bulk export
+
+  * [#135](https://github.com/jose-compu/logosdb/issues/135) — `logosdb_live_ids`, Python `live_ids()`, Node `liveIds()`, `rawVectors()`, `exportNdjson()`. Ships with `logosdb-mcp-server` **1.4.4**.
+
 ### **SHIPPED** [1.4.0](https://github.com/jose-compu/logosdb/releases/tag/v1.4.0) — minor — storage dtype
 
   * [#139](https://github.com/jose-compu/logosdb/issues/139) — `dtype` option on Node and Python `DB` constructors (`DTYPE_FLOAT32` / `DTYPE_FLOAT16` / `DTYPE_INT8`). Reopening with the wrong dtype fails. Ships with `logosdb-mcp-server` **1.4.3**.
@@ -132,14 +137,14 @@ As of **1.0.0**, the project commits to stable semver for the public C API and s
   * Tier-1 platforms for 1.x are **Linux and macOS**; Windows remains tracked in [#10](https://github.com/jose-compu/logosdb/issues/10).
   * Backup/restore and doctor tooling shipped in earlier 0.x releases; further hardening continues on the 1.x line.
 
-# Getting the Source
+#Getting the Source
 
 ```bash
 git clone --recurse-submodules <repository-url>
 cd logosdb
 ```
 
-# Building
+#Building
 
 This project supports [CMake](https://cmake.org/) out of the box.
 
@@ -159,7 +164,7 @@ This builds:
 | `logosdb-bench` | Benchmark: HNSW vs brute-force, with ChromaDB comparison |
 | `logosdb-test` | Unit tests |
 
-# Usage (C API)
+#Usage(C API)
 
 ```c
 #include <logosdb/logosdb.h>
@@ -175,15 +180,13 @@ float vec[2048] = { /* ... unnormalized vector ... */ };
 
 // L2-normalize for inner-product distance (returns 0 on success, -1 if zero norm)
 if (logosdb_l2_normalize(vec, 2048) == 0) {
-    logosdb_put(db, vec, 2048, "My commute is 42 minutes",
-                "2025-06-25T10:00:00Z", &err);
+    logosdb_put(db, vec, 2048, "My commute is 42 minutes", "2025-06-25T10:00:00Z", &err);
 }
 
 logosdb_search_result_t *res = logosdb_search(db, query_vec, 2048, 5, &err);
 for (int i = 0; i < logosdb_result_count(res); i++) {
-    printf("#%d score=%.4f text=%s\n", i,
-           logosdb_result_score(res, i),
-           logosdb_result_text(res, i));
+    printf(
+        "#%d score=%.4f text=%s\n", i, logosdb_result_score(res, i), logosdb_result_text(res, i));
 }
 logosdb_result_free(res);
 logosdb_close(db);
@@ -209,7 +212,8 @@ logosdb_search_result_t *res = logosdb_search_ts_range(
     &err);
 
 for (int i = 0; i < logosdb_result_count(res); i++) {
-    printf("#%d score=%.4f ts=%s text=%s\n", i,
+    printf("#%d score=%.4f ts=%s text=%s\n",
+           i,
            logosdb_result_score(res, i),
            logosdb_result_timestamp(res, i),
            logosdb_result_text(res, i));
@@ -245,10 +249,11 @@ logosdb_put(db, vec, 2048, "entry", "2025-04-22T10:00:00Z", &err);
 logosdb_close(db);
 ```
 
-# Usage (C++ wrapper)
+#Usage(C++ wrapper)
 
 ```cpp
 #include <logosdb/logosdb.h>
+
 #include <vector>
 
 // Basic usage with default inner-product distance
@@ -305,14 +310,14 @@ auto results = db.search(query, 5);
 // logosdb::DB db("/tmp/mydb", {.dim = 2048, .distance = LOGOSDB_DIST_L2});
 ```
 
-# Python
+#Python
 
 LogosDB ships Python bindings built with [pybind11](https://pybind11.readthedocs.io/) and [scikit-build-core](https://scikit-build-core.readthedocs.io/).
 
-Install from PyPI (release **1.4.0**; binary wheels for Linux x86_64/aarch64 and macOS x86_64/arm64 on CPython 3.9–3.13):
+Install from PyPI (release **1.5.0**; binary wheels for Linux x86_64/aarch64 and macOS x86_64/arm64 on CPython 3.9–3.13):
 
 ```bash
-pip install logosdb==1.4.0
+pip install logosdb==1.5.0
 ```
 
 Or build from source in a clone:
@@ -327,14 +332,14 @@ Usage:
 import logosdb
 from sentence_transformers import SentenceTransformer
 
-# Local Hugging Face embeddings model (runs on your machine)
+#Local Hugging Face embeddings model(runs on your machine)
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 dim = model.get_sentence_embedding_dimension()
 
-# Use cosine distance so LogosDB auto-normalizes vectors
+#Use cosine distance so LogosDB auto - normalizes vectors
 db = logosdb.DB("/tmp/agent_memory", dim=dim, distance=logosdb.DIST_COSINE)
 
-# Three learnings captured by an AI agent
+#Three learnings captured by an AI agent
 learnings = [
     ("Retrying API calls with exponential backoff reduced transient failures by 42%.", "2026-05-06T09:00:00Z"),
     ("Splitting long tasks into smaller batches improved throughput and lowered memory spikes.", "2026-05-06T09:05:00Z"),
@@ -345,7 +350,7 @@ for text, ts in learnings:
     emb = model.encode(text).astype("float32")
     db.put(emb, text=text, timestamp=ts)
 
-# Ask a natural-language question
+#Ask a natural - language question
 question = "How can we avoid duplicate writes when retries happen?"
 q_emb = model.encode(question).astype("float32")
 
@@ -360,14 +365,14 @@ for h in hits:
 import numpy as np
 import logosdb
 
-# With cosine distance, vectors are automatically normalized
+#With cosine distance, vectors are automatically normalized
 db = logosdb.DB("/tmp/mydb", dim=128, distance=logosdb.DIST_COSINE)
 
-# No need to normalize - just put raw vectors
+#No need to normalize - just put raw vectors
 v = np.random.randn(128).astype(np.float32)
 rid = db.put(v, text="unnormalized vector", timestamp="2025-04-22T10:00:00Z")
 
-# Search also works with unnormalized queries
+#Search also works with unnormalized queries
 query = np.random.randn(128).astype(np.float32)
 hits = db.search(query, top_k=5)
 ```
@@ -380,11 +385,11 @@ import logosdb
 
 db = logosdb.DB("/tmp/mydb", dim=128, distance=logosdb.DIST_COSINE)
 
-# Chunked, WAL-aware batch insert (LOGOSDB_BATCH_CHUNK_SIZE controls fsync cadence).
+#Chunked, WAL - aware batch insert(LOGOSDB_BATCH_CHUNK_SIZE controls fsync cadence).
 embeddings = np.random.randn(10_000, 128).astype(np.float32)
 ids = db.put_batch(embeddings, texts=[f"row {i}" for i in range(10_000)])
 
-# Bounded-memory NDJSON export/import; --resume from a checkpoint on interruption.
+#Bounded - memory NDJSON export / import; --resume from a checkpoint on interruption.
 db.export_ndjson("/tmp/rows.ndjson")
 restored = logosdb.DB("/tmp/restored", dim=128, distance=logosdb.DIST_COSINE)
 restored.import_ndjson("/tmp/rows.ndjson", chunk_size=1024,
@@ -396,13 +401,13 @@ restored.import_ndjson("/tmp/rows.ndjson", chunk_size=1024,
 ```python
 import logosdb
 
-# Default float32; float16 ~half disk; int8 ~quarter (small accuracy trade-off)
+#Default float32; float16 ~half disk; int8 ~quarter(small accuracy trade - off)
 db = logosdb.DB("/tmp/small", dim=384, dtype=logosdb.DTYPE_FLOAT16)
 db.put(embedding, text="chunk")
 assert db.stats()["storage_dtype"] == logosdb.DTYPE_FLOAT16
 db.close()
 
-# Reopen with the same dtype (required)
+#Reopen with the same dtype(required)
 db = logosdb.DB("/tmp/small", dim=384, dtype=logosdb.DTYPE_FLOAT16)
 ```
 
@@ -414,7 +419,7 @@ import logosdb
 db = logosdb.DB("/tmp/mydb", dim=128, distance=logosdb.DIST_COSINE)
 db.put(embedding, text="row", timestamp="2026-11-14T00:00:00Z")
 
-# Point-in-time flush before backup (WAL + HNSW + vector/metadata stores)
+#Point - in - time flush before backup(WAL + HNSW + vector / metadata stores)
 db.sync()
 print(db.stats()["rows_live"], db.stats()["sync_calls"])
 
@@ -430,7 +435,7 @@ pytest tests/python/
 
 python examples/python/basic_usage.py
 
-# sentence-transformers demo (optional heavy dep)
+#sentence - transformers demo(optional heavy dep)
 pip install ".[examples]"
 python examples/python/sentence_transformers_demo.py
 ```
@@ -458,11 +463,11 @@ import numpy as np
 import logosdb
 from sentence_transformers import SentenceTransformer
 
-# 1. Load model (runs locally)
+# 1. Load model(runs locally)
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 dim = model.get_sentence_embedding_dimension()
 
-# 2. Create DB with cosine distance (auto-normalizes)
+# 2. Create DB with cosine distance(auto - normalizes)
 db = logosdb.DB("/data/knowledge", dim=dim, distance=logosdb.DIST_COSINE)
 
 # 3. Index documents
@@ -470,7 +475,7 @@ for text in documents:
     emb = model.encode(text)
     db.put(emb, text=text)  # Auto-normalized with cosine distance
 
-# 4. Query (only touched pages load into RAM)
+# 4. Query(only touched pages load into RAM)
 query_emb = model.encode("What is HNSW?")
 for hit in db.search(query_emb, top_k=3):
     print(f"{hit.score:.4f}  {hit.text}")
@@ -503,10 +508,10 @@ from llama_index.core.schema import TextNode
 from llama_index.core.vector_stores import VectorStoreQuery
 import numpy as np
 
-# Create the vector store
+#Create the vector store
 db = LogosDBIndex(uri="/tmp/mydb", dim=128)
 
-# Add nodes with pre-computed embeddings
+#Add nodes with pre - computed embeddings
 node = TextNode(
     text="My commute is 42 minutes",
     embedding=np.random.randn(128).astype(np.float32).tolist(),
@@ -514,7 +519,7 @@ node = TextNode(
 )
 db.add([node])
 
-# Query
+#Query
 query_emb = np.random.randn(128).astype(np.float32).tolist()
 query = VectorStoreQuery(query_embedding=query_emb, similarity_top_k=5)
 results = db.query(query)
@@ -522,7 +527,7 @@ results = db.query(query)
 for node, score in zip(results.nodes, results.similarities):
     print(f"Score: {score:.4f}, Text: {node.text}")
 
-# Timestamp range filtering
+#Timestamp range filtering
 results = db.query(query, ts_from="2025-04-01T00:00:00Z", ts_to="2025-04-30T23:59:59Z")
 ```
 
@@ -534,27 +539,27 @@ The `LogosDBIndex` class implements LlamaIndex's `VectorStore` interface, suppor
 - `count()` / `len(store)` - Number of live documents
 - Timestamp filtering via `ts_from` and `ts_to` kwargs
 
-# CLI
+#CLI
 
 ```bash
-# Database info
+#Database info
 logosdb-cli info /tmp/mydb
 
-# Search with a binary query vector file
+#Search with a binary query vector file
 logosdb-cli search /tmp/mydb --query-file q.bin --top-k 5
 
-# Streaming NDJSON export / import (#87) — bounded memory, optional resume
+#Streaming NDJSON export / import(#87) — bounded memory, optional resume
 logosdb-cli export /tmp/mydb --output rows.ndjson [--start-id N --end-id M]
 logosdb-cli import /tmp/mydb --dim 768 --input rows.ndjson \
     --chunk-size 1024 --checkpoint rows.cp [--resume]
 ```
 
-# Node.js
+#Node.js
 
 The [`logosdb`](https://www.npmjs.com/package/logosdb) package provides native bindings (N-API). The binding stores vectors you supply; it does not embed text. For a bundled embedding backend in an MCP agent, use [`logosdb-mcp-server`](#mcp-server--claude-code-integration) below.
 
 ```bash
-npm install logosdb@1.4.0
+npm install logosdb@1.5.0
 ```
 
 ```javascript
@@ -626,15 +631,16 @@ Project-local config lives in **`.claude/mcp.json`** at the repository root. Use
 
 ```json
 {
-  "mcpServers": {
-    "logosdb": {
-      "command": "node",
-      "args": ["./mcp/dist/index.js"],
-      "env": {
-        "LOGOSDB_PATH": "./.logosdb"
-      }
+    "mcpServers":
+    {
+        "logosdb":
+        {
+            "command" : "node", "args" : ["./mcp/dist/index.js"], "env":
+            {
+                "LOGOSDB_PATH" : "./.logosdb"
+            }
+        }
     }
-  }
 }
 ```
 
@@ -644,15 +650,16 @@ Open **this folder** as the Claude Code project so `./mcp/dist/index.js` resolve
 
 ```json
 {
-  "mcpServers": {
-    "logosdb": {
-      "command": "npx",
-      "args": ["-y", "logosdb-mcp-server"],
-      "env": {
-        "LOGOSDB_PATH": "./.logosdb"
-      }
+    "mcpServers":
+    {
+        "logosdb":
+        {
+            "command" : "npx", "args" : ["-y", "logosdb-mcp-server"], "env":
+            {
+                "LOGOSDB_PATH" : "./.logosdb"
+            }
+        }
     }
-  }
 }
 ```
 
@@ -740,9 +747,9 @@ Voyage AI (`voyage-3`, dim=1024) is Anthropic's recommended cloud embedding mode
 
 ```json
 "env": {
-  "LOGOSDB_PATH": "./.logosdb",
-  "EMBEDDING_PROVIDER": "voyage",
-  "VOYAGE_API_KEY": "<your-voyage-api-key>"
+    "LOGOSDB_PATH" : "./.logosdb",
+                     "EMBEDDING_PROVIDER" : "voyage",
+                                            "VOYAGE_API_KEY" : "<your-voyage-api-key>"
 }
 ```
 
@@ -769,9 +776,10 @@ In `.claude/mcp.json`, point the server at the global binary:
 
 ```json
 "logosdb": {
-  "command": "logosdb-mcp-server",
-  "args": [],
-  "env": { "LOGOSDB_PATH": "./.logosdb" }
+    "command" : "logosdb-mcp-server", "args" : [], "env":
+    {
+        "LOGOSDB_PATH" : "./.logosdb"
+    }
 }
 ```
 
@@ -789,9 +797,10 @@ Then use `npx` so the binary resolves from `./node_modules`:
 
 ```json
 "logosdb": {
-  "command": "npx",
-  "args": ["-y", "logosdb-mcp-server"],
-  "env": { "LOGOSDB_PATH": "./.logosdb" }
+    "command" : "npx", "args" : ["-y", "logosdb-mcp-server"], "env":
+    {
+        "LOGOSDB_PATH" : "./.logosdb"
+    }
 }
 ```
 
@@ -800,7 +809,8 @@ Omit `-y` if you prefer a fixed local install only. You can also call the entry 
 ```json
 "command": "node",
 "args": ["./node_modules/logosdb-mcp-server/dist/index.js"],
-"env": { "LOGOSDB_PATH": "./.logosdb" }
+"env": {
+    "LOGOSDB_PATH" : "./.logosdb" }
 ```
 
 **Option C — development build from a LogosDB clone**
@@ -813,15 +823,16 @@ This repository’s checked-in [`.claude/mcp.json`](.claude/mcp.json) uses a **r
 
 ```json
 "logosdb": {
-  "command": "node",
-  "args": ["/absolute/path/to/logosdb/mcp/dist/index.js"],
-  "env": { "LOGOSDB_PATH": "./.logosdb" }
+    "command" : "node", "args" : ["/absolute/path/to/logosdb/mcp/dist/index.js"], "env":
+    {
+        "LOGOSDB_PATH" : "./.logosdb"
+    }
 }
 ```
 
 The same `env` block (`LOGOSDB_PATH`, embedding variables) applies to every option. Restart Claude Code or reload MCP config after editing `.claude/mcp.json`.
 
-# Performance
+#Performance
 
 Here is a performance report from the included `logosdb-bench` program. The results are somewhat noisy, but should be enough to get a ballpark performance estimate.
 
@@ -831,7 +842,7 @@ We use databases with 1K, 10K, and 100K vectors. Each vector has 2048 dimensions
 
 *(Numbers below are illustrative ballparks; absolute values depend on hardware and build flags. Relative HNSW vs brute-force behavior is what to focus on.)*
 
-    LogosDB:    version 1.4.0
+    LogosDB:    version 1.5.0
     CPU:        Apple M-series (ARM64)
     Dim:        2048
     HNSW M:     16, ef_construction: 200, ef_search: 50
@@ -931,7 +942,7 @@ logosdb-bench --dim 2048 --counts 1000,10000,100000
 
 LogosDB uses the same HNSW implementation as ChromaDB (hnswlib) but eliminates Python overhead, SQLite serialization, and Sentence Transformer coupling. The result is a leaner library optimized for the single use case of embedded semantic memory for LLM inference.
 
-# Repository contents
+#Repository contents
 
     include/logosdb/logosdb.h     Public C/C++ API (start here)
     src/logosdb.cpp               Core engine: wires storage + index + metadata
@@ -958,7 +969,7 @@ LogosDB uses the same HNSW implementation as ChromaDB (hnswlib) but eliminates P
     CHANGELOG                     Release history
     LICENSE                       MIT license text
 
-# Contributing
+#Contributing
 
 We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - Building from source
@@ -967,6 +978,6 @@ We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 Please review our [Code of Conduct](CODE_OF_CONDUCT.md) and [Security Policy](SECURITY.md).
 
-# License
+#License
 
 MIT — see [LICENSE](LICENSE) for the full text.

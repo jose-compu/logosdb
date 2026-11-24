@@ -150,6 +150,36 @@ class DB {
   }
 
   /**
+   * Ids of rows still in the index (deleted rows omitted).
+   * @returns {number[]}
+   */
+  liveIds() {
+    this._checkClosed();
+    return this._db.liveIds();
+  }
+
+  /**
+   * All stored vectors decoded to float32 (length count() × dim()).
+   * @returns {Float32Array}
+   */
+  rawVectors() {
+    this._checkClosed();
+    return this._db.rawVectors();
+  }
+
+  /**
+   * Stream live rows to an NDJSON file.
+   * @param {string} outPath - Output file path
+   * @param {Object} [options]
+   * @param {number} [options.startId=0]
+   * @param {number} [options.endIdExclusive=0] - 0 means until count()
+   */
+  exportNdjson(outPath, options = {}) {
+    this._checkClosed();
+    this._db.exportNdjson(outPath, options);
+  }
+
+  /**
    * Flush WAL, persist HNSW index, and fsync vector + metadata stores.
    */
   sync() {

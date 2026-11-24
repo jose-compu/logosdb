@@ -1,6 +1,21 @@
 logosdb change log
 ==================
 
+1.5.0  (2026-11-24) — core / PyPI / npm `logosdb`
+-------------------------------------------------
+
+  * **#135 — Live ids and bulk vector export.** C API `logosdb_live_ids`,
+    Python `live_ids()`, Node `liveIds()`, `rawVectors()`, and
+    `exportNdjson()`. Lists active row ids in one call (tombstones omitted).
+    Bulk reads decode float16/int8 stores to float32. NDJSON export unchanged
+    on the C/Python side; Node gains a native wrapper.
+  * Ships with `logosdb-mcp-server` **1.4.4** (depends on `logosdb` ^1.5.0).
+
+1.4.4  (2026-11-24) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * Depend on `logosdb` **^1.5.0** (npm publish workflow in `.github/workflows/publish.yml`).
+
 1.4.0  (2026-11-17) — core / PyPI / npm `logosdb`
 -------------------------------------------------
 
