@@ -195,6 +195,27 @@ def test_export_import_ndjson_roundtrip(db_path: Path, tmp_path: Path):
     assert hits[0].text == "row_3"
 
 
+def test_live_ids_after_delete(db_path: Path):
+    db = DB(str(db_path), dim=DIM)
+    db.put(unit(100), "a")
+    db.put(unit(200), "b")
+    db.put(unit(300), "c")
+    db.delete(1)
+    ids = db.live_ids()
+    assert ids == [0, 2]
+    assert len(ids) == db.count_live()
+
+
+def test_raw_vectors_float16(db_path: Path):
+    path = db_path.parent / "float16"
+    db = DB(str(path), dim=DIM, dtype=1)
+    v0 = unit(7100)
+    db.put(v0, "q")
+    raw = db.raw_vectors()
+    assert raw.shape == (1, DIM)
+    assert np.allclose(raw[0], v0, atol=0.05)
+
+
 def test_raw_vectors_zero_copy(db_path: Path):
     db = DB(str(db_path), dim=DIM)
     v0 = unit(500)

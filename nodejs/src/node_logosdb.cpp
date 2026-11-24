@@ -76,6 +76,9 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
                             InstanceMethod("delete", &DBWrapper::Delete),
                             InstanceMethod("count", &DBWrapper::Count),
                             InstanceMethod("countLive", &DBWrapper::CountLive),
+                            InstanceMethod("liveIds", &DBWrapper::LiveIds),
+                            InstanceMethod("rawVectors", &DBWrapper::RawVectors),
+                            InstanceMethod("exportNdjson", &DBWrapper::ExportNdjson),
                             InstanceMethod("dim", &DBWrapper::Dim),
                             InstanceMethod("sync", &DBWrapper::Sync),
                             InstanceMethod("stats", &DBWrapper::Stats),
@@ -617,6 +620,94 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
         Napi::Env env = info.Env();
         size_t count = logosdb_count_live(db_);
         return Napi::Number::New(env, static_cast<double>(count));
+    }
+
+    Napi::Value LiveIds(const Napi::CallbackInfo& info)
+    {
+        Napi::Env env = info.Env();
+        if (!db_)
+        {
+            throw Napi::Error::New(env, "Database is closed");
+        }
+
+        size_t n_out = 0;
+        if (logosdb_live_ids(db_, nullptr, 0, &n_out) != 0 || n_out == 0)
+            return Napi::Array::New(env, 0);
+
+        std::vector<uint64_t> ids(n_out);
+        if (logosdb_live_ids(db_, ids.data(), ids.size(), &n_out) != 0)
+            throw Napi::Error::New(env, "liveIds failed");
+
+        Napi::Array arr = Napi::Array::New(env, n_out);
+        for (size_t i = 0; i < n_out; ++i)
+            arr.Set(i, Napi::Number::New(env, static_cast<double>(ids[i])));
+        return arr;
+    }
+
+    Napi::Value RawVectors(const Napi::CallbackInfo& info)
+    {
+        Napi::Env env = info.Env();
+        if (!db_)
+        {
+            throw Napi::Error::New(env, "Database is closed");
+        }
+
+        size_t n_rows = 0;
+        int dim = 0;
+        if (logosdb_raw_vectors_decode(db_, nullptr, 0, &n_rows, &dim) != 0 || n_rows == 0 ||
+            dim <= 0)
+            return Napi::Float32Array::New(env, 0);
+
+        const size_t nfloats = n_rows * static_cast<size_t>(dim);
+        std::vector<float> buf(nfloats);
+        size_t nr = 0;
+        int d = 0;
+        if (logosdb_raw_vectors_decode(db_, buf.data(), buf.size(), &nr, &d) != 0)
+            throw Napi::Error::New(env, "rawVectors failed");
+
+        Napi::Float32Array arr = Napi::Float32Array::New(env, nfloats);
+        std::memcpy(arr.Data(), buf.data(), nfloats * sizeof(float));
+        return arr;
+    }
+
+    Napi::Value ExportNdjson(const Napi::CallbackInfo& info)
+    {
+        Napi::Env env = info.Env();
+        if (!db_)
+        {
+            throw Napi::Error::New(env, "Database is closed");
+        }
+        if (info.Length() < 1 || !info[0].IsString())
+        {
+            throw Napi::TypeError::New(env, "Path (string) expected");
+        }
+
+        std::string out_path = info[0].As<Napi::String>().Utf8Value();
+        uint64_t start_id = 0;
+        uint64_t end_id_exclusive = 0;
+        if (info.Length() > 1 && info[1].IsObject())
+        {
+            Napi::Object opts = info[1].As<Napi::Object>();
+            if (opts.Has("startId"))
+                start_id =
+                    static_cast<uint64_t>(opts.Get("startId").As<Napi::Number>().Int64Value());
+            if (opts.Has("endIdExclusive"))
+                end_id_exclusive = static_cast<uint64_t>(
+                    opts.Get("endIdExclusive").As<Napi::Number>().Int64Value());
+        }
+
+        char* err = nullptr;
+        int rc = logosdb_export_ndjson(db_, out_path.c_str(), start_id, end_id_exclusive, &err);
+        if (rc != 0)
+        {
+            std::string error_msg = err ? err : "exportNdjson failed";
+            if (err)
+                free(err);
+            throw Napi::Error::New(env, error_msg);
+        }
+        if (err)
+            free(err);
+        return env.Undefined();
     }
 
     Napi::Value Dim(const Napi::CallbackInfo& info)

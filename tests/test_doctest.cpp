@@ -727,6 +727,29 @@ TEST_SUITE("delete_update")
         std::filesystem::remove_all(path);
     }
 
+    TEST_CASE("core: live_ids matches count_live after delete")
+    {
+        std::string path = tmp_path("logosdb_test_live_ids");
+        std::filesystem::remove_all(path);
+
+        int dim = 16;
+        logosdb::DB db(path, {.dim = dim});
+
+        db.put(unit_vec(dim, 2110), "a");
+        db.put(unit_vec(dim, 2120), "b");
+        db.put(unit_vec(dim, 2130), "c");
+        CHECK(db.count_live() == 3);
+
+        db.del(1);
+        auto ids = db.live_ids();
+        CHECK(ids.size() == 2);
+        CHECK(db.count_live() == ids.size());
+        CHECK(ids[0] == 0);
+        CHECK(ids[1] == 2);
+
+        std::filesystem::remove_all(path);
+    }
+
     TEST_CASE("delete_update: delete errors")
     {
         std::string path = tmp_path("logosdb_test_delete_err");
@@ -1851,6 +1874,17 @@ TEST_SUITE("storage")
             CHECK(hits2[0].id == 1);
         }
 
+        size_t n_rows = 0;
+        int d = 0;
+        auto raw = db.raw_vectors(n_rows, d);
+        CHECK(!raw.empty());
+        CHECK(n_rows == 3);
+        CHECK(d == dim);
+        float diff = 0.0f;
+        for (int i = 0; i < dim; ++i)
+            diff += std::fabs(raw[i] - v0[i]);
+        CHECK(diff < 0.05f);
+
         std::filesystem::remove_all(path);
     }
 
@@ -1885,6 +1919,17 @@ TEST_SUITE("storage")
             CHECK(!hits2.empty());
             CHECK(hits2[0].id == 1);
         }
+
+        size_t n_rows = 0;
+        int d = 0;
+        auto raw = db.raw_vectors(n_rows, d);
+        CHECK(!raw.empty());
+        CHECK(n_rows == 3);
+        CHECK(d == dim);
+        float diff = 0.0f;
+        for (int i = 0; i < dim; ++i)
+            diff += std::fabs(raw[i] - v0[i]);
+        CHECK(diff < 0.15f);
 
         std::filesystem::remove_all(path);
     }

@@ -175,6 +175,18 @@ export class DB {
    */
   countLive(): number;
 
+  /** Ids of live rows (tombstones omitted). */
+  liveIds(): number[];
+
+  /** Every stored vector as float32 (length count() × dim()). */
+  rawVectors(): Float32Array;
+
+  /** Stream live rows to an NDJSON file. */
+  exportNdjson(
+    outPath: string,
+    options?: { startId?: number; endIdExclusive?: number },
+  ): void;
+
   /** Flush WAL, index, vectors, and metadata to disk. */
   sync(): void;
 

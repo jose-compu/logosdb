@@ -937,9 +937,82 @@ size_t logosdb_count_live(logosdb_t* db)
     return total >= deleted ? total - deleted : 0;
 }
 
+int logosdb_live_ids(logosdb_t* db, uint64_t* out_ids, size_t cap, size_t* n_out)
+{
+    if (!db || !n_out)
+        return -1;
+
+    std::lock_guard<std::mutex> lock(db->mu);
+
+    size_t total = db->vectors.n_rows();
+    size_t live = 0;
+    for (size_t id = 0; id < total; ++id)
+    {
+        if (!db->meta.is_deleted(id))
+            ++live;
+    }
+
+    *n_out = live;
+    if (!out_ids || cap == 0)
+        return 0;
+    if (cap < live)
+        return -1;
+
+    size_t w = 0;
+    for (size_t id = 0; id < total; ++id)
+    {
+        if (db->meta.is_deleted(id))
+            continue;
+        out_ids[w++] = static_cast<uint64_t>(id);
+    }
+    return 0;
+}
+
 int logosdb_dim(logosdb_t* db)
 {
     return db ? db->dim : 0;
+}
+
+int logosdb_raw_vectors_decode(logosdb_t* db, float* out, size_t out_cap, size_t* n_rows, int* dim)
+{
+    if (!db || !n_rows || !dim)
+        return -1;
+
+    std::lock_guard<std::mutex> lock(db->mu);
+
+    size_t nr = db->vectors.n_rows();
+    int d = db->dim;
+    if (d <= 0)
+    {
+        *n_rows = 0;
+        *dim = 0;
+        return 0;
+    }
+
+    size_t need = nr * static_cast<size_t>(d);
+    *n_rows = nr;
+    *dim = d;
+
+    if (!out || out_cap == 0)
+        return 0;
+    if (out_cap < need)
+        return -1;
+
+    if (db->vectors.dtype() == DTYPE_FLOAT32)
+    {
+        const float* raw = static_cast<const float*>(db->vectors.data_raw());
+        std::memcpy(out, raw, need * sizeof(float));
+        return 0;
+    }
+
+    std::vector<float> row(static_cast<size_t>(d));
+    for (size_t id = 0; id < nr; ++id)
+    {
+        db->vectors.row_to_float32(id, row.data());
+        std::memcpy(
+            out + id * static_cast<size_t>(d), row.data(), static_cast<size_t>(d) * sizeof(float));
+    }
+    return 0;
 }
 
 static bool
