@@ -6,8 +6,8 @@
 
 #define LOGOSDB_VERSION_MAJOR 1
 #define LOGOSDB_VERSION_MINOR 5
-#define LOGOSDB_VERSION_PATCH 0
-#define LOGOSDB_VERSION_STRING "1.5.0"
+#define LOGOSDB_VERSION_PATCH 1
+#define LOGOSDB_VERSION_STRING "1.5.1"
 
 /* Distance metrics for vector similarity search */
 #define LOGOSDB_DIST_IP 0     /* Inner product (default, requires L2-normalized vectors) */
@@ -315,6 +315,7 @@ struct Options
     int dtype = LOGOSDB_DTYPE_FLOAT32; /* FLOAT32, FLOAT16, or INT8 */
 };
 
+/* score: COSINE [-1,1], IP raw dot product, L2 = 1/(1+distance) in (0,1] */
 struct SearchHit
 {
     uint64_t id;

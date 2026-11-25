@@ -9,7 +9,7 @@
 export interface SearchHit {
   /** Row ID */
   id: number;
-  /** Similarity score (0-1) */
+  /** Score depends on distance: cosine [-1,1], IP unbounded dot product, L2 in (0,1] */
   score: number;
   /** Associated text */
   text: string | null;

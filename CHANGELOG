@@ -1,6 +1,13 @@
 logosdb change log
 ==================
 
+1.5.1  (2026-11-25) — core / PyPI / npm `logosdb`
+-------------------------------------------------
+
+  * **#142 — SearchHit.score range for cosine, IP, and L2.** Document the real SearchHit.score range for each distance metric. Cosine is cosine similarity from -1 to 1, inner product is an unbounded dot product, and L2 is 1 / (1 + distance) in (0, 1].
+    Comments only in the README, the public SearchHit note, Node types, and Node JSDoc. No scoring change.
+  * Ships with `logosdb-mcp-server` **1.4.4** (depends on `logosdb` ^1.5.0).
+
 1.5.0  (2026-11-24) — core / PyPI / npm `logosdb`
 -------------------------------------------------
 
