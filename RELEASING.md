@@ -1,228 +1,415 @@
-# Releasing `logosdb` to PyPI
+# Releasing LogosDB
 
-This repository publishes binary wheels (built with
-[`cibuildwheel`](https://cibuildwheel.pypa.io/)) and a source distribution
-to [PyPI](https://pypi.org/project/logosdb/) via GitHub Actions. Authentication
-uses [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
-(OIDC), so no API tokens are stored anywhere.
+This is the single source of truth for cutting a LogosDB release. It covers the
+core library, the Python package on PyPI, the Node packages on npm, the GitHub
+release, the README, and the GitHub Pages site on the `website` branch.
 
-## One-time setup
+One release ships **one** well-scoped change (usually one issue) plus the
+version bumps it needs. Follow the steps in order: each step's checks are
+placed so that a reason to stop is found before any work that would be wasted.
 
-You need to do this **before** the first tag push succeeds. It takes ~2 min.
+| Artifact | Where | Name |
+|---|---|---|
+| C/C++ core | this repo, tag `vX.Y.Z` | `logosdb` |
+| Python wheels + sdist | PyPI | [`logosdb`](https://pypi.org/project/logosdb/) |
+| Native Node addon | npm (`nodejs/`) | [`logosdb`](https://www.npmjs.com/package/logosdb) |
+| MCP server | npm (`mcp/`) | [`logosdb-mcp-server`](https://www.npmjs.com/package/logosdb-mcp-server) |
+| n8n node (rarely) | npm (`n8n/`) | [`n8n-nodes-logosdb`](https://www.npmjs.com/package/n8n-nodes-logosdb) |
+| Website | branch `website`, folder `docs/` | https://jose-compu.github.io/logosdb/ |
 
-### 1. Reserve the name on PyPI
+---
 
-https://pypi.org/manage/account/publishing/ → *"Add a new pending publisher"*:
+## 0. Prerequisites (one-time)
 
-| Field              | Value         |
-|--------------------|---------------|
-| PyPI Project Name  | `logosdb`     |
-| Owner              | `jose-compu`  |
-| Repository name    | `logosdb`     |
-| Workflow name      | `publish.yml` |
-| Environment name   | `pypi`        |
+### Trusted Publishing (no tokens anywhere)
 
-Environment name may be left blank (matches *Any*); using `pypi` lets you
-add GitHub-side protection rules that scope only to release uploads.
+Both registries authenticate the `Publish` workflow (`.github/workflows/publish.yml`)
+with OIDC. No `NPM_TOKEN`, `NODE_AUTH_TOKEN`, or PyPI API token is stored or used.
 
-### 2. (Optional) Create the `pypi` GitHub Environment
+PyPI (https://pypi.org/manage/project/logosdb/settings/publishing/):
 
-`Settings → Environments → New environment → pypi`. Enabling
-*"Required reviewers"* is highly recommended so a human has to approve every
-upload. GitHub will auto-create the environment on first use even without
-this, but without a protection rule the upload happens unattended.
+| Field | Value |
+|---|---|
+| Owner / Repository | `jose-compu` / `logosdb` |
+| Workflow name | `publish.yml` |
+| Environment name | `pypi` |
 
-That's it — the workflow already references the environment by name.
+npm (package settings, *Trusted publisher*), for **both** `logosdb` and
+`logosdb-mcp-server`: repository `jose-compu/logosdb`, workflow `publish.yml`,
+environment *(none)*.
 
-## Cutting a release
+Optional: `Settings → Environments → pypi → Required reviewers` so a human
+approves each PyPI upload.
 
-```bash
-# 1. Bump the version in all coordinated files. They MUST match.
-#    - pyproject.toml            → [project].version
-#    - include/logosdb/logosdb.h → LOGOSDB_VERSION_* and LOGOSDB_VERSION_STRING
-#    - CMakeLists.txt            → project(logosdb VERSION ...)
-#    - nodejs/package.json, mcp/package.json, n8n/package.json
-#    - mcp/src/index.ts server self-reported version (keep in sync)
-#    Then: npm run vendor-core -w logosdb && npm install  # refresh deps/core + lockfile
+### Local toolchain
 
-# 2. Update the CHANGELOG entry with the release date and notes.
-# 3. Render the LinkedIn banner (1200×675) and attach it to the GitHub release:
-#    Copy assets/banners/linkedin-v1.3.0.yaml to linkedin-v${VERSION}.yaml, then:
-#    python3 assets/banners/render_linkedin.py --config assets/banners/linkedin-v${VERSION}.yaml \
-#      --out assets/banners/linkedin-v${VERSION}.png
-#    Or pass fields on the CLI (--version, --title, --date, --highlight, --package, --install).
-#    Optional YAML fields:
-#      tagline: product subtitle under "LogosDB" (default: Embedded vector DB for AI agents and RAG)
-#      release_tagline: one line under the version/title (release benefit in plain words)
-#      highlights: list of API strings, or objects with name + desc (short plain-English line)
-#    Fonts live under assets/banners/fonts/; the renderer does not fall back to system fonts.
+- CMake ≥ 3.15, Ninja, a C++17 compiler
+- `clang-format-18` (CI checks formatting with exactly this version)
+- Python ≥ 3.9 with `pip install pillow pyyaml` (banner renderer)
+- Node 20 and npm ≥ 10 (the publish job itself upgrades to npm ≥ 11.5.1)
+- `git`, `curl`, `jq`
 
-git add pyproject.toml include/logosdb/logosdb.h CMakeLists.txt CHANGELOG \
-  nodejs/package.json mcp/package.json n8n/package.json mcp/src/index.ts \
-  nodejs/deps package-lock.json
-git commit -m "Release v1.0.1"
-git push origin main
+### Branch naming
 
-# 3. Tag and push.
-git tag -a v1.0.1 -m "logosdb 1.0.1"
-git push origin v1.0.1
-```
+`feat/<topic>-<issue>` for the code PR, `feat/website-vX.Y.Z` for the site PR,
+`release/vX.Y.Z` for a version-only release. Branch names are descriptive and
+never contain tool or vendor names.
 
-The tag push triggers `.github/workflows/publish.yml`:
+---
 
-1. **`build_wheels`** runs on Linux x86_64, Linux arm64, and macOS arm64,
-   invoking `cibuildwheel` to produce one wheel per supported CPython version
-   (3.9–3.13). Each wheel is tested against the pytest suite inside the isolated
-   build environment.
-2. **`build_sdist`** builds the source distribution.
-3. **`publish_pypi`** waits for reviewer approval (if configured) and then
-   uploads the wheels + sdist to PyPI (Trusted Publishing / OIDC — no stored token).
-4. **`publish_npm`** builds and publishes **`logosdb`** from `nodejs/`, then
-   **`logosdb-mcp-server`** from `mcp/` (order matters for `^` deps). Uses
-   [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (OIDC):
-   job permissions `id-token: write` and `contents: read`, `actions/setup-node`
-   with `registry-url: https://registry.npmjs.org`, npm upgraded to ≥ 11.5.1, no
-   `NPM_TOKEN` / `NODE_AUTH_TOKEN`. Provenance is attached automatically. Skips
-   a package whose exact version is already on npm. Re-run manually with
-   **Actions → Publish → Run workflow → target: `npm`** if the tag run failed.
-
-On npmjs.com, configure trusted publishers for **`logosdb`** and
-**`logosdb-mcp-server`**: repository `jose-compu/logosdb`, workflow file
-`publish.yml`, environment *(none)*.
-
-If a build or test fails, nothing is uploaded — the job simply stops before
-the publish step. Because PyPI never allows re-uploading the same version,
-always bump the version number when retrying (`1.0.1` → `1.0.2`) rather than
-deleting and re-pushing a tag.
-
-## Verifying a release after it lands
+## 1. Go / no-go (do this first, it can cancel the release)
 
 ```bash
-python -m venv /tmp/v && . /tmp/v/bin/activate
-pip install --upgrade logosdb
-python -c "
-import logosdb, numpy as np
-db = logosdb.DB('/tmp/smoke', dim=8)
-db.put(np.ones(8, dtype='f4'))
-print('ok:', db.count(), logosdb.__version__)
-"
+./scripts/release_preflight.sh
+# If the last tag is < 6 days old but everything else is ready:
+./scripts/release_preflight.sh --force
 ```
 
-## Manual dry-run (no tag)
+The script enforces the **6-day rule** (from `releases.atom`, no GitHub REST API),
+checks for in-flight `release/*` branches on origin, and confirms the versions on
+`main` are fully live via `scripts/verify_published.sh`.
 
-To exercise the full wheel + sdist matrix without publishing anything:
+Stop and fix first if the previous release is half-published (see
+[Failure recovery](#9-failure-recovery)). Do not start a new version on top
+of an unpublished one.
 
-```
-Actions → Publish → Run workflow → target: dry_run
-```
+### Pick the scope
 
-This builds every wheel and the sdist, uploads them as workflow artifacts
-(downloadable from the run summary), and stops. No PyPI upload.
+- Candidates: open issues, roadmap tracking issue items, and `main` commits
+  since the last tag (`git log --oneline vLAST..origin/main`).
+- Choose **one** change that is small, testable on all bindings it touches,
+  and does not change the on-disk format or a public signature, unless a
+  major bump is intended.
+- If no candidate is safe, skip the week. A skipped week is a valid outcome.
 
-If you want to publish from the `main` branch without tagging (e.g. a
-hot-fix where tagging hasn't happened yet), choose `target: pypi` instead.
-It still goes through the `pypi` environment's protection rules.
+---
 
-## Supported platforms
+## 2. Versioning rules
 
-- Linux x86_64  (manylinux2014-compatible)
-- Linux aarch64 (manylinux2014-compatible)
-- macOS 11+ x86_64
-- macOS 11+ arm64
-- CPython 3.9, 3.10, 3.11, 3.12, 3.13
+Semver, decided per package:
 
-Windows is not yet supported; see
-[issue #10](https://github.com/jose-compu/logosdb/issues/10).
+| Change | Core / PyPI / npm `logosdb` | `logosdb-mcp-server` |
+|---|---|---|
+| New API, new option, new binding method (no break) | minor `X.(Y+1).0` | patch, bump only its `logosdb` range |
+| Bug fix, docs, build fix | patch | patch only if its own code or dep range changes |
+| Signature, return type, or on-disk format break | major | follows its own semver |
+| MCP-only change | unchanged | its own patch/minor |
 
-## What an sdist user gets
+- PyPI `logosdb` and npm `logosdb` always carry the **same** version as the core.
+- `logosdb-mcp-server` has its own number line. When core moves, the MCP server
+  gets a patch whose only change is `"logosdb": "^X.Y.0"` (see 1.4.2, 1.4.3, 1.4.4).
+- `n8n-nodes-logosdb` and the private root `package.json` are **not** bumped
+  unless the n8n surface itself changed.
 
-PyPI users on unsupported platforms (or with `--no-binary logosdb`) will fall
-back to the sdist, which requires:
+---
 
-- CMake ≥ 3.15
-- A C++17 compiler
-- Python development headers
-
-The sdist includes `third_party/hnswlib/` so no submodules are needed.
-
-## Manual publish cheat sheet
-
-Use this when GitHub Actions is unavailable, you are cutting an out-of-band release, or you simply want to push artifacts from your workstation. **Always** finish a release commit first (versions bumped, `CHANGELOG` updated, tag pushed) before running any of the commands below.
-
-Replace `${VERSION}` with the release you are publishing (e.g. `1.0.1`). The repository root is referred to as `${REPO}`:
+## 3. Implement on a branch
 
 ```bash
-REPO=/Users/joseignacio/Documents/GitHub/ai-misc/semantic-sandwich/logosdb
-VERSION=1.0.1
+git switch main && git pull --ff-only
+git switch -c feat/<topic>-<issue>
 ```
 
-### Order
+Implement and test on every surface the change touches:
 
-Publish in this order so each `^X.Y.Z` dependency resolves on the registry by the time the next package is fetched:
+| Surface | Code | Tests |
+|---|---|---|
+| C API / C++ | `include/logosdb/logosdb.h`, `src/*.cpp` | `tests/test_doctest.cpp` |
+| Python | `python/src/bindings.cpp`, `python/logosdb/_core.pyi`, `python/logosdb/__init__.py` | `tests/python/*.py` |
+| Node | `nodejs/src/node_logosdb.cpp`, `nodejs/lib/index.js`, `nodejs/types/index.d.ts` | `nodejs/test/test.js` |
+| Docs | public header comments, `nodejs/README.md`, `README.md` features list | |
 
-1. **`logosdb`** (native Node addon — `nodejs/`)
-2. **`logosdb-mcp-server`** (MCP — `mcp/`)
-3. **`n8n-nodes-logosdb`** (n8n — `n8n/`, optional)
-4. **`logosdb` on PyPI** (Python wheels + sdist)
+Never hand-edit `nodejs/deps/`: it is generated by `vendor-core` (step 4).
 
-### npm: native addon (`logosdb`)
+---
 
-Publish from **`nodejs/`** (not the monorepo root — the root `package.json` is a private workspace that would trip `EPRIVATE`). `prepublishOnly` refreshes `deps/core/` from the canonical sources.
+## 4. Bump every version file (they MUST match)
+
+Core version `X.Y.Z`, MCP version `A.B.C`:
+
+| File | Field |
+|---|---|
+| `pyproject.toml` | `[project] version = "X.Y.Z"` |
+| `CMakeLists.txt` | `project(logosdb VERSION X.Y.Z ...)` |
+| `include/logosdb/logosdb.h` | `LOGOSDB_VERSION_MAJOR/MINOR/PATCH`, `LOGOSDB_VERSION_STRING "X.Y.Z"` (Python `__version__` comes from here) |
+| `nodejs/package.json` | `"version": "X.Y.Z"` |
+| `mcp/package.json` | `"version": "A.B.C"` and `"logosdb": "^X.Y.0"` |
+| `mcp/server.json` | top-level `"version"` **and** `packages[0].version`, both `A.B.C` |
+| `nodejs/deps/core/**` | regenerated, never edited |
+| `package-lock.json` | regenerated, never edited |
+
+`mcp/src/index.ts` and `mcp/src/cli.ts` read the version from `mcp/package.json`
+at runtime; do not edit them for a bump.
 
 ```bash
-cd "${REPO}/nodejs"
-npm publish
+python3 scripts/bump_version.py --dry-run X.Y.Z A.B.C   # review first
+python3 scripts/bump_version.py X.Y.Z A.B.C
+./scripts/check_versions.sh   # silent on success
 ```
 
-Sanity check:
+---
+
+## 5. CHANGELOG and release JSON
+
+Add entries at the top of `CHANGELOG`, dated the tag day (UTC date of the tag
+push), core block first, then the MCP block.
+
+Maintain one source file per release under `releases/vX.Y.Z.json`, then generate
+draft copy for CHANGELOG, README table, GitHub release body, banner YAML snippet,
+and website JSON:
 
 ```bash
-npm view logosdb version    # should print ${VERSION}
+python3 scripts/generate_release_artifacts.py releases/vX.Y.Z.json --target changelog
+python3 scripts/generate_release_artifacts.py releases/vX.Y.Z.json --target readme-table
+python3 scripts/generate_release_artifacts.py releases/vX.Y.Z.json --target release-body
+python3 scripts/generate_release_artifacts.py releases/vX.Y.Z.json --target banner-yaml-snippet
+python3 scripts/generate_release_artifacts.py releases/vX.Y.Z.json --target website-json
 ```
 
-### npm: MCP server (`logosdb-mcp-server`)
+Paste or merge generated text into the real files. The generator does not edit
+the repo in place.
+
+---
+
+## 6. Release banner
+
+The banner (1200×675 PNG) goes in the repo, at the top of the README, on the
+GitHub release as an asset, and on the website.
 
 ```bash
-cd "${REPO}/mcp"
-npm publish
+X=X.Y.Z
+cp assets/banners/linkedin-v<previous>.yaml assets/banners/linkedin-v$X.yaml
+$EDITOR assets/banners/linkedin-v$X.yaml
+python3 assets/banners/render_linkedin.py \
+  --config assets/banners/linkedin-v$X.yaml --out assets/banners/linkedin-v$X.png
+python3 -c "from PIL import Image; print(Image.open('assets/banners/linkedin-v$X.png').size)"   # (1200, 675)
 ```
 
-Sanity check:
+Use `--target banner-yaml-snippet` from step 5 for the `packages:` block if it
+matches the release JSON.
 
-```bash
-npm view logosdb-mcp-server version
+YAML shape:
+
+```yaml
+version: "X.Y.Z"
+title: "Short release headline"                  # about 3-5 words
+date: "YYYY-MM-DD"                               # tag day
+tagline: "Embedded vector DB for AI agents and RAG"   # keep: says what LogosDB is
+release_tagline: "One line: what users get, in plain words"
+highlights:                                      # 2-3 items
+  - name: "apiName()"
+    desc: "What it does for the user, one short sentence."
+packages:
+  - { label: "PyPI logosdb",           version: "X.Y.Z" }
+  - { label: "npm logosdb",            version: "X.Y.Z" }
+  - { label: "npm logosdb-mcp-server", version: "A.B.C" }
+install: "pip install logosdb   ·   npm i logosdb"
+github: "github.com/jose-compu/logosdb"
 ```
 
-### npm: n8n node (`n8n-nodes-logosdb`, optional)
+Rules:
 
-Only publish when the n8n surface changed; otherwise skip. Requires the new `logosdb` to be live on the registry so `^${VERSION}` resolves.
+- Every highlight has a `desc` that explains the benefit; an API name alone is not enough.
+- Fonts come only from `assets/banners/fonts/`; the renderer has no system fallback.
+- **Open the PNG and look at it.** No overlapping or clipped text, every
+  highlight readable, versions correct. If something overflows, shorten the
+  text in the YAML first; only change the renderer if shortening is not enough.
+
+---
+
+## 7. README
+
+In `README.md` on the release branch:
+
+1. Banner line near the top:
+   `[![LogosDB vX.Y.Z release banner](assets/banners/linkedin-vX.Y.Z.png)](https://github.com/jose-compu/logosdb/releases/tag/vX.Y.Z)`
+2. `## Packages (release X.Y.Z)` table: all four packages and their versions.
+3. Features list: one bullet for the new API, tagged `(X.Y.Z)`.
+4. Roadmap: `### **SHIPPED** [X.Y.Z](…/releases/tag/vX.Y.Z) — minor — <title>` with the issue link.
+5. Every install pin (`pip install logosdb==`, `npm install logosdb@`) and the CLI version sample.
 
 ```bash
-cd "${REPO}/n8n"
-npm publish
+grep -n "$PREV" README.md nodejs/README.md   # anything left on the old version is either history or a miss
 ```
 
-### PyPI: wheels + sdist
+---
 
-The GitHub Actions release workflow is preferred (see [Cutting a release](#cutting-a-release)). For a manual upload, build locally and use `twine`:
+## 8. Pull request, CI, tag, publish
+
+### Local proof (before pushing)
 
 ```bash
-cd "${REPO}"
-rm -rf dist build
-python -m build
-python -m twine upload "dist/logosdb-${VERSION}"*
+find src include tests tools \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) \
+  | grep -v doctest.h | xargs clang-format-18 --dry-run -Werror
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel
+(cd build && ctest --output-on-failure)
+pip install . pytest && pytest tests/python -q
+./scripts/check_versions.sh
+npm run npm:verify      # vendor-core + build + Node tests + MCP tests and smoke
 ```
 
-`twine` reads credentials from `~/.pypirc` or the `TWINE_USERNAME` / `TWINE_PASSWORD` env vars; for Trusted Publishing prefer the GitHub Actions path instead.
+CI on PRs to `main` runs `scripts/check_versions.sh` and `npm run npm:verify`.
 
-### Post-publish smoke checks
+### PR to `main`
+
+- Title: `Release X.Y.Z: <short title> (#NNN)`. Body: what changed, the
+  version table, `Closes #NNN`.
+- Required checks: **CI** (`ci.yml`: Ubuntu and macOS, Debug and Release,
+  JSONL fuzz smoke, clang-format, version consistency, npm verify) and **Python**
+  (`python.yml`, runs when Python/core paths change; Python 3.10 and 3.12 on
+  Ubuntu and macOS).
+- Merge only when every check is green.
+
+### Tag (this publishes)
 
 ```bash
-npm view logosdb version
-npm view logosdb-mcp-server version
-npm view n8n-nodes-logosdb version
+git switch main && git pull --ff-only
+git tag -a vX.Y.Z -m "logosdb X.Y.Z"      # on the merge commit
+git push origin vX.Y.Z
+```
 
-python -m venv /tmp/v && . /tmp/v/bin/activate
-pip install --upgrade "logosdb==${VERSION}"
-python -c "import logosdb; print(logosdb.__version__)"
+The tag push runs `Publish` (`publish.yml`):
+
+1. `build_wheels`: cibuildwheel on Linux x86_64, Linux arm64, macOS arm64, tests inside each wheel.
+2. `build_sdist`: checks `third_party/hnswlib` is in the sdist.
+3. `publish_pypi`: OIDC upload in environment `pypi`.
+4. `publish_npm` (independent of the wheel jobs): `npm ci --ignore-scripts`,
+   vendor-core, build, publish `logosdb`, then build and publish
+   `logosdb-mcp-server`, with `--provenance`. A version already on npm is skipped.
+
+Push the tag **once**. Never delete and re-push a tag to retry.
+
+### GitHub release
+
+Create release `vX.Y.Z` titled `LogosDB vX.Y.Z` on the tag and attach
+`assets/banners/linkedin-vX.Y.Z.png`. Use `--target release-body` from step 5
+as the body template.
+
+### Verify the publish
+
+```bash
+./scripts/verify_published.sh vX.Y.Z A.B.C
+```
+
+Optional install smoke test:
+
+```bash
+X=X.Y.Z
+python -m venv /tmp/v && . /tmp/v/bin/activate && pip install "logosdb==$X" numpy
+python -c "import logosdb,numpy as np; db=logosdb.DB('/tmp/smoke',dim=8); db.put(np.ones(8,dtype='f4')); print(db.count(), logosdb.__version__)"
+(cd /tmp && npm i "logosdb@$X" && node -e "console.log(require('logosdb/package.json').version)")
+```
+
+---
+
+## 9. Failure recovery
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| CI red on the PR | code or format | Fix on the branch, push, wait. Never tag before merge. |
+| `clang-format` check fails | wrong formatter version | Use `clang-format-18` exactly. |
+| `publish_pypi` fails after a partial upload, or the wheel matrix fails | build or test issue | PyPI never accepts the same version twice. Fix on `main`, bump a **patch** (`X.Y.Z+1`) in every file of step 4, CHANGELOG entry, new tag. |
+| PyPI: "File already exists" | version already uploaded | Expected on a re-run; nothing to do if the files are there. |
+| `publish_npm` fails, PyPI succeeded | npm-side issue | Fix the workflow on `main`, then **Actions → Publish → Run workflow → branch `main` → target `npm`** (a maintainer must click this; it publishes whatever versions are on `main` and skips ones already live). Re-running the old tag run reuses the old workflow file, so it will not pick up the fix. |
+| npm publishes `logosdb` but MCP fails to resolve `^X.Y.0` | order or registry lag | Re-run target `npm`; `logosdb` is skipped, MCP publishes. |
+| npm 403 / "not authorized" | trusted publisher missing for that package | Configure it on npmjs.com (step 0), then target `npm`. |
+| `npm ci` fails in the job | lockfile not regenerated | Run `npm install` at root, commit `package-lock.json`, patch release or target `npm`. |
+| Wrong content in a published version | — | Never unpublish. Ship a patch. |
+
+`workflow_dispatch` targets: `dry_run` (build everything, upload nothing),
+`pypi`, `npm`.
+
+---
+
+## 10. Website (`website` branch)
+
+The site is static HTML in `docs/` on the `website` branch, served by GitHub
+Pages. Do this **after** the GitHub release exists: the headline embeds the
+release asset URL.
+
+```bash
+git fetch origin website
+git switch -c feat/website-vX.Y.Z origin/website
+python3 scripts/generate_release_artifacts.py releases/vX.Y.Z.json --target website-json > scripts/release-vX.Y.Z.json
+$EDITOR scripts/release-vX.Y.Z.json   # headline_html if needed
+python3 scripts/bump_release.py --dry-run --config scripts/release-vX.Y.Z.json
+python3 scripts/bump_release.py --config scripts/release-vX.Y.Z.json
+```
+
+`headline_html` holds: an `<h2>X.Y.Z — title</h2>`, a one-paragraph
+`section-intro`, the package table, and the banner link to
+`…/releases/download/vX.Y.Z/linkedin-vX.Y.Z.png` with
+`width="1200" height="675"` (the banner's real size).
+
+`bump_release.py` updates only: the version badge, the block between
+`<!-- RELEASE_HEADLINE_START -->` and `<!-- RELEASE_HEADLINE_END -->`, the footer
+line, and every `logosdb-mcp-server@<version>`. It does **not** touch, so edit
+by hand in `docs/index.html` when the release theme changes them:
+
+- `.flyer-grid` cards
+- Node / Python feature cards
+- quick-start snippets (only if they should show the new API)
+
+PR base is **`website`, never `main`**. Merge when checks pass, then verify:
+
+```bash
+X=X.Y.Z
+curl -s "https://jose-compu.github.io/logosdb/?v=$(date +%s)" | grep -o '<p class="version-badge">[^<]*'
+```
+
+The Pages CDN can lag a minute or two after the deploy succeeds.
+
+---
+
+## 11. Announce
+
+Once registries and site show the new version, announce with the banner
+image: what shipped, one concrete detail, and the release link. Plain words,
+no hype.
+
+---
+
+## Reference
+
+### Manual dry run (no tag)
+
+`Actions → Publish → Run workflow → target: dry_run` builds every wheel and
+the sdist and uploads them as workflow artifacts only.
+
+### Manual publish from a workstation (emergency only)
+
+Prefer the workflow (it adds provenance). Order matters so `^` ranges resolve:
+
+```bash
+(cd nodejs && npm publish --access public)        # 1. logosdb (prepublishOnly re-vendors core)
+(cd mcp && npm publish --access public)           # 2. logosdb-mcp-server
+(cd n8n && npm publish --access public)           # 3. only if n8n changed
+rm -rf dist build && python -m build && python -m twine upload dist/logosdb-X.Y.Z*   # 4. PyPI
+```
+
+Never run `npm publish` at the repo root: the root workspace is private and
+refuses to publish.
+
+### Supported platforms
+
+Linux x86_64 and aarch64 (manylinux2014), macOS 11+ x86_64 and arm64,
+CPython 3.9 to 3.13. Windows is not supported yet
+([#10](https://github.com/jose-compu/logosdb/issues/10)). The sdist needs
+CMake ≥ 3.15, a C++17 compiler, and Python headers, and bundles
+`third_party/hnswlib/`.
+
+### Release checklist (copy into the PR body)
+
+```markdown
+- [ ] `./scripts/release_preflight.sh` GO (or documented `--force`)
+- [ ] One scoped change, tests on every touched binding
+- [ ] `python3 scripts/bump_version.py X.Y.Z A.B.C` + `./scripts/check_versions.sh`
+- [ ] `releases/vX.Y.Z.json` + CHANGELOG core block + MCP block, tag-day date
+- [ ] Banner YAML + PNG rendered and visually checked
+- [ ] README banner, packages table, features, roadmap, install pins
+- [ ] Local: clang-format-18, ctest, pytest, npm run npm:verify
+- [ ] CI + Python green, merged
+- [ ] Tag vX.Y.Z pushed once; Publish green; `./scripts/verify_published.sh`
+- [ ] GitHub release with banner asset
+- [ ] Website PR into `website`; Pages deploy green; live badge shows X.Y.Z
 ```

@@ -135,6 +135,50 @@ jobs:
             grep -v 'doctest.h' | \
             xargs clang-format-18 --dry-run -Werror
 
+  version-consistency:
+    name: Version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends jq
+
+      - name: check_versions.sh
+        run: ./scripts/check_versions.sh
+
+  npm-verify:
+    name: npm run npm:verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3 make g++
+
+      - name: npm ci and verify
+        run: |
+          npm ci --ignore-scripts -w logosdb -w logosdb-mcp-server
+          npm run npm:verify
+
       - name: Run clang-tidy check (optional, report only)
         run: |
           mkdir -p build

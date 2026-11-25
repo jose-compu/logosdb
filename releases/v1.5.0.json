@@ -1,0 +1,31 @@
+{
+  "core_version": "1.5.0",
+  "mcp_version": "1.4.4",
+  "n8n_version": "1.0.3",
+  "date": "2026-11-24",
+  "prev_tag": "v1.4.0",
+  "release_kind": "Minor",
+  "title": "Live ids and bulk export",
+  "issue": 135,
+  "issue_title": "Live ids and bulk vector export",
+  "change_summary": "List active row ids, read decoded float32 vectors in bulk, or stream live rows to NDJSON without looping get() on every id.",
+  "bindings_note": "C API logosdb_live_ids, Python live_ids(), Node liveIds(), rawVectors(), and exportNdjson().",
+  "tagline": "Embedded vector DB for AI agents and RAG",
+  "release_tagline": "Scan live rows in one call instead of one get() per id",
+  "highlights": [
+    {
+      "name": "liveIds()",
+      "desc": "Ids of rows that are still in the index. Deleted rows are left out."
+    },
+    {
+      "name": "rawVectors()",
+      "desc": "Every stored vector as float32, including float16 and int8 databases."
+    },
+    {
+      "name": "exportNdjson()",
+      "desc": "Writes live rows to a file, one JSON object per line."
+    }
+  ],
+  "install": "pip install logosdb   ·   npm i logosdb",
+  "github": "github.com/jose-compu/logosdb"
+}
