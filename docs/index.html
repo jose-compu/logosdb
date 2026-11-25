@@ -33,7 +33,7 @@
       <div class="container hero-grid">
         <div>
           <p class="section-label">Semantic memory</p>
-          <p class="version-badge">1.5.0</p>
+          <p class="version-badge">1.5.1</p>
           <h1>
             <span class="word-cyan">Semantic.</span>
             <span class="word-blue">Fast.</span>
@@ -144,10 +144,11 @@
       <div class="container">
         <span class="section-label">Features</span>
         <!-- RELEASE_HEADLINE_START -->
-<h2>1.5.0 — Live ids and bulk export</h2>
+<h2>1.5.1 — Search score ranges</h2>
         <p class="section-intro">
-          Core, PyPI, and npm <code>logosdb</code> at <strong>1.5.0</strong>. List active row ids, read decoded float32 vectors in bulk, or stream live rows to NDJSON without looping <code>get()</code> on every id (#135).
-          Node adds <code>liveIds()</code>, <code>rawVectors()</code>, and <code>exportNdjson()</code>; C and Python expose the same C API.
+          Core, PyPI, and npm <code>logosdb</code> at <strong>1.5.1</strong>. <code>SearchHit.score</code> depends on the distance metric (#142).
+          Cosine is cosine similarity from -1 to 1. Inner product is the raw dot product and can fall outside 0 to 1.
+          L2 is <code>1 / (1 + distance)</code>, in (0, 1], higher when the vectors are closer. No API or scoring change.
         </p>
 
         <table class="pkg-table" aria-label="Published package versions">
@@ -155,44 +156,38 @@
             <tr><th>Package</th><th>Version</th><th>Registry</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>logosdb</code></td><td><strong>1.5.0</strong></td><td>PyPI, npm</td></tr>
+            <tr><td><code>logosdb</code></td><td><strong>1.5.1</strong></td><td>PyPI, npm</td></tr>
             <tr><td><code>logosdb-mcp-server</code></td><td><strong>1.4.4</strong></td><td>npm (<code>^1.5.0</code>)</td></tr>
             <tr><td><code>n8n-nodes-logosdb</code></td><td>1.0.3</td><td>npm (unchanged)</td></tr>
           </tbody>
         </table>
 
-        <a class="release-banner" href="https://github.com/jose-compu/logosdb/releases/tag/v1.5.0" target="_blank" rel="noopener">
-          <img src="https://github.com/jose-compu/logosdb/releases/download/v1.5.0/linkedin-v1.5.0.png" alt="LogosDB 1.5.0 release" width="1200" height="627" loading="lazy" />
+        <a class="release-banner" href="https://github.com/jose-compu/logosdb/releases/tag/v1.5.1" target="_blank" rel="noopener">
+          <img src="https://github.com/jose-compu/logosdb/releases/download/v1.5.1/linkedin-v1.5.1.png" alt="LogosDB 1.5.1 release" width="1200" height="675" loading="lazy" />
         </a>
         <!-- RELEASE_HEADLINE_END -->
 
         <div class="flyer-grid">
           <article class="flyer-box cyan">
-            <h3><code>liveIds()</code></h3>
-            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">One call to list active row ids — deleted rows omitted.</p>
-            <ul style="list-style: none; padding: 0; margin: 0;">
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> C <code>logosdb_live_ids</code>, Python <code>live_ids()</code></li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Same mutex as search and export</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--cyan); font-weight: 700;">✓</span> Matches <code>count_live()</code> after deletes</li>
-            </ul>
+            <h3><code>DIST_COSINE</code></h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0;">Score is cosine similarity, from -1 to 1. It is not forced into 0 to 1.</p>
           </article>
           <article class="flyer-box purple">
-            <h3>Bulk vectors &amp; NDJSON</h3>
-            <p style="color: var(--muted); font-size: 0.9rem; margin: 0 0 0.75rem;">Scan the corpus without per-id <code>get()</code> loops.</p>
-            <ul style="list-style: none; padding: 0; margin: 0;">
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> <code>rawVectors()</code> — float32 decode for float16/int8</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> <code>exportNdjson(path)</code> — live rows, one JSON per line</li>
-              <li style="color: var(--muted); font-size: 0.85rem; padding: 0.25rem 0 0.25rem 1.25rem; position: relative;"><span style="position: absolute; left: 0; color: var(--purple); font-weight: 700;">✓</span> Large DBs need RAM for the decoded matrix</li>
-            </ul>
+            <h3><code>DIST_IP</code></h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0;">Score is the raw dot product. It can be negative or greater than 1.</p>
+          </article>
+          <article class="flyer-box blue">
+            <h3><code>DIST_L2</code></h3>
+            <p style="color: var(--muted); font-size: 0.9rem; margin: 0;">Score is <code>1 / (1 + distance)</code>. Closer vectors score higher, between 0 and 1.</p>
           </article>
         </div>
 
         <div class="feature-grid" style="margin-top: 1.5rem;">
           <article class="feature-card cyan">
-            <h3>Node API (<code>logosdb@1.5.0</code>)</h3>
+            <h3>Node API (<code>logosdb@1.5.1</code>)</h3>
             <p>
-              <code>db.liveIds()</code> · <code>db.rawVectors()</code> · <code>db.exportNdjson(path)</code> ·
-              <code>options.dtype</code> · <code>db.sync()</code> · <code>compact(src, dst)</code>
+              <code>SearchHit.score</code> follows <code>options.distance</code>: cosine [-1, 1], inner product dot product, L2 in (0, 1].
+              Types and JSDoc updated; scoring unchanged.
             </p>
           </article>
           <article class="feature-card blue">
@@ -349,7 +344,7 @@ db.close();</code></pre>
         <a href="https://www.npmjs.com/package/logosdb-mcp-server">MCP server</a>
         <a href="https://github.com/jose-compu/logosdb/blob/main/LICENSE">MIT License</a>
       </div>
-      <p class="footer-copy">LogosDB 1.5.0 · MCP 1.4.4 · n8n 1.0.3 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
+      <p class="footer-copy">LogosDB 1.5.1 · MCP 1.4.4 · n8n 1.0.3 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
     </div>
   </footer>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
