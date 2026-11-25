@@ -176,7 +176,7 @@ jobs:
 
       - name: npm ci and verify
         run: |
-          npm ci
+          npm ci --ignore-scripts -w logosdb -w logosdb-mcp-server
           npm run npm:verify
 
       - name: Run clang-tidy check (optional, report only)
