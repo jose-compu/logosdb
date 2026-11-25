@@ -1,0 +1,29 @@
+{
+  "core_version": "1.6.0",
+  "mcp_version": "1.4.5",
+  "n8n_version": "1.0.3",
+  "date": "2026-11-25",
+  "prev_tag": "v1.5.1",
+  "release_kind": "Minor",
+  "title": "BreadBowl-Embed slots",
+  "change_summary": "Index BreadBowl-Embed v1.3 as 16 routing rows per passage (256-d, inner product) and rerank candidates with the model's score() over stored value vectors. A CPU SciFact run is in the README.",
+  "bindings_note": "Examples, docs, and a benchmark script. No C API or on-disk change. logosdb-mcp-server 1.4.5 only moves its logosdb range to ^1.6.0.",
+  "tagline": "Embedded vector DB for AI agents and RAG",
+  "release_tagline": "Index 16 routing vectors per passage, then rerank the stored values",
+  "highlights": [
+    {
+      "name": "16 routing rows",
+      "desc": "Each passage is 16 unit vectors, 256 dimensions, inner product."
+    },
+    {
+      "name": "model.score()",
+      "desc": "Rerank reads the stored value vectors. The passage text is not encoded again."
+    },
+    {
+      "name": "SciFact",
+      "desc": "CPU numbers in the README: nDCG@10, recall@100, size, latency."
+    }
+  ],
+  "install": "pip install logosdb   ·   npm i logosdb",
+  "github": "github.com/jose-compu/logosdb"
+}

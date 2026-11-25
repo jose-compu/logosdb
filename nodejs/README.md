@@ -187,6 +187,32 @@ const hits : SearchHit[] = db.search(embedding, 5);
       - gyp * *(often 3.10–3.13),
     C++ 17(Clang / GCC / MSVC).The Node addon does * * not **use CMake.
 
+## BreadBowl-Embed routing rows (1.6.0)
+
+BreadBowl-Embed v1.3 stores **16 unit routing vectors per passage** (256 dimensions, inner product / `DIST_IP`). Each LogosDB row is one slot; row `text` is compact JSON: `{"passage_id":"<id>","slot":0}` through slot 15. Value vectors for reranking live in a separate safetensors cache; reranking is `model.score()` in the Python example.
+
+```javascript
+const { DB, DIST_IP } = require('logosdb');
+
+const SLOTS = 16;
+const DIM = 256;
+
+const db = new DB('/data/scifact-routing', {
+  dim: DIM,
+  distance: DIST_IP,
+  efSearch: 512,
+  maxElements: passageCount * SLOTS,
+});
+
+function slotText(passageId, slot) {
+  return JSON.stringify({ passage_id: String(passageId), slot: Number(slot) });
+}
+
+// Insert 16 slots per passage (vectors must come from the encoder; see examples/node/breadbowl_slots.js).
+```
+
+Node does not run the PyTorch encoder. Use `examples/python/breadbowl_embed_demo.py` for encode, index, slot search, and `model.score()` rerank.
+
                                                              ##License
 
                                                              MIT — see[LICENSE](../ LICENSE)

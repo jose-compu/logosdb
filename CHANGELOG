@@ -1,6 +1,18 @@
 logosdb change log
 ==================
 
+1.6.0  (2026-11-25) — core / PyPI / npm `logosdb`
+-------------------------------------------------
+
+  * **BreadBowl-Embed slots.** Index BreadBowl-Embed v1.3 as 16 routing rows per passage (256-d, inner product) and rerank candidates with the model's score() over stored value vectors. A CPU SciFact run is in the README.
+    Examples, docs, and a benchmark script. No C API or on-disk change. logosdb-mcp-server 1.4.5 only moves its logosdb range to ^1.6.0.
+  * Ships with `logosdb-mcp-server` **1.4.5** (depends on `logosdb` ^1.6.0).
+
+1.4.5  (2026-11-25) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * Depend on `logosdb` **^1.6.0** (npm publish workflow in `.github/workflows/publish.yml`).
+
 1.5.1  (2026-11-25) — core / PyPI / npm `logosdb`
 -------------------------------------------------
 

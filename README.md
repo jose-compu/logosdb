@@ -2,7 +2,7 @@
 
 <img width="1248" height="832" alt="image" src="https://github.com/user-attachments/assets/490d2c94-bebf-4841-a12f-cd230600c65a" />
 
-[![LogosDB v1.5.1 release banner](assets/banners/linkedin-v1.5.1.png)](https://github.com/jose-compu/logosdb/releases/tag/v1.5.1)
+[![LogosDB v1.6.0 release banner](assets/banners/linkedin-v1.6.0.png)](https://github.com/jose-compu/logosdb/releases/tag/v1.6.0)
 
 [![CI](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml)
 [![Python](https://github.com/jose-compu/logosdb/actions/workflows/python.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/python.yml)
@@ -17,13 +17,13 @@ Authors: Jose ([@jose-compu](https://github.com/jose-compu))
 
 **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, style guide, and PR workflow.
 
-## Packages (release 1.5.1)
+## Packages (release 1.6.0)
 
 | Package | Version | Install |
 |---------|---------|---------|
-| [logosdb](https://pypi.org/project/logosdb/) (Python / PyPI) | 1.5.1 | `pip install logosdb==1.5.1` |
-| [logosdb](https://www.npmjs.com/package/logosdb) (Node.js) | 1.5.1 | `npm install logosdb@1.5.1` |
-| [logosdb-mcp-server](https://www.npmjs.com/package/logosdb-mcp-server) | 1.4.4 | `npm install logosdb-mcp-server@1.4.4` |
+| [logosdb](https://pypi.org/project/logosdb/) (Python / PyPI) | 1.6.0 | `pip install logosdb==1.6.0` |
+| [logosdb](https://www.npmjs.com/package/logosdb) (Node.js) | 1.6.0 | `npm install logosdb@1.6.0` |
+| [logosdb-mcp-server](https://www.npmjs.com/package/logosdb-mcp-server) | 1.4.5 | `npm install logosdb-mcp-server@1.4.5` |
 | [n8n-nodes-logosdb](https://www.npmjs.com/package/n8n-nodes-logosdb) | 1.0.3 | `npm install n8n-nodes-logosdb@1.0.3` |
 
 Omit the `==` / `@version` pin to get the latest matching release on each registry.
@@ -39,6 +39,7 @@ Omit the `==` / `@version` pin to get the latest matching release on each regist
   * Bulk vector access for direct tensor construction (e.g. loading into GPU memory).
   * Thread-safe API on a single open handle: an internal mutex serializes operations that touch the index and metadata (including search).
   * Crash recovery: HNSW index is automatically backfilled from the append-only vector store on open.
+  * **BreadBowl-Embed v1.3 slots** (1.6.0): example layout for 16 routing rows per passage (256-d, `DIST_IP`) plus `model.score()` rerank over stored value vectors. See [docs/breadbowl-embed.md](docs/breadbowl-embed.md) and `examples/python/breadbowl_embed_demo.py`.
   * **`SearchHit.score` ranges** (1.5.1): documented per distance metric — cosine in [-1, 1], inner product as the raw dot product, L2 as `1 / (1 + distance)` in (0, 1] (comments only; no scoring change).
   * **`liveIds()` / `rawVectors()` / `exportNdjson()`** (1.5.0): list active row ids, read decoded float32 vectors in bulk, or stream live rows to NDJSON (Node; C/Python expose the same C API).
   * **`dtype` storage option** (1.4.0): store vectors as float32 (default), float16 (~half size), or int8 (~quarter size) on Node and Python; search still dequantizes to float32.
@@ -50,6 +51,21 @@ Omit the `==` / `@version` pin to get the latest matching release on each regist
 #Documentation
 
 The public interface is in `include/logosdb/logosdb.h`. Callers should not include or rely on the details of any other header files in this package. Those internal APIs may be changed without warning.
+
+## BreadBowl-Embed SciFact (CPU)
+
+Full BEIR SciFact test split on this VM (5183 passages, 300 queries). Metrics are macro-averaged over test queries with at least one relevant passage. Copied from `benchmarks/breadbowl/results/scifact.json`. See [docs/breadbowl-embed.md](docs/breadbowl-embed.md).
+
+| Arm | nDCG@10 | recall@100 |
+|-----|---------|------------|
+| LogosDB routing (HNSW mean) | 0.7333720611924206 | 0.9733333333333334 |
+| LogosDB routing + value rerank | 0.7444157064422888 | 0.9733333333333334 |
+| Exact routing rescore (top 100) | 0.7415911594628716 | — |
+| MiniLM-L6-v2 single vector | 0.6450816521455776 | 0.925 |
+
+Index size (bytes): routing 179706796, values 169897291, combined 349604087, MiniLM 16234603. Latency median (s): routing search 0.031503582000368624; search + rerank 0.03430102499987697; encode one query 0.16775000099914905.
+
+**Hardware:** Intel(R) Xeon(R) Processor, 4 cores, 15.6 GiB RAM; torch 2.14.1+cu130 (4 threads); Python 3.12.3; logosdb 1.6.0; breadbowl_embed 0.2.0.
 
 **Planning a deployment?** See [docs/sizing.md](docs/sizing.md) for disk/RAM estimates based on N×dim, or run `python -m logosdb.sizing --rows 1_000_000 --dim 768`.
 
@@ -113,6 +129,10 @@ Past releases are summarized in the [CHANGELOG](CHANGELOG) and the [closed miles
 
   * [#116](https://github.com/jose-compu/logosdb/issues/116) — Sync `CHANGELOG`, version macros, package metadata, and post-1.0 docs.
 
+### **SHIPPED** [1.6.0](https://github.com/jose-compu/logosdb/releases/tag/v1.6.0) — minor — BreadBowl-Embed slots
+
+  * Examples, helper, Node slot layout, CPU SciFact benchmark script, and [docs/breadbowl-embed.md](docs/breadbowl-embed.md). No C API or on-disk format change. Ships with `logosdb-mcp-server` **1.4.5**.
+
 ### **SHIPPED** [1.5.1](https://github.com/jose-compu/logosdb/releases/tag/v1.5.1) — patch — search score ranges
 
   * [#142](https://github.com/jose-compu/logosdb/issues/142) — Document `SearchHit.score` range per distance metric (comments only). Ships with `logosdb-mcp-server` **1.4.4**.
@@ -149,7 +169,7 @@ git clone --recurse-submodules <repository-url>
 cd logosdb
 ```
 
-#Building
+## Building
 
 This project supports [CMake](https://cmake.org/) out of the box.
 
@@ -319,10 +339,10 @@ auto results = db.search(query, 5);
 
 LogosDB ships Python bindings built with [pybind11](https://pybind11.readthedocs.io/) and [scikit-build-core](https://scikit-build-core.readthedocs.io/).
 
-Install from PyPI (release **1.5.1**; binary wheels for Linux x86_64/aarch64 and macOS x86_64/arm64 on CPython 3.9–3.13):
+Install from PyPI (release **1.6.0**; binary wheels for Linux x86_64/aarch64 and macOS x86_64/arm64 on CPython 3.9–3.13):
 
 ```bash
-pip install logosdb==1.5.1
+pip install logosdb==1.6.0
 ```
 
 Or build from source in a clone:
@@ -564,7 +584,7 @@ logosdb-cli import /tmp/mydb --dim 768 --input rows.ndjson \
 The [`logosdb`](https://www.npmjs.com/package/logosdb) package provides native bindings (N-API). The binding stores vectors you supply; it does not embed text. For a bundled embedding backend in an MCP agent, use [`logosdb-mcp-server`](#mcp-server--claude-code-integration) below.
 
 ```bash
-npm install logosdb@1.5.1
+npm install logosdb@1.6.0
 ```
 
 ```javascript
@@ -847,7 +867,7 @@ We use databases with 1K, 10K, and 100K vectors. Each vector has 2048 dimensions
 
 *(Numbers below are illustrative ballparks; absolute values depend on hardware and build flags. Relative HNSW vs brute-force behavior is what to focus on.)*
 
-    LogosDB:    version 1.5.1
+    LogosDB:    version 1.6.0
     CPU:        Apple M-series (ARM64)
     Dim:        2048
     HNSW M:     16, ef_construction: 200, ef_search: 50

@@ -1,0 +1,18 @@
+version: "1.6.0"
+title: "BreadBowl-Embed slots"
+date: "2026-11-25"
+tagline: "Embedded vector DB for AI agents and RAG"
+release_tagline: "One model finds candidates, then reranks with stored vectors"
+highlights:
+  - name: "16-slot search"
+    desc: "Each passage is 16 vectors in the index; inner product finds candidates."
+  - name: "No second encoder"
+    desc: "Reranking reuses stored value vectors; passage text is not encoded again."
+  - name: "SciFact on CPU"
+    desc: "nDCG@10 0.744 on full SciFact test, 4-core Xeon — see README."
+packages:
+  - { label: "PyPI logosdb",           version: "1.6.0" }
+  - { label: "npm logosdb",            version: "1.6.0" }
+  - { label: "npm logosdb-mcp-server", version: "1.4.5" }
+install: "pip install logosdb   ·   npm i logosdb"
+github: "github.com/jose-compu/logosdb"

@@ -1,0 +1,45 @@
+{
+  "title": "BEIR SciFact (test)",
+  "corpus_passages": 5183,
+  "test_queries": 300,
+  "skipped_empty_passages": 0,
+  "subset": null,
+  "metrics": {
+    "ndcg_at_10": {
+      "logosdb_routing_hnsw": 0.7333720611924206,
+      "logosdb_routing_plus_value_rerank": 0.7444157064422888,
+      "exact_routing_rescore_top100": 0.7415911594628716,
+      "minilm_l6_v2_single_vector": 0.6450816521455776
+    },
+    "recall_at_100": {
+      "logosdb_routing_hnsw": 0.9733333333333334,
+      "logosdb_routing_plus_value_rerank": 0.9733333333333334,
+      "minilm_l6_v2_single_vector": 0.925
+    }
+  },
+  "index_size_bytes": {
+    "logosdb_routing_db": 179706796,
+    "breadbowl_values_safetensors": 169897291,
+    "combined_routing_plus_values": 349604087,
+    "minilm_db": 16234603
+  },
+  "latency_seconds_median": {
+    "routing_search_16_slots": 0.031503582000368624,
+    "routing_plus_score_rerank": 0.03430102499987697,
+    "encode_one_query": 0.16775000099914905
+  },
+  "hardware": {
+    "cpu_model": "Intel(R) Xeon(R) Processor",
+    "cpu_cores_physical": 4,
+    "ram_gib": 15.6,
+    "torch_num_threads": 4,
+    "torch_version": "2.14.1+cu130",
+    "logosdb_version": "1.6.0",
+    "breadbowl_embed_version": "0.2.0",
+    "python_version": "3.12.3"
+  },
+  "notes": [
+    "LogosDB routing arm is HNSW mean over slot searches (miss=-1), not log-mean-exp score_routing.",
+    "Exact routing rescore is scores.routing on the top-100 shortlist only."
+  ]
+}
