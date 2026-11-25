@@ -5,9 +5,9 @@
 #include <stdint.h>
 
 #define LOGOSDB_VERSION_MAJOR 1
-#define LOGOSDB_VERSION_MINOR 5
-#define LOGOSDB_VERSION_PATCH 1
-#define LOGOSDB_VERSION_STRING "1.5.1"
+#define LOGOSDB_VERSION_MINOR 6
+#define LOGOSDB_VERSION_PATCH 0
+#define LOGOSDB_VERSION_STRING "1.6.0"
 
 /* Distance metrics for vector similarity search */
 #define LOGOSDB_DIST_IP 0     /* Inner product (default, requires L2-normalized vectors) */

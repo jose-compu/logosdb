@@ -1,6 +1,6 @@
 {
   "name": "logosdb-mcp-server",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "mcpName": "io.github.jose-compu/logosdb-mcp-server",
   "description": "MCP server for LogosDB: local semantic memory, file indexing, and hybrid search for Claude Code, Cursor, and other MCP clients",
   "main": "dist/index.js",
@@ -59,7 +59,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@xenova/transformers": "^2.17.2",
     "ignore": "^7.0.5",
-    "logosdb": "^1.5.0"
+    "logosdb": "^1.6.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -42,3 +42,7 @@ Thumbs.db
 test-results/
 coverage/
 product/
+
+# BreadBowl SciFact benchmark (local only)
+benchmarks/breadbowl/work/
+benchmarks/breadbowl/**/*.zip
