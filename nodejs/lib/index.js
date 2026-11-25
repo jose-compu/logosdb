@@ -11,7 +11,7 @@ const bindings = require('bindings')('logosdb');
  * Search result hit
  * @typedef {Object} SearchHit
  * @property {number} id - Row ID
- * @property {number} score - Similarity score (0-1)
+ * @property {number} score - Metric-specific (cosine [-1,1], IP dot product, L2 in (0,1])
  * @property {string|null} text - Associated text
  * @property {string|null} timestamp - ISO 8601 timestamp
  */

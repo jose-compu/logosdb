@@ -1,0 +1,31 @@
+{
+  "core_version": "1.5.1",
+  "mcp_version": "1.4.4",
+  "n8n_version": "1.0.3",
+  "date": "2026-11-25",
+  "prev_tag": "v1.5.0",
+  "release_kind": "Patch",
+  "title": "Search score ranges",
+  "issue": 142,
+  "issue_title": "SearchHit.score range for cosine, IP, and L2",
+  "change_summary": "Document the real SearchHit.score range for each distance metric. Cosine is cosine similarity from -1 to 1, inner product is an unbounded dot product, and L2 is 1 / (1 + distance) in (0, 1].",
+  "bindings_note": "Comments only in the README, the public SearchHit note, Node types, and Node JSDoc. No scoring change.",
+  "tagline": "Embedded vector DB for AI agents and RAG",
+  "release_tagline": "Score ranges now match the distance metric you picked",
+  "highlights": [
+    {
+      "name": "DIST_COSINE",
+      "desc": "Score is cosine similarity, from -1 to 1. It is not forced into 0 to 1."
+    },
+    {
+      "name": "DIST_IP",
+      "desc": "Score is the raw dot product. It can be negative or greater than 1."
+    },
+    {
+      "name": "DIST_L2",
+      "desc": "Score is 1 / (1 + distance). Closer vectors score higher, between 0 and 1."
+    }
+  ],
+  "install": "pip install logosdb   ·   npm i logosdb",
+  "github": "github.com/jose-compu/logosdb"
+}

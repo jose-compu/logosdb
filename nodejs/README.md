@@ -146,6 +146,8 @@ Search still uses float32 internally (vectors are dequantized on read). Pass the
 - `DIST_COSINE` (1): Cosine similarity (auto-normalizes)
 - `DIST_L2` (2): Euclidean distance
 
+`SearchHit.score` follows the metric: cosine similarity in [-1, 1], inner product as the raw dot product, L2 as `1 / (1 + distance)` in (0, 1] (higher when closer).
+
 `normalizeL2(embedding)` returns a new unit vector for `DIST_IP`. `put` / `search` / `update` throw if the vector length does not match `db.dim()`.
 
 ## Memory Model
