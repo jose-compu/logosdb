@@ -1,6 +1,11 @@
 logosdb change log
 ==================
 
+Unreleased
+----------
+
+  * SciFact CPU benchmark table: per-passage storage and load RSS columns, MiniLM median search latency; `benchmarks/breadbowl/scifact.py` measures on-disk breakdown and VmRSS deltas.
+
 1.6.0  (2026-11-25) — core / PyPI / npm `logosdb`
 -------------------------------------------------
 

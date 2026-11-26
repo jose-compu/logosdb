@@ -18,15 +18,53 @@
     }
   },
   "index_size_bytes": {
-    "logosdb_routing_db": 179706796,
+    "logosdb_routing_db": 276934164,
     "breadbowl_values_safetensors": 169897291,
-    "combined_routing_plus_values": 349604087,
-    "minilm_db": 16234603
+    "combined_routing_plus_values": 446831455,
+    "minilm_db": 24965767,
+    "logosdb_routing_on_disk_breakdown": {
+      "vectors_bin": 84918304,
+      "hnsw_idx": 97227336,
+      "hnsw_idx_meta": 32,
+      "other_metadata": 94788492,
+      "total": 276934164
+    },
+    "minilm_on_disk_breakdown": {
+      "vectors_bin": 7961120,
+      "hnsw_idx": 8731132,
+      "hnsw_idx_meta": 32,
+      "other_metadata": 8273483,
+      "total": 24965767
+    }
+  },
+  "storage_bytes_per_passage": {
+    "routing_hnsw_graph_bytes": 18758.897935558558,
+    "routing_vectors_bytes": 16384.006174030485,
+    "routing_metadata_bytes": 18288.34497395331,
+    "routing_index_total_bytes": 53431.24908354235,
+    "value_vectors_bytes": 32779.720432182134,
+    "routing_plus_value_bytes": 86210.96951572449,
+    "minilm_index_bytes": 4816.856453791241,
+    "minilm_vectors_bytes": 1536.0061740304843,
+    "minilm_hnsw_graph_bytes": 1684.5772718502797
+  },
+  "load_rss_delta_bytes": {
+    "routing_db_mmap": 96530432,
+    "value_safetensors_load": 169840640,
+    "routing_plus_value": 266371072,
+    "minilm_db_mmap": 58335232
+  },
+  "load_rss_delta_bytes_per_passage": {
+    "routing_db_mmap": 18624.4321821339,
+    "value_safetensors_load": 32768.790275901985,
+    "routing_plus_value": 51393.22245803589,
+    "minilm_db_mmap": 11255.109396102644
   },
   "latency_seconds_median": {
-    "routing_search_16_slots": 0.031503582000368624,
-    "routing_plus_score_rerank": 0.03430102499987697,
-    "encode_one_query": 0.16775000099914905
+    "routing_search_16_slots": 0.03066527800001495,
+    "routing_plus_score_rerank": 0.0332181550002133,
+    "minilm_hnsw_search": 0.0005794329999844194,
+    "encode_one_query": 0.16669438799999625
   },
   "hardware": {
     "cpu_model": "Intel(R) Xeon(R) Processor",
@@ -40,6 +78,9 @@
   },
   "notes": [
     "LogosDB routing arm is HNSW mean over slot searches (miss=-1), not log-mean-exp score_routing.",
-    "Exact routing rescore is scores.routing on the top-100 shortlist only."
+    "Exact routing rescore is scores.routing on the top-100 shortlist only.",
+    "Search latencies (16-slot routing, rerank, MiniLM) exclude query encoding; encode_one_query is separate.",
+    "Storage per passage: on-disk bytes \u00f7 corpus passage count; routing graph is hnsw.idx + hnsw.idx.meta.",
+    "RAM per passage: VmRSS increase after gc.collect() when reopening each index in-process, \u00f7 passage count."
   ]
 }
