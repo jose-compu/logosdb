@@ -37,25 +37,21 @@ Results are copied verbatim from `benchmarks/breadbowl/results/scifact.json` (BE
 
 Corpus passages: 5183; test queries: 300. Full test split (not a subset). Source: `benchmarks/breadbowl/results/scifact.json`.
 
-| Arm | nDCG@10 | recall@100 |
-|-----|---------|------------|
-| LogosDB routing (HNSW mean) | 0.7333720611924206 | 0.9733333333333334 |
-| LogosDB routing + value rerank | 0.7444157064422888 | 0.9733333333333334 |
-| Exact routing rescore (top 100) | 0.7415911594628716 | — |
-| MiniLM-L6-v2 single vector | 0.6450816521455776 | 0.925 |
+| Arm | nDCG@10 | recall@100 | storage B/passage | load RSS B/passage | median search (s) |
+|-----|---------|------------|-------------------|--------------------|-------------------|
+| LogosDB routing (HNSW mean) | 0.7333720611924206 | 0.9733333333333334 | 53,431 | 18,624 | 0.03066527800001495 |
+| LogosDB routing + value rerank | 0.7444157064422888 | 0.9733333333333334 | 86,211 | 51,393 | 0.0332181550002133 |
+| Exact routing rescore (top 100) | 0.7415911594628716 | — | 86,211 | 51,393 | — |
+| MiniLM-L6-v2 single vector | 0.6450816521455776 | 0.925 | 4,817 | 11,255 | 0.0005794329999844194 |
+
+Storage B/passage splits routing into HNSW graph (18,759 B), `vectors.bin` (16,384 B), and value safetensors (32,780 B) where applicable. Load RSS B/passage is the VmRSS delta when reopening each index (in-process for BreadBowl; fresh child process for MiniLM), divided by passage count. Search latencies exclude query encoding. Encode one query median 0.16669438799999625 s.
 
 | Index | Size (bytes) |
 |-------|----------------|
-| LogosDB routing DB | 179706796 |
+| LogosDB routing DB | 276934164 |
 | BreadBowl values (safetensors) | 169897291 |
-| Combined routing + values | 349604087 |
-| MiniLM-L6-v2 DB | 16234603 |
-
-| Latency (median, seconds) | |
-|---------------------------|---|
-| 16-slot routing search | 0.031503582000368624 |
-| Search + `model.score` rerank | 0.03430102499987697 |
-| Encode one query | 0.16775000099914905 |
+| Combined routing + values | 446831455 |
+| MiniLM-L6-v2 DB | 24965767 |
 
 **Hardware:** Intel(R) Xeon(R) Processor, 4 physical cores, 15.6 GiB RAM; `torch` 2.14.1+cu130 with 4 threads; Python 3.12.3; `logosdb` 1.6.0; `breadbowl_embed` 0.2.0.
 

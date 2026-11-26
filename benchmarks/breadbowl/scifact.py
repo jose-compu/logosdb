@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import math
 import os
@@ -15,6 +16,7 @@ import time
 import zipfile
 from collections import defaultdict
 from pathlib import Path
+from typing import Callable
 from urllib.request import urlretrieve
 
 import numpy as np
@@ -56,6 +58,92 @@ def lscpu_model() -> str:
     except OSError:
         pass
     return "unknown"
+
+
+_DB_FILES = ("vectors.bin", "hnsw.idx", "hnsw.idx.meta", "meta.jsonl", "wal.log")
+
+
+def file_size_bytes(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
+def logosdb_on_disk_breakdown(db_path: Path) -> dict[str, int]:
+    """Byte sizes for routing/MiniLM LogosDB dirs (vectors.bin + hnsw graph + metadata)."""
+    if not db_path.is_dir():
+        return {"vectors_bin": 0, "hnsw_idx": 0, "hnsw_idx_meta": 0, "other_metadata": 0, "total": 0}
+    named = {name: file_size_bytes(db_path / name) for name in _DB_FILES}
+    vectors_bin = named["vectors.bin"]
+    hnsw_idx = named["hnsw.idx"]
+    hnsw_idx_meta = named["hnsw.idx.meta"]
+    other = named["meta.jsonl"] + named["wal.log"]
+    for child in db_path.iterdir():
+        if child.is_file() and child.name not in _DB_FILES:
+            other += file_size_bytes(child)
+    total = vectors_bin + hnsw_idx + hnsw_idx_meta + other
+    return {
+        "vectors_bin": vectors_bin,
+        "hnsw_idx": hnsw_idx,
+        "hnsw_idx_meta": hnsw_idx_meta,
+        "other_metadata": other,
+        "total": total,
+    }
+
+
+def vm_rss_bytes() -> int:
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    return 0
+
+
+def rss_delta_on_load(load_fn: Callable[[], None]) -> int:
+    gc.collect()
+    before = vm_rss_bytes()
+    load_fn()
+    gc.collect()
+    after = vm_rss_bytes()
+    return max(0, after - before)
+
+
+def subprocess_logosdb_mmap_rss(db_path: Path, *, dim: int, distance: int, ef_search: int) -> int:
+    """Fresh-process VmRSS delta when mmap-opening a DB and running one search."""
+    py = f"""
+import gc
+import sys
+from pathlib import Path
+import numpy as np
+sys.path.insert(0, {repr(str(_REPO_ROOT / "python"))})
+import logosdb
+
+def rss():
+    with open("/proc/self/status") as f:
+        for line in f:
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) * 1024
+    return 0
+
+gc.collect()
+before = rss()
+db = logosdb.DB(
+    {repr(str(db_path))},
+    dim={dim},
+    distance={distance},
+    ef_search={ef_search},
+)
+qv = np.zeros({dim}, dtype=np.float32)
+db.search(qv, top_k=1)
+gc.collect()
+print(max(0, rss() - before))
+"""
+    out = subprocess.check_output([sys.executable, "-c", py], text=True).strip()
+    return int(out)
 
 
 def physical_cores() -> int:
@@ -305,7 +393,7 @@ class RateGateTripped(Exception):
 
 def build_routing_db(db_path: Path, stored, ids: list[str]) -> logosdb.DB:
     n_rows = len(ids) * SLOTS
-    if db_path.is_dir() and (db_path / "meta.json").exists():
+    if db_path.is_dir() and (db_path / "vectors.bin").is_file():
         db = logosdb.DB(
             str(db_path),
             dim=ROUTING_DIM,
@@ -399,7 +487,7 @@ def run_benchmark(
     minilm_path = work_dir / "minilm_db"
     st_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
     dim = st_model.get_sentence_embedding_dimension()
-    if minilm_path.is_dir() and (minilm_path / "meta.json").exists():
+    if minilm_path.is_dir() and (minilm_path / "vectors.bin").is_file():
         minilm_db = logosdb.DB(str(minilm_path), dim=dim, distance=DIST_COSINE, ef_search=128, max_elements=len(id_order))
     else:
         minilm_db = logosdb.DB(
@@ -417,6 +505,102 @@ def run_benchmark(
         embs /= norms
         minilm_db.put_batch(embs, texts=[str(pid) for pid in id_order])
 
+    del st_model
+    gc.collect()
+
+    from breadbowl_embed import Embeddings
+
+    n_rows = len(id_order) * SLOTS
+    n_pass = len(id_order)
+
+    def du_sb(path: Path) -> int:
+        try:
+            out = subprocess.check_output(["du", "-sb", str(path)], text=True)
+            return int(out.split()[0])
+        except (subprocess.CalledProcessError, ValueError):
+            return 0
+
+    def per_passage(total: float | int) -> float:
+        return float(total) / n_pass if n_pass else 0.0
+
+    def open_routing_db() -> logosdb.DB:
+        return logosdb.DB(
+            str(routing_db_path),
+            dim=ROUTING_DIM,
+            distance=DIST_IP,
+            max_elements=n_rows,
+            ef_search=512,
+            ef_construction=200,
+            M=16,
+        )
+
+    def load_value_store() -> Embeddings:
+        return Embeddings.load(enc_dir)
+
+    def open_minilm_db() -> logosdb.DB:
+        return logosdb.DB(
+            str(minilm_path),
+            dim=dim,
+            distance=DIST_COSINE,
+            ef_search=128,
+            max_elements=len(id_order),
+        )
+
+    del db, stored, minilm_db
+    gc.collect()
+
+    routing_bytes = du_sb(routing_db_path)
+    value_bytes = du_sb(enc_dir)
+    minilm_bytes = du_sb(minilm_path)
+    routing_parts = logosdb_on_disk_breakdown(routing_db_path)
+    minilm_parts = logosdb_on_disk_breakdown(minilm_path)
+
+    def _touch_db(handle: logosdb.DB, touch) -> logosdb.DB:
+        touch(handle)
+        return handle
+
+    def touch_routing_db(handle: logosdb.DB) -> None:
+        q = np.zeros((SLOTS, ROUTING_DIM), dtype=np.float32)
+        search_routing(handle, q, slot_hits=16)
+
+    def touch_minilm_db(handle: logosdb.DB) -> None:
+        q = np.zeros(dim, dtype=np.float32)
+        handle.search(q, top_k=1)
+
+    _reopen: dict[str, object] = {}
+    rss_routing_load = rss_delta_on_load(
+        lambda: _reopen.update(db=_touch_db(open_routing_db(), touch_routing_db))
+    )
+    db = _reopen["db"]  # type: ignore[assignment]
+    _reopen.clear()
+    rss_values_load = rss_delta_on_load(lambda: _reopen.update(stored=load_value_store()))
+    stored = _reopen["stored"]  # type: ignore[assignment]
+    _reopen.clear()
+    rss_minilm_load = subprocess_logosdb_mmap_rss(
+        minilm_path, dim=dim, distance=int(DIST_COSINE), ef_search=128
+    )
+    minilm_db = _touch_db(open_minilm_db(), touch_minilm_db)
+
+    st_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+
+    storage_per_passage = {
+        "routing_hnsw_graph_bytes": per_passage(routing_parts["hnsw_idx"] + routing_parts["hnsw_idx_meta"]),
+        "routing_vectors_bytes": per_passage(routing_parts["vectors_bin"]),
+        "routing_metadata_bytes": per_passage(routing_parts["other_metadata"]),
+        "routing_index_total_bytes": per_passage(routing_parts["total"]),
+        "value_vectors_bytes": per_passage(value_bytes),
+        "routing_plus_value_bytes": per_passage(routing_parts["total"] + value_bytes),
+        "minilm_index_bytes": per_passage(minilm_parts["total"]),
+        "minilm_vectors_bytes": per_passage(minilm_parts["vectors_bin"]),
+        "minilm_hnsw_graph_bytes": per_passage(minilm_parts["hnsw_idx"] + minilm_parts["hnsw_idx_meta"]),
+    }
+    load_rss_delta_bytes_per_passage = {
+        "routing_db_mmap": per_passage(rss_routing_load),
+        "value_safetensors_load": per_passage(rss_values_load),
+        "routing_plus_value": per_passage(rss_routing_load + rss_values_load),
+        "minilm_db_mmap": per_passage(rss_minilm_load),
+    }
+
     ndcg_routing: list[float] = []
     ndcg_rerank: list[float] = []
     ndcg_rescore: list[float] = []
@@ -428,6 +612,7 @@ def run_benchmark(
     lat_route: list[float] = []
     lat_rerank: list[float] = []
     lat_query_enc: list[float] = []
+    lat_minilm: list[float] = []
 
     warmup = True
     for qid in eval_qids:
@@ -459,7 +644,9 @@ def run_benchmark(
 
         qv = st_model.encode([qtext], convert_to_numpy=True).astype(np.float32)[0]
         qv /= np.linalg.norm(qv) or 1.0
+        t_m0 = time.perf_counter()
         minilm_hits = minilm_db.search(qv, top_k=max(100, RERANK_K))
+        t_minilm = time.perf_counter() - t_m0
         ranked_minilm = [h.text for h in minilm_hits]
 
         qrels_q = qrels[qid]
@@ -480,17 +667,7 @@ def run_benchmark(
         lat_query_enc.append(t_enc)
         lat_route.append(t_route)
         lat_rerank.append(t_route + t_rerank)
-
-    def du_sb(path: Path) -> int:
-        try:
-            out = subprocess.check_output(["du", "-sb", str(path)], text=True)
-            return int(out.split()[0])
-        except (subprocess.CalledProcessError, ValueError):
-            return 0
-
-    routing_bytes = du_sb(routing_db_path)
-    value_bytes = du_sb(enc_dir)
-    minilm_bytes = du_sb(minilm_path)
+        lat_minilm.append(t_minilm)
 
     title = "BEIR SciFact (test)" if not subset_label else f"SciFact subset — {subset_label}"
 
@@ -518,10 +695,21 @@ def run_benchmark(
             "breadbowl_values_safetensors": value_bytes,
             "combined_routing_plus_values": routing_bytes + value_bytes,
             "minilm_db": minilm_bytes,
+            "logosdb_routing_on_disk_breakdown": routing_parts,
+            "minilm_on_disk_breakdown": minilm_parts,
         },
+        "storage_bytes_per_passage": storage_per_passage,
+        "load_rss_delta_bytes": {
+            "routing_db_mmap": rss_routing_load,
+            "value_safetensors_load": rss_values_load,
+            "routing_plus_value": rss_routing_load + rss_values_load,
+            "minilm_db_mmap": rss_minilm_load,
+        },
+        "load_rss_delta_bytes_per_passage": load_rss_delta_bytes_per_passage,
         "latency_seconds_median": {
             "routing_search_16_slots": statistics.median(lat_route) if lat_route else None,
             "routing_plus_score_rerank": statistics.median(lat_rerank) if lat_rerank else None,
+            "minilm_hnsw_search": statistics.median(lat_minilm) if lat_minilm else None,
             "encode_one_query": statistics.median(lat_query_enc) if lat_query_enc else None,
         },
         "hardware": {
@@ -537,6 +725,10 @@ def run_benchmark(
         "notes": [
             "LogosDB routing arm is HNSW mean over slot searches (miss=-1), not log-mean-exp score_routing.",
             "Exact routing rescore is scores.routing on the top-100 shortlist only.",
+            "Search latencies (16-slot routing, rerank, MiniLM) exclude query encoding; encode_one_query is separate.",
+            "Storage per passage: on-disk bytes ÷ corpus passage count; routing graph is hnsw.idx + hnsw.idx.meta.",
+            "RAM per passage: VmRSS increase after gc.collect() when reopening each index in-process, ÷ passage count.",
+            "MiniLM load RSS uses a fresh child process because the parent already has the on-disk pages cached.",
         ],
     }
 
