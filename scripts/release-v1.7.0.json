@@ -1,0 +1,6 @@
+{
+  "core_version": "1.7.0",
+  "mcp_version": "1.4.6",
+  "n8n_version": "1.0.3",
+  "headline_html": "<h2>1.7.0 \u2014 Search filters and batch</h2>\n        <p class=\"section-intro\">\n          C API and bindings: id allow/deny filters on HNSW or exact scan (up to 4096 ids), search_batch, min_score, get_many, and timestamp cuts on search_filtered. Closes #134, #136, #144.\n        </p>\n\n        <table class=\"pkg-table\" aria-label=\"Published package versions\">\n          <thead>\n            <tr><th>Package</th><th>Version</th><th>Registry</th></tr>\n          </thead>\n          <tbody>\n            <tr><td><code>logosdb</code></td><td><strong>1.7.0</strong></td><td>PyPI, npm</td></tr>\n            <tr><td><code>logosdb-mcp-server</code></td><td><strong>1.4.6</strong></td><td>npm (<code>^1.7.0</code>)</td></tr>\n            <tr><td><code>n8n-nodes-logosdb</code></td><td>1.0.3</td><td>npm (unchanged)</td></tr>\n          </tbody>\n        </table>\n\n        <a class=\"release-banner\" href=\"https://github.com/jose-compu/logosdb/releases/tag/v1.7.0\" target=\"_blank\" rel=\"noopener\">\n          <img src=\"https://github.com/jose-compu/logosdb/releases/download/v1.7.0/linkedin-v1.7.0.png\" alt=\"LogosDB 1.7.0 release\" width=\"1200\" height=\"675\" loading=\"lazy\" />\n        </a>"
+}
