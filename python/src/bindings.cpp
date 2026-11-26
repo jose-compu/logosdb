@@ -370,8 +370,9 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
                     f.ts_to = ts_to.c_str();
                 f.skip_empty_ts = skip_empty_ts ? 1 : 0;
                 auto batch = self.search_batch(flat, n, k, f);
-                py::array_t<uint64_t> ids({n, k});
-                py::array_t<float> scores({n, k});
+                std::vector<py::ssize_t> shape{n, k};
+                py::array_t<uint64_t> ids(shape);
+                py::array_t<float> scores(shape);
                 std::memcpy(ids.mutable_data(), batch.ids.data(), batch.ids.size() * sizeof(uint64_t));
                 std::memcpy(
                     scores.mutable_data(), batch.scores.data(), batch.scores.size() * sizeof(float));
@@ -397,7 +398,8 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
                 std::memcpy(idv.data(), r.ptr, idv.size() * sizeof(uint64_t));
                 auto flat = self.get_many(idv);
                 const int dim = self.dim();
-                py::array_t<float> out({static_cast<py::ssize_t>(idv.size()), dim});
+                std::vector<py::ssize_t> out_shape{static_cast<py::ssize_t>(idv.size()), dim};
+                py::array_t<float> out(out_shape);
                 std::memcpy(out.mutable_data(), flat.data(), flat.size() * sizeof(float));
                 return out;
             },
