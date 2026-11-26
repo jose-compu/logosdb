@@ -202,6 +202,58 @@ describe('LogosDB Node.js', function() {
       assert.strictEqual(hits[0].text, 'original');
       assert.ok(hits[0].score > 0.99, 'Self-similarity should be ~1.0');
     });
+
+    it('search(vec, topK) unchanged with numeric second arg', () => {
+      const vec = randomUnitVector(64, 21);
+      db.put(vec, 'n');
+      const hits = db.search(vec, 3);
+      assert.ok(hits.length >= 1);
+    });
+
+    it('search with allow/deny/minScore filter object', () => {
+      const q = randomUnitVector(64, 22);
+      const near = randomUnitVector(64, 23);
+      const far = randomUnitVector(64, 24);
+      const idNear = db.put(near, 'near');
+      db.put(far, 'far');
+      const hits = db.search(q, { k: 5, deny: [idNear] });
+      for (const h of hits) {
+        assert.notStrictEqual(h.id, idNear);
+      }
+    });
+
+    it('searchBatch pads short rows with null and NaN', () => {
+      const v0 = randomUnitVector(64, 25);
+      const v1 = randomUnitVector(64, 26);
+      db.put(v0);
+      db.put(v1);
+      const batch = db.searchBatch([v0, v1], 4, { minScore: 2.0 });
+      assert.strictEqual(batch.ids.length, 2);
+      assert.strictEqual(batch.scores.length, 2);
+      for (let qi = 0; qi < 2; qi++) {
+        for (let kj = 0; kj < 4; kj++) {
+          if (batch.ids[qi][kj] === null) {
+            assert.ok(Number.isNaN(batch.scores[qi][kj]));
+          }
+        }
+      }
+    });
+
+    it('getMany matches get for live ids', () => {
+      const v0 = randomUnitVector(64, 27);
+      const v1 = randomUnitVector(64, 28);
+      const id0 = db.put(v0);
+      const id1 = db.put(v1);
+      const many = db.getMany([id0, id1]);
+      const row0 = db.get(id0);
+      const row1 = db.get(id1);
+      assert.strictEqual(many.length, 2);
+      assert.strictEqual(many[0].length, 64);
+      for (let d = 0; d < 64; d++) {
+        assert.ok(Math.abs(many[0][d] - row0.embedding[d]) < 1e-4);
+        assert.ok(Math.abs(many[1][d] - row1.embedding[d]) < 1e-4);
+      }
+    });
   });
 
   describe('Timestamp Range Search', () => {

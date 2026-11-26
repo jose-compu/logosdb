@@ -5,21 +5,24 @@
     "n_queries": 100,
     "seed": 42
   },
-  "unfiltered_recall_at_10_mean": 0.98,
+  "unfiltered_recall_at_10_mean": 0.6030000000000002,
   "search_latency_s": {
-    "p50": 0.00012,
-    "p95": 0.00028
+    "p50": 9.040300000151547e-05,
+    "p95": 0.00010552000003372086
   },
   "allow_10pct": {
-    "recall_at_k_mean": 1.0
+    "recall_at_k_mean": 0.0
   },
   "allow_1pct": {
-    "recall_at_k_mean": 1.0
+    "recall_at_k_mean": 0.0
   },
-  "search_batch_100_s": 0.014,
-  "search_serial_100_s": 0.016,
-  "get_many_100_s": 0.0004,
-  "get_serial_100_s": 0.0009,
+  "search_batch_100_s": 0.02155988000004072,
+  "search_serial_100_s": 0.006810772999983783,
+  "get_many_100_s": 5.097099995055032e-05,
+  "get_serial_100_s": 5.0715999918793386e-05,
   "min_score_above_all_hits_rows": 0,
-  "ids_batch_shape": [100, 10]
+  "ids_batch_shape": [
+    100,
+    10
+  ]
 }
