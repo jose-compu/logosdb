@@ -4,7 +4,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <cmath>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -274,11 +276,133 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
 
         .def(
             "search",
-            [](logosdb::DB& self, FloatArray query, int top_k)
-            { return self.search(to_vector(query, "query"), top_k); },
+            [](logosdb::DB& self,
+               FloatArray query,
+               int top_k,
+               py::object allow,
+               py::object deny,
+               py::object min_score,
+               const std::string& ts_from,
+               const std::string& ts_to,
+               bool skip_empty_ts) {
+                auto qv = to_vector(query, "query");
+                const bool use_filter = !(allow.is_none() && deny.is_none() && min_score.is_none() &&
+                                          ts_from.empty() && ts_to.empty() && !skip_empty_ts);
+                if (!use_filter)
+                    return self.search(qv, top_k);
+                logosdb_id_filter_t f;
+                logosdb_id_filter_init(&f);
+                if (!allow.is_none())
+                {
+                    auto arr = allow.cast<py::array_t<uint64_t, py::array::c_style>>();
+                    auto r = arr.request();
+                    f.allow = static_cast<const uint64_t*>(r.ptr);
+                    f.n_allow = static_cast<size_t>(r.size);
+                }
+                if (!deny.is_none())
+                {
+                    auto arr = deny.cast<py::array_t<uint64_t, py::array::c_style>>();
+                    auto r = arr.request();
+                    f.deny = static_cast<const uint64_t*>(r.ptr);
+                    f.n_deny = static_cast<size_t>(r.size);
+                }
+                if (!min_score.is_none())
+                    f.min_score = min_score.cast<float>();
+                if (!ts_from.empty())
+                    f.ts_from = ts_from.c_str();
+                if (!ts_to.empty())
+                    f.ts_to = ts_to.c_str();
+                f.skip_empty_ts = skip_empty_ts ? 1 : 0;
+                return self.search_filtered(qv, top_k, f);
+            },
             py::arg("query"),
             py::arg("top_k") = 5,
-            "Top-k approximate nearest-neighbor search. Returns list[SearchHit].")
+            py::kw_only(),
+            py::arg("allow") = py::none(),
+            py::arg("deny") = py::none(),
+            py::arg("min_score") = py::none(),
+            py::arg("ts_from") = "",
+            py::arg("ts_to") = "",
+            py::arg("skip_empty_ts") = false,
+            "Top-k search, optionally with id/score/timestamp filters.")
+
+        .def(
+            "search_batch",
+            [](logosdb::DB& self,
+               FloatArray queries,
+               int k,
+               py::object allow,
+               py::object deny,
+               py::object min_score,
+               const std::string& ts_from,
+               const std::string& ts_to,
+               bool skip_empty_ts) {
+                auto buf = queries.request();
+                if (buf.ndim != 2)
+                    throw py::value_error("queries must be 2-D float32");
+                const int n = static_cast<int>(buf.shape[0]);
+                const int dim = static_cast<int>(buf.shape[1]);
+                if (dim != self.dim())
+                    throw py::value_error("query dimension mismatch");
+                std::vector<float> flat(static_cast<size_t>(n) * static_cast<size_t>(dim));
+                std::memcpy(flat.data(), buf.ptr, flat.size() * sizeof(float));
+                logosdb_id_filter_t f;
+                logosdb_id_filter_init(&f);
+                if (!allow.is_none())
+                {
+                    auto arr = allow.cast<py::array_t<uint64_t, py::array::c_style>>();
+                    auto r = arr.request();
+                    f.allow = static_cast<const uint64_t*>(r.ptr);
+                    f.n_allow = static_cast<size_t>(r.size);
+                }
+                if (!deny.is_none())
+                {
+                    auto arr = deny.cast<py::array_t<uint64_t, py::array::c_style>>();
+                    auto r = arr.request();
+                    f.deny = static_cast<const uint64_t*>(r.ptr);
+                    f.n_deny = static_cast<size_t>(r.size);
+                }
+                if (!min_score.is_none())
+                    f.min_score = min_score.cast<float>();
+                if (!ts_from.empty())
+                    f.ts_from = ts_from.c_str();
+                if (!ts_to.empty())
+                    f.ts_to = ts_to.c_str();
+                f.skip_empty_ts = skip_empty_ts ? 1 : 0;
+                auto batch = self.search_batch(flat, n, k, f);
+                py::array_t<uint64_t> ids({n, k});
+                py::array_t<float> scores({n, k});
+                std::memcpy(ids.mutable_data(), batch.ids.data(), batch.ids.size() * sizeof(uint64_t));
+                std::memcpy(
+                    scores.mutable_data(), batch.scores.data(), batch.scores.size() * sizeof(float));
+                return py::make_tuple(ids, scores);
+            },
+            py::arg("queries"),
+            py::arg("k") = 10,
+            py::kw_only(),
+            py::arg("allow") = py::none(),
+            py::arg("deny") = py::none(),
+            py::arg("min_score") = py::none(),
+            py::arg("ts_from") = "",
+            py::arg("ts_to") = "",
+            py::arg("skip_empty_ts") = false,
+            "Batch filtered search; returns (ids, scores) shaped (n, k).")
+
+        .def(
+            "get_many",
+            [](logosdb::DB& self, py::array_t<uint64_t, py::array::c_style> ids)
+            {
+                auto r = ids.request();
+                std::vector<uint64_t> idv(r.size);
+                std::memcpy(idv.data(), r.ptr, idv.size() * sizeof(uint64_t));
+                auto flat = self.get_many(idv);
+                const int dim = self.dim();
+                py::array_t<float> out({static_cast<py::ssize_t>(idv.size()), dim});
+                std::memcpy(out.mutable_data(), flat.data(), flat.size() * sizeof(float));
+                return out;
+            },
+            py::arg("ids"),
+            "Fetch embeddings for many ids; shape (n, dim) float32.")
 
         .def(
             "search_ts_range",

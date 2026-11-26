@@ -1,0 +1,29 @@
+{
+  "core_version": "1.7.0",
+  "mcp_version": "1.4.6",
+  "n8n_version": "1.0.3",
+  "date": "2026-11-26",
+  "prev_tag": "v1.6.0",
+  "release_kind": "Minor",
+  "title": "Search filters and batch",
+  "change_summary": "C API and bindings: id allow/deny filters on HNSW or exact scan (up to 4096 ids), search_batch, min_score, get_many, and timestamp cuts on search_filtered. Closes #134, #136, #144.",
+  "bindings_note": "Python, Node, and C++. On-disk format unchanged. logosdb-mcp-server 1.4.6 depends on logosdb ^1.7.0.",
+  "tagline": "Embedded vector DB for AI agents and RAG",
+  "release_tagline": "Filter ids, batch queries, and fetch embeddings in one call",
+  "highlights": [
+    {
+      "name": "allow / deny",
+      "desc": "Search this vector DB inside an id set, or drop ids you have already seen."
+    },
+    {
+      "name": "search_batch",
+      "desc": "Many queries in one call. Each row comes back as ids and scores."
+    },
+    {
+      "name": "min_score, get_many",
+      "desc": "Drop weak hits, then load those embeddings from the vector DB together."
+    }
+  ],
+  "install": "pip install logosdb   ·   npm i logosdb",
+  "github": "github.com/jose-compu/logosdb"
+}

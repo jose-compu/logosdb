@@ -5,9 +5,9 @@
 #include <stdint.h>
 
 #define LOGOSDB_VERSION_MAJOR 1
-#define LOGOSDB_VERSION_MINOR 6
+#define LOGOSDB_VERSION_MINOR 7
 #define LOGOSDB_VERSION_PATCH 0
-#define LOGOSDB_VERSION_STRING "1.6.0"
+#define LOGOSDB_VERSION_STRING "1.7.0"
 
 /* Distance metrics for vector similarity search */
 #define LOGOSDB_DIST_IP 0     /* Inner product (default, requires L2-normalized vectors) */
@@ -203,6 +203,49 @@ extern "C"
                                                      const char* ts_to_iso8601,
                                                      int candidate_k,
                                                      char** errptr);
+
+#define LOGOSDB_FILTER_MAX_K 4096
+#define LOGOSDB_SEARCH_BATCH_MAX_N 65536
+#define LOGOSDB_EXACT_SCAN_MAX_IDS 4096
+#define LOGOSDB_EXACT_SCAN_MAX_BYTES (10000u * 1024u) /* 10,000 KB */
+
+    typedef struct logosdb_id_filter_t
+    {
+        const uint64_t* allow; /* NULL and n_allow == 0: every live id */
+        size_t n_allow;
+        const uint64_t* deny; /* NULL and n_deny == 0: deny nothing */
+        size_t n_deny;
+        float min_score;   /* NaN: no cut. Compared to SearchHit.score */
+        int skip_empty_ts; /* 0 or 1. 0 matches today's ts filter */
+        const char* ts_from; /* NULL or ISO-8601, inclusive */
+        const char* ts_to;
+    } logosdb_id_filter_t;
+
+    void logosdb_id_filter_init(logosdb_id_filter_t* f);
+
+    logosdb_search_result_t* logosdb_search_filtered(logosdb_t* db,
+                                                       const float* query,
+                                                       int dim,
+                                                       int top_k,
+                                                       const logosdb_id_filter_t* f,
+                                                       char** errptr);
+
+    int logosdb_search_batch(logosdb_t* db,
+                             const float* queries,
+                             int n,
+                             int dim,
+                             int k,
+                             const logosdb_id_filter_t* f,
+                             uint64_t* out_ids,
+                             float* out_scores,
+                             char** errptr);
+
+    int logosdb_get_many(logosdb_t* db,
+                         const uint64_t* ids,
+                         size_t n,
+                         float* out,
+                         size_t out_cap,
+                         char** errptr);
 
     int logosdb_result_count(const logosdb_search_result_t* r);
     uint64_t logosdb_result_id(const logosdb_search_result_t* r, int i);
@@ -619,6 +662,22 @@ class DB
         logosdb_result_free(r);
         return hits;
     }
+
+    std::vector<SearchHit> search_filtered(const std::vector<float>& query,
+                                           int top_k,
+                                           const logosdb_id_filter_t& f);
+
+    struct SearchBatchResult
+    {
+        std::vector<uint64_t> ids;
+        std::vector<float> scores;
+    };
+    SearchBatchResult search_batch(const std::vector<float>& queries_flat,
+                                   int n,
+                                   int k,
+                                   const logosdb_id_filter_t& f);
+
+    std::vector<float> get_many(const std::vector<uint64_t>& ids);
 
     size_t count() const { return logosdb_count(db_); }
     size_t count_live() const { return logosdb_count_live(db_); }

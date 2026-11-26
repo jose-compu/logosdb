@@ -87,10 +87,26 @@ class DB {
    * @param {number} [topK=10] - Number of results
    * @returns {SearchHit[]} Search results
    */
-  search(queryEmbedding, topK = 10) {
+  search(queryEmbedding, topKOrOptions = 10) {
     this._checkClosed();
     assertDim(queryEmbedding, this.dim(), 'search');
-    return this._db.search(queryEmbedding, topK);
+    if (typeof topKOrOptions === 'number') {
+      return this._db.search(queryEmbedding, topKOrOptions);
+    }
+    if (typeof topKOrOptions === 'object' && topKOrOptions !== null) {
+      return this._db.searchFiltered(queryEmbedding, topKOrOptions);
+    }
+    throw new TypeError('search second argument must be a number or filter options object');
+  }
+
+  searchBatch(queries, k, filter) {
+    this._checkClosed();
+    return this._db.searchBatch(queries, k, filter || {});
+  }
+
+  getMany(ids) {
+    this._checkClosed();
+    return this._db.getMany(ids);
   }
 
   /**

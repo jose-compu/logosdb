@@ -1,0 +1,25 @@
+{
+  "fixture": {
+    "n_vectors": 10000,
+    "dim": 128,
+    "n_queries": 100,
+    "seed": 42
+  },
+  "unfiltered_recall_at_10_mean": 0.98,
+  "search_latency_s": {
+    "p50": 0.00012,
+    "p95": 0.00028
+  },
+  "allow_10pct": {
+    "recall_at_k_mean": 1.0
+  },
+  "allow_1pct": {
+    "recall_at_k_mean": 1.0
+  },
+  "search_batch_100_s": 0.014,
+  "search_serial_100_s": 0.016,
+  "get_many_100_s": 0.0004,
+  "get_serial_100_s": 0.0009,
+  "min_score_above_all_hits_rows": 0,
+  "ids_batch_shape": [100, 10]
+}

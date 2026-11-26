@@ -2156,3 +2156,237 @@ TEST_SUITE("scoring")
     }
 
 }  // TEST_SUITE("scoring")
+
+TEST_SUITE("search_primitives")
+{
+    static logosdb_id_filter_t make_filter()
+    {
+        logosdb_id_filter_t f;
+        logosdb_id_filter_init(&f);
+        return f;
+    }
+
+    TEST_CASE("search_filtered: deny-only drops nearest")
+    {
+        std::string path = tmp_path("logosdb_test_deny");
+        std::filesystem::remove_all(path);
+        const int dim = 16;
+        logosdb::DB db(path, {.dim = dim, .ef_search = 50});
+        auto q = unit_vec(dim, 7001);
+        auto near = unit_vec(dim, 7002);
+        auto far = unit_vec(dim, 7003);
+        uint64_t id_near = db.put(near, "near");
+        db.put(far, "far");
+
+        logosdb_id_filter_t f = make_filter();
+        uint64_t deny[] = {id_near};
+        f.deny = deny;
+        f.n_deny = 1;
+
+        auto hits = db.search_filtered(q, 5, f);
+        CHECK(hits.size() >= 1);
+        for (auto& h : hits)
+            CHECK(h.id != id_near);
+
+        std::filesystem::remove_all(path);
+    }
+
+    TEST_CASE("search_filtered: allow exact set with ef_search=1")
+    {
+        std::string path = tmp_path("logosdb_test_allow8");
+        std::filesystem::remove_all(path);
+        const int dim = 8;
+        logosdb::DB db(path, {.dim = dim, .ef_search = 1});
+        std::vector<uint64_t> allow_ids;
+        std::vector<std::vector<float>> vecs;
+        for (int i = 0; i < 10; ++i)
+        {
+            vecs.push_back(unit_vec(dim, 7100 + i));
+            allow_ids.push_back(db.put(vecs.back(), "v"));
+        }
+        auto q = vecs[3];
+        uint64_t allow8[8];
+        for (int i = 0; i < 8; ++i)
+            allow8[i] = allow_ids[static_cast<size_t>(i)];
+        logosdb_id_filter_t f = make_filter();
+        f.allow = allow8;
+        f.n_allow = 8;
+        auto hits = db.search_filtered(q, 1, f);
+        REQUIRE(hits.size() == 1);
+        CHECK(hits[0].id == allow_ids[3]);
+        std::filesystem::remove_all(path);
+    }
+
+    TEST_CASE("search_filtered: min_score cut")
+    {
+        std::string path = tmp_path("logosdb_test_minscore");
+        std::filesystem::remove_all(path);
+        const int dim = 8;
+        logosdb::DB db(path, {.dim = dim});
+        auto v0 = unit_vec(dim, 7200);
+        auto v1 = unit_vec(dim, 7201);
+        db.put(v0);
+        db.put(v1);
+        auto hits = db.search(v0, 2);
+        REQUIRE(hits.size() == 2);
+        logosdb_id_filter_t f = make_filter();
+        f.min_score = hits[0].score + 0.01f;
+        auto none = db.search_filtered(v0, 5, f);
+        CHECK(none.empty());
+        REQUIRE(hits[0].score > hits[1].score);
+        f.min_score = hits[1].score + 1e-5f;
+        auto one = db.search_filtered(v0, 5, f);
+        REQUIRE(one.size() == 1);
+        CHECK(one[0].id == hits[0].id);
+        std::filesystem::remove_all(path);
+    }
+
+    TEST_CASE("get_many matches get and rejects tombstone")
+    {
+        std::string path = tmp_path("logosdb_test_getmany");
+        std::filesystem::remove_all(path);
+        const int dim = 4;
+        logosdb::DB db(path, {.dim = dim, .dtype = LOGOSDB_DTYPE_FLOAT16});
+        auto a = unit_vec(dim, 7300);
+        auto b = unit_vec(dim, 7301);
+        auto c = unit_vec(dim, 7302);
+        uint64_t ia = db.put(a);
+        uint64_t ib = db.put(b);
+        uint64_t ic = db.put(c);
+        std::vector<uint64_t> ids{ia, ib, ic};
+        auto flat = db.get_many(ids);
+        REQUIRE(flat.size() == static_cast<size_t>(dim) * ids.size());
+        for (size_t i = 0; i < ids.size(); ++i)
+        {
+            auto row = db.get(ids[i]);
+            for (int d = 0; d < dim; ++d)
+            {
+                CHECK(std::abs(flat[i * static_cast<size_t>(dim) + static_cast<size_t>(d)] -
+                               row.embedding[static_cast<size_t>(d)]) < 1e-3f);
+            }
+        }
+        db.del(ib);
+        char* err = nullptr;
+        std::vector<float> out(dim * ids.size());
+        CHECK(logosdb_get_many(db.handle(), ids.data(), ids.size(), out.data(), out.size(), &err) == -1);
+        if (err)
+            free(err);
+        std::filesystem::remove_all(path);
+    }
+
+    TEST_CASE("search_batch matches search_filtered and pads")
+    {
+        std::string path = tmp_path("logosdb_test_batch");
+        std::filesystem::remove_all(path);
+        const int dim = 8;
+        logosdb::DB db(path, {.dim = dim});
+        std::vector<std::vector<float>> vecs;
+        for (int i = 0; i < 6; ++i)
+        {
+            vecs.push_back(unit_vec(dim, 7400 + i));
+            db.put(vecs.back());
+        }
+        std::vector<float> flat;
+        for (int i = 0; i < 3; ++i)
+            flat.insert(flat.end(), vecs[static_cast<size_t>(i)].begin(), vecs[static_cast<size_t>(i)].end());
+        logosdb_id_filter_t f = make_filter();
+        f.min_score = 2.0f;
+        auto batch = db.search_batch(flat, 3, 4, f);
+        for (int qi = 0; qi < 3; ++qi)
+        {
+            auto one = db.search_filtered(vecs[static_cast<size_t>(qi)], 4, f);
+            for (int k = 0; k < 4; ++k)
+            {
+                uint64_t bid = batch.ids[static_cast<size_t>(qi) * 4 + static_cast<size_t>(k)];
+                float bs = batch.scores[static_cast<size_t>(qi) * 4 + static_cast<size_t>(k)];
+                if (k < (int)one.size())
+                {
+                    CHECK(bid == one[static_cast<size_t>(k)].id);
+                    CHECK(bs == doctest::Approx(one[static_cast<size_t>(k)].score));
+                }
+                else
+                {
+                    CHECK(bid == UINT64_MAX);
+                    CHECK(std::isnan(bs));
+                }
+            }
+        }
+        std::filesystem::remove_all(path);
+    }
+
+    TEST_CASE("search_filtered validation errors")
+    {
+        std::string path = tmp_path("logosdb_test_filter_err");
+        std::filesystem::remove_all(path);
+        const int dim = 4;
+        logosdb::DB db(path, {.dim = dim});
+        auto v = unit_vec(dim, 7500);
+        db.put(v);
+        char* err = nullptr;
+        logosdb_id_filter_t f = make_filter();
+        f.n_allow = 1;
+        CHECK(logosdb_search_filtered(db.handle(), v.data(), dim, 1, &f, &err) == nullptr);
+        if (err)
+            free(err);
+        err = nullptr;
+        uint64_t bad = 99;
+        f.allow = &bad;
+        f.n_allow = 1;
+        CHECK(logosdb_search_filtered(db.handle(), v.data(), dim, 1, &f, &err) == nullptr);
+        if (err)
+            free(err);
+        err = nullptr;
+        std::vector<float> nanq = v;
+        nanq[0] = std::numeric_limits<float>::quiet_NaN();
+        CHECK(logosdb_search_filtered(db.handle(), nanq.data(), dim, 1, nullptr, &err) == nullptr);
+        if (err)
+            free(err);
+        err = nullptr;
+        CHECK(logosdb_search_filtered(db.handle(), v.data(), dim, 4097, nullptr, &err) == nullptr);
+        if (err)
+            free(err);
+        err = nullptr;
+        logosdb_search_result_t* uncap = logosdb_search(db.handle(), v.data(), dim, 4097, &err);
+        CHECK(uncap != nullptr);
+        logosdb_result_free(uncap);
+        std::filesystem::remove_all(path);
+    }
+
+    TEST_CASE("search_filtered ts and null filter")
+    {
+        std::string path = tmp_path("logosdb_test_filter_ts");
+        std::filesystem::remove_all(path);
+        const int dim = 8;
+        logosdb::DB db(path, {.dim = dim});
+        auto q = unit_vec(dim, 7600);
+        auto a = unit_vec(dim, 7601);
+        auto b = unit_vec(dim, 7602);
+        db.put(a, "a", "2025-04-01T10:00:00Z");
+        db.put(b, "b", "");
+        logosdb_id_filter_t f = make_filter();
+        f.skip_empty_ts = 1;
+        auto hits = db.search_filtered(q, 5, f);
+        for (auto& h : hits)
+            CHECK(!h.timestamp.empty());
+        f = make_filter();
+        f.ts_from = "2025-04-01T00:00:00Z";
+        f.ts_to = "2025-04-01T12:00:00Z";
+        hits = db.search_filtered(q, 5, f);
+        bool saw_a = false;
+        for (auto& h : hits)
+        {
+            if (h.id == 0)
+                saw_a = true;
+        }
+        CHECK(saw_a);
+        auto plain = db.search(q, 5);
+        auto filt = db.search_filtered(q, 5, make_filter());
+        REQUIRE(plain.size() == filt.size());
+        for (size_t i = 0; i < plain.size(); ++i)
+        {
+            CHECK(plain[i].id == filt[i].id);
+            CHECK(plain[i].score == doctest::Approx(filt[i].score));
+        }
+        std::filesystem::remove_all(path);
+    }
+}
