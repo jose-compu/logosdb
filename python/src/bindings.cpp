@@ -284,10 +284,12 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
                py::object min_score,
                const std::string& ts_from,
                const std::string& ts_to,
-               bool skip_empty_ts) {
+               bool skip_empty_ts)
+            {
                 auto qv = to_vector(query, "query");
-                const bool use_filter = !(allow.is_none() && deny.is_none() && min_score.is_none() &&
-                                          ts_from.empty() && ts_to.empty() && !skip_empty_ts);
+                const bool use_filter =
+                    !(allow.is_none() && deny.is_none() && min_score.is_none() && ts_from.empty() &&
+                      ts_to.empty() && !skip_empty_ts);
                 if (!use_filter)
                     return self.search(qv, top_k);
                 logosdb_id_filter_t f;
@@ -336,7 +338,8 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
                py::object min_score,
                const std::string& ts_from,
                const std::string& ts_to,
-               bool skip_empty_ts) {
+               bool skip_empty_ts)
+            {
                 auto buf = queries.request();
                 if (buf.ndim != 2)
                     throw py::value_error("queries must be 2-D float32");
@@ -373,9 +376,11 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
                 std::vector<py::ssize_t> shape{n, k};
                 py::array_t<uint64_t> ids(shape);
                 py::array_t<float> scores(shape);
-                std::memcpy(ids.mutable_data(), batch.ids.data(), batch.ids.size() * sizeof(uint64_t));
                 std::memcpy(
-                    scores.mutable_data(), batch.scores.data(), batch.scores.size() * sizeof(float));
+                    ids.mutable_data(), batch.ids.data(), batch.ids.size() * sizeof(uint64_t));
+                std::memcpy(scores.mutable_data(),
+                            batch.scores.data(),
+                            batch.scores.size() * sizeof(float));
                 return py::make_tuple(ids, scores);
             },
             py::arg("queries"),

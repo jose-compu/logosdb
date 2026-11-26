@@ -2268,7 +2268,8 @@ TEST_SUITE("search_primitives")
         db.del(ib);
         char* err = nullptr;
         std::vector<float> out(dim * ids.size());
-        CHECK(logosdb_get_many(db.handle(), ids.data(), ids.size(), out.data(), out.size(), &err) == -1);
+        CHECK(logosdb_get_many(db.handle(), ids.data(), ids.size(), out.data(), out.size(), &err) ==
+              -1);
         if (err)
             free(err);
         std::filesystem::remove_all(path);
@@ -2288,7 +2289,9 @@ TEST_SUITE("search_primitives")
         }
         std::vector<float> flat;
         for (int i = 0; i < 3; ++i)
-            flat.insert(flat.end(), vecs[static_cast<size_t>(i)].begin(), vecs[static_cast<size_t>(i)].end());
+            flat.insert(flat.end(),
+                        vecs[static_cast<size_t>(i)].begin(),
+                        vecs[static_cast<size_t>(i)].end());
         logosdb_id_filter_t f = make_filter();
         f.min_score = 2.0f;
         auto batch = db.search_batch(flat, 3, 4, f);

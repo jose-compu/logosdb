@@ -263,7 +263,8 @@ bool HnswIndex::get_vector_by_label(uint64_t label, float* out, int dim, std::st
     }
     try
     {
-        std::vector<float> data = impl_->alg->getDataByLabel<float>(static_cast<hnswlib::labeltype>(label));
+        std::vector<float> data =
+            impl_->alg->getDataByLabel<float>(static_cast<hnswlib::labeltype>(label));
         if ((int)data.size() < dim)
         {
             err = "vector data missing for label";
@@ -279,8 +280,8 @@ bool HnswIndex::get_vector_by_label(uint64_t label, float* out, int dim, std::st
     return true;
 }
 
-std::vector<std::pair<uint64_t, float>>
-HnswIndex::search(const float* query, int top_k, std::string& err, IdPredicate pred, void* pred_ctx) const
+std::vector<std::pair<uint64_t, float>> HnswIndex::search(
+    const float* query, int top_k, std::string& err, IdPredicate pred, void* pred_ctx) const
 {
     std::vector<std::pair<uint64_t, float>> results;
     if (!impl_ || !impl_->alg)
@@ -309,8 +310,15 @@ HnswIndex::search(const float* query, int top_k, std::string& err, IdPredicate p
     class PredFilterFunctor : public hnswlib::BaseFilterFunctor
     {
       public:
-        PredFilterFunctor(HnswIndex::IdPredicate p, void* c) : p_(p), c_(c) {}
-        bool operator()(hnswlib::labeltype id) override { return p_(static_cast<uint64_t>(id), c_); }
+        PredFilterFunctor(HnswIndex::IdPredicate p, void* c)
+            : p_(p),
+              c_(c)
+        {
+        }
+        bool operator()(hnswlib::labeltype id) override
+        {
+            return p_(static_cast<uint64_t>(id), c_);
+        }
 
       private:
         HnswIndex::IdPredicate p_;

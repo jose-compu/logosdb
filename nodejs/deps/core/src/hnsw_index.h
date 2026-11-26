@@ -62,8 +62,11 @@ class HnswIndex
 
     // Search for top-k nearest. Returns (label, distance) pairs sorted by distance desc
     // (inner product — higher is more similar). Optional id predicate for HNSW filtering.
-    std::vector<std::pair<uint64_t, float>>
-    search(const float* query, int top_k, std::string& err, IdPredicate pred = nullptr, void* pred_ctx = nullptr) const;
+    std::vector<std::pair<uint64_t, float>> search(const float* query,
+                                                   int top_k,
+                                                   std::string& err,
+                                                   IdPredicate pred = nullptr,
+                                                   void* pred_ctx = nullptr) const;
 
     // Indexed vector for label (HNSW storage). For cosine metric, data is L2-normalized.
     bool get_vector_by_label(uint64_t label, float* out, int dim, std::string& err) const;

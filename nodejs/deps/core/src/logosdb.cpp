@@ -12,10 +12,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <limits>
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -970,7 +970,11 @@ struct AllowBitmap
     std::vector<uint8_t> bytes;
     size_t nbits = 0;
 
-    void resize_bits(size_t bits) { nbits = bits; bytes.assign((bits + 7) / 8, 0); }
+    void resize_bits(size_t bits)
+    {
+        nbits = bits;
+        bytes.assign((bits + 7) / 8, 0);
+    }
     void set(size_t id)
     {
         if (id >= nbits)
@@ -1005,7 +1009,8 @@ static bool bitmap_pred(uint64_t label, void* ctx)
     return b->test(static_cast<size_t>(label));
 }
 
-static float score_indexed_vector(logosdb_t* db, const float* query, int dim, uint64_t label, std::string& err)
+static float
+score_indexed_vector(logosdb_t* db, const float* query, int dim, uint64_t label, std::string& err)
 {
     std::vector<float> vec(static_cast<size_t>(dim));
     if (!db->index.get_vector_by_label(label, vec.data(), dim, err))
@@ -1039,7 +1044,10 @@ static float score_indexed_vector(logosdb_t* db, const float* query, int dim, ui
     return ip;
 }
 
-static void build_allow_bitmap(logosdb_t* db, const logosdb_id_filter_t* f, AllowBitmap& bmp, bool& explicit_allow)
+static void build_allow_bitmap(logosdb_t* db,
+                               const logosdb_id_filter_t* f,
+                               AllowBitmap& bmp,
+                               bool& explicit_allow)
 {
     const size_t nrows = db->vectors.n_rows();
     const size_t nbits = db->index.max_elements();
@@ -1080,8 +1088,12 @@ static bool use_exact_scan(const logosdb_id_filter_t* f, int dim)
     return bytes <= LOGOSDB_EXACT_SCAN_MAX_BYTES;
 }
 
-static std::vector<std::pair<uint64_t, float>>
-search_filtered_locked(logosdb_t* db, const float* query, int dim, int top_k, const logosdb_id_filter_t* f, std::string& err)
+static std::vector<std::pair<uint64_t, float>> search_filtered_locked(logosdb_t* db,
+                                                                      const float* query,
+                                                                      int dim,
+                                                                      int top_k,
+                                                                      const logosdb_id_filter_t* f,
+                                                                      std::string& err)
 {
     std::vector<std::pair<uint64_t, float>> out;
     AllowBitmap bmp;
@@ -1301,12 +1313,8 @@ int logosdb_search_batch(logosdb_t* db,
     return 0;
 }
 
-int logosdb_get_many(logosdb_t* db,
-                     const uint64_t* ids,
-                     size_t n,
-                     float* out,
-                     size_t out_cap,
-                     char** errptr)
+int logosdb_get_many(
+    logosdb_t* db, const uint64_t* ids, size_t n, float* out, size_t out_cap, char** errptr)
 {
     if (!db)
     {
@@ -2090,9 +2098,8 @@ int logosdb_l2_normalize(float* vec, int dim)
 namespace logosdb
 {
 
-std::vector<SearchHit> DB::search_filtered(const std::vector<float>& query,
-                                           int top_k,
-                                           const logosdb_id_filter_t& f)
+std::vector<SearchHit>
+DB::search_filtered(const std::vector<float>& query, int top_k, const logosdb_id_filter_t& f)
 {
     char* err = nullptr;
     logosdb_search_result_t* r =
@@ -2123,10 +2130,8 @@ std::vector<SearchHit> DB::search_filtered(const std::vector<float>& query,
     return hits;
 }
 
-DB::SearchBatchResult DB::search_batch(const std::vector<float>& queries_flat,
-                                       int n,
-                                       int k,
-                                       const logosdb_id_filter_t& f)
+DB::SearchBatchResult
+DB::search_batch(const std::vector<float>& queries_flat, int n, int k, const logosdb_id_filter_t& f)
 {
     if ((int)queries_flat.size() != n * dim())
         throw std::runtime_error("search_batch: queries_flat size mismatch");
@@ -2134,15 +2139,9 @@ DB::SearchBatchResult DB::search_batch(const std::vector<float>& queries_flat,
     out.ids.resize(static_cast<size_t>(n) * static_cast<size_t>(k));
     out.scores.resize(static_cast<size_t>(n) * static_cast<size_t>(k));
     char* err = nullptr;
-    if (logosdb_search_batch(db_,
-                             queries_flat.data(),
-                             n,
-                             dim(),
-                             k,
-                             &f,
-                             out.ids.data(),
-                             out.scores.data(),
-                             &err) != 0)
+    if (logosdb_search_batch(
+            db_, queries_flat.data(), n, dim(), k, &f, out.ids.data(), out.scores.data(), &err) !=
+        0)
     {
         std::string msg = err ? err : "unknown";
         free(err);

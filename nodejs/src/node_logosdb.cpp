@@ -75,7 +75,8 @@ static void FillIdFilterFromJs(Napi::Object opts,
             Napi::Array arr = av.As<Napi::Array>();
             allow_store.reserve(arr.Length());
             for (uint32_t i = 0; i < arr.Length(); ++i)
-                allow_store.push_back(static_cast<uint64_t>(arr.Get(i).As<Napi::Number>().Int64Value()));
+                allow_store.push_back(
+                    static_cast<uint64_t>(arr.Get(i).As<Napi::Number>().Int64Value()));
             f->allow = allow_store.data();
             f->n_allow = allow_store.size();
         }
@@ -88,12 +89,14 @@ static void FillIdFilterFromJs(Napi::Object opts,
             Napi::Array arr = dv.As<Napi::Array>();
             deny_store.reserve(arr.Length());
             for (uint32_t i = 0; i < arr.Length(); ++i)
-                deny_store.push_back(static_cast<uint64_t>(arr.Get(i).As<Napi::Number>().Int64Value()));
+                deny_store.push_back(
+                    static_cast<uint64_t>(arr.Get(i).As<Napi::Number>().Int64Value()));
             f->deny = deny_store.data();
             f->n_deny = deny_store.size();
         }
     }
-    if (opts.Has("minScore") && !opts.Get("minScore").IsNull() && !opts.Get("minScore").IsUndefined())
+    if (opts.Has("minScore") && !opts.Get("minScore").IsNull() &&
+        !opts.Get("minScore").IsUndefined())
         f->min_score = opts.Get("minScore").As<Napi::Number>().FloatValue();
     if (opts.Has("tsFrom"))
         ts_from = opts.Get("tsFrom").As<Napi::String>().Utf8Value();
@@ -540,7 +543,8 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
         std::vector<float> flat(static_cast<size_t>(n) * static_cast<size_t>(dim_));
         for (int i = 0; i < n; ++i)
         {
-            auto row = JsArrayToFloatVector(queriesArr.Get(static_cast<uint32_t>(i)).As<Napi::Array>());
+            auto row =
+                JsArrayToFloatVector(queriesArr.Get(static_cast<uint32_t>(i)).As<Napi::Array>());
             if ((int)row.size() != dim_)
                 throw Napi::Error::New(env, "Query dimension mismatch");
             std::memcpy(flat.data() + static_cast<size_t>(i) * static_cast<size_t>(dim_),
@@ -551,21 +555,15 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
         std::vector<uint64_t> allow_store, deny_store;
         std::string ts_from, ts_to;
         if (info.Length() > 2 && info[2].IsObject())
-            FillIdFilterFromJs(info[2].As<Napi::Object>(), &f, allow_store, deny_store, ts_from, ts_to);
+            FillIdFilterFromJs(
+                info[2].As<Napi::Object>(), &f, allow_store, deny_store, ts_from, ts_to);
         else
             logosdb_id_filter_init(&f);
         std::vector<uint64_t> out_ids(static_cast<size_t>(n) * static_cast<size_t>(k));
         std::vector<float> out_scores(static_cast<size_t>(n) * static_cast<size_t>(k));
         char* err = nullptr;
-        if (logosdb_search_batch(db_,
-                                 flat.data(),
-                                 n,
-                                 dim_,
-                                 k,
-                                 &f,
-                                 out_ids.data(),
-                                 out_scores.data(),
-                                 &err) != 0)
+        if (logosdb_search_batch(
+                db_, flat.data(), n, dim_, k, &f, out_ids.data(), out_scores.data(), &err) != 0)
         {
             std::string msg = err ? err : "search_batch failed";
             if (err)
@@ -580,7 +578,8 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
             Napi::Array scoreRow = Napi::Array::New(env, k);
             for (int kj = 0; kj < k; ++kj)
             {
-                size_t idx = static_cast<size_t>(qi) * static_cast<size_t>(k) + static_cast<size_t>(kj);
+                size_t idx =
+                    static_cast<size_t>(qi) * static_cast<size_t>(k) + static_cast<size_t>(kj);
                 uint64_t id = out_ids[idx];
                 float sc = out_scores[idx];
                 if (id == UINT64_MAX)

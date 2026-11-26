@@ -215,8 +215,8 @@ extern "C"
         size_t n_allow;
         const uint64_t* deny; /* NULL and n_deny == 0: deny nothing */
         size_t n_deny;
-        float min_score;   /* NaN: no cut. Compared to SearchHit.score */
-        int skip_empty_ts; /* 0 or 1. 0 matches today's ts filter */
+        float min_score;     /* NaN: no cut. Compared to SearchHit.score */
+        int skip_empty_ts;   /* 0 or 1. 0 matches today's ts filter */
         const char* ts_from; /* NULL or ISO-8601, inclusive */
         const char* ts_to;
     } logosdb_id_filter_t;
@@ -224,11 +224,11 @@ extern "C"
     void logosdb_id_filter_init(logosdb_id_filter_t* f);
 
     logosdb_search_result_t* logosdb_search_filtered(logosdb_t* db,
-                                                       const float* query,
-                                                       int dim,
-                                                       int top_k,
-                                                       const logosdb_id_filter_t* f,
-                                                       char** errptr);
+                                                     const float* query,
+                                                     int dim,
+                                                     int top_k,
+                                                     const logosdb_id_filter_t* f,
+                                                     char** errptr);
 
     int logosdb_search_batch(logosdb_t* db,
                              const float* queries,
@@ -240,12 +240,8 @@ extern "C"
                              float* out_scores,
                              char** errptr);
 
-    int logosdb_get_many(logosdb_t* db,
-                         const uint64_t* ids,
-                         size_t n,
-                         float* out,
-                         size_t out_cap,
-                         char** errptr);
+    int logosdb_get_many(
+        logosdb_t* db, const uint64_t* ids, size_t n, float* out, size_t out_cap, char** errptr);
 
     int logosdb_result_count(const logosdb_search_result_t* r);
     uint64_t logosdb_result_id(const logosdb_search_result_t* r, int i);
@@ -663,9 +659,8 @@ class DB
         return hits;
     }
 
-    std::vector<SearchHit> search_filtered(const std::vector<float>& query,
-                                           int top_k,
-                                           const logosdb_id_filter_t& f);
+    std::vector<SearchHit>
+    search_filtered(const std::vector<float>& query, int top_k, const logosdb_id_filter_t& f);
 
     struct SearchBatchResult
     {
