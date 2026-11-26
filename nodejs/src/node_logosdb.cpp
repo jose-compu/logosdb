@@ -8,7 +8,9 @@
 
 #include <napi.h>
 
+#include <cmath>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -57,6 +59,55 @@ SearchHitToJsObject(Napi::Env env, const logosdb_search_result_t* result, int in
     return obj;
 }
 
+static void FillIdFilterFromJs(Napi::Object opts,
+                               logosdb_id_filter_t* f,
+                               std::vector<uint64_t>& allow_store,
+                               std::vector<uint64_t>& deny_store,
+                               std::string& ts_from,
+                               std::string& ts_to)
+{
+    logosdb_id_filter_init(f);
+    if (opts.Has("allow"))
+    {
+        Napi::Value av = opts.Get("allow");
+        if (av.IsArray())
+        {
+            Napi::Array arr = av.As<Napi::Array>();
+            allow_store.reserve(arr.Length());
+            for (uint32_t i = 0; i < arr.Length(); ++i)
+                allow_store.push_back(
+                    static_cast<uint64_t>(arr.Get(i).As<Napi::Number>().Int64Value()));
+            f->allow = allow_store.data();
+            f->n_allow = allow_store.size();
+        }
+    }
+    if (opts.Has("deny"))
+    {
+        Napi::Value dv = opts.Get("deny");
+        if (dv.IsArray())
+        {
+            Napi::Array arr = dv.As<Napi::Array>();
+            deny_store.reserve(arr.Length());
+            for (uint32_t i = 0; i < arr.Length(); ++i)
+                deny_store.push_back(
+                    static_cast<uint64_t>(arr.Get(i).As<Napi::Number>().Int64Value()));
+            f->deny = deny_store.data();
+            f->n_deny = deny_store.size();
+        }
+    }
+    if (opts.Has("minScore") && !opts.Get("minScore").IsNull() &&
+        !opts.Get("minScore").IsUndefined())
+        f->min_score = opts.Get("minScore").As<Napi::Number>().FloatValue();
+    if (opts.Has("tsFrom"))
+        ts_from = opts.Get("tsFrom").As<Napi::String>().Utf8Value();
+    if (opts.Has("tsTo"))
+        ts_to = opts.Get("tsTo").As<Napi::String>().Utf8Value();
+    f->ts_from = ts_from.empty() ? nullptr : ts_from.c_str();
+    f->ts_to = ts_to.empty() ? nullptr : ts_to.c_str();
+    if (opts.Has("skipEmptyTs"))
+        f->skip_empty_ts = opts.Get("skipEmptyTs").As<Napi::Boolean>().Value() ? 1 : 0;
+}
+
 // DB wrapper class
 class DBWrapper : public Napi::ObjectWrap<DBWrapper>
 {
@@ -71,6 +122,9 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
                             InstanceMethod("putBatch", &DBWrapper::PutBatch),
                             InstanceMethod("get", &DBWrapper::Get),
                             InstanceMethod("search", &DBWrapper::Search),
+                            InstanceMethod("searchFiltered", &DBWrapper::SearchFiltered),
+                            InstanceMethod("searchBatch", &DBWrapper::SearchBatch),
+                            InstanceMethod("getMany", &DBWrapper::GetMany),
                             InstanceMethod("searchTsRange", &DBWrapper::SearchTsRange),
                             InstanceMethod("update", &DBWrapper::Update),
                             InstanceMethod("delete", &DBWrapper::Delete),
@@ -444,6 +498,135 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
         logosdb_result_free(result);
 
         return results;
+    }
+
+    Napi::Value SearchFiltered(const Napi::CallbackInfo& info)
+    {
+        Napi::Env env = info.Env();
+        if (info.Length() < 2 || !info[0].IsArray() || !info[1].IsObject())
+            throw Napi::TypeError::New(env, "Expected (query, options)");
+        std::vector<float> query = JsArrayToFloatVector(info[0].As<Napi::Array>());
+        if ((int)query.size() != dim_)
+            throw Napi::Error::New(env, "Query dimension mismatch");
+        Napi::Object opts = info[1].As<Napi::Object>();
+        int top_k = opts.Has("k") ? opts.Get("k").As<Napi::Number>().Int32Value() : 10;
+        logosdb_id_filter_t f;
+        std::vector<uint64_t> allow_store, deny_store;
+        std::string ts_from, ts_to;
+        FillIdFilterFromJs(opts, &f, allow_store, deny_store, ts_from, ts_to);
+        char* err = nullptr;
+        logosdb_search_result_t* result =
+            logosdb_search_filtered(db_, query.data(), dim_, top_k, &f, &err);
+        if (!result)
+        {
+            std::string msg = err ? err : "Search failed";
+            if (err)
+                free(err);
+            throw Napi::Error::New(env, msg);
+        }
+        int count = logosdb_result_count(result);
+        Napi::Array results = Napi::Array::New(env, count);
+        for (int i = 0; i < count; i++)
+            results.Set(i, SearchHitToJsObject(env, result, i));
+        logosdb_result_free(result);
+        return results;
+    }
+
+    Napi::Value SearchBatch(const Napi::CallbackInfo& info)
+    {
+        Napi::Env env = info.Env();
+        if (info.Length() < 2 || !info[0].IsArray())
+            throw Napi::TypeError::New(env, "Expected (queries, k, [filter])");
+        Napi::Array queriesArr = info[0].As<Napi::Array>();
+        const int n = static_cast<int>(queriesArr.Length());
+        int k = info[1].As<Napi::Number>().Int32Value();
+        std::vector<float> flat(static_cast<size_t>(n) * static_cast<size_t>(dim_));
+        for (int i = 0; i < n; ++i)
+        {
+            auto row =
+                JsArrayToFloatVector(queriesArr.Get(static_cast<uint32_t>(i)).As<Napi::Array>());
+            if ((int)row.size() != dim_)
+                throw Napi::Error::New(env, "Query dimension mismatch");
+            std::memcpy(flat.data() + static_cast<size_t>(i) * static_cast<size_t>(dim_),
+                        row.data(),
+                        static_cast<size_t>(dim_) * sizeof(float));
+        }
+        logosdb_id_filter_t f;
+        std::vector<uint64_t> allow_store, deny_store;
+        std::string ts_from, ts_to;
+        if (info.Length() > 2 && info[2].IsObject())
+            FillIdFilterFromJs(
+                info[2].As<Napi::Object>(), &f, allow_store, deny_store, ts_from, ts_to);
+        else
+            logosdb_id_filter_init(&f);
+        std::vector<uint64_t> out_ids(static_cast<size_t>(n) * static_cast<size_t>(k));
+        std::vector<float> out_scores(static_cast<size_t>(n) * static_cast<size_t>(k));
+        char* err = nullptr;
+        if (logosdb_search_batch(
+                db_, flat.data(), n, dim_, k, &f, out_ids.data(), out_scores.data(), &err) != 0)
+        {
+            std::string msg = err ? err : "search_batch failed";
+            if (err)
+                free(err);
+            throw Napi::Error::New(env, msg);
+        }
+        Napi::Array idRows = Napi::Array::New(env, n);
+        Napi::Array scoreRows = Napi::Array::New(env, n);
+        for (int qi = 0; qi < n; ++qi)
+        {
+            Napi::Array idRow = Napi::Array::New(env, k);
+            Napi::Array scoreRow = Napi::Array::New(env, k);
+            for (int kj = 0; kj < k; ++kj)
+            {
+                size_t idx =
+                    static_cast<size_t>(qi) * static_cast<size_t>(k) + static_cast<size_t>(kj);
+                uint64_t id = out_ids[idx];
+                float sc = out_scores[idx];
+                if (id == UINT64_MAX)
+                    idRow.Set(kj, env.Null());
+                else
+                    idRow.Set(kj, Napi::Number::New(env, static_cast<double>(id)));
+                scoreRow.Set(kj, Napi::Number::New(env, sc));
+            }
+            idRows.Set(qi, idRow);
+            scoreRows.Set(qi, scoreRow);
+        }
+        Napi::Object out = Napi::Object::New(env);
+        out.Set("ids", idRows);
+        out.Set("scores", scoreRows);
+        return out;
+    }
+
+    Napi::Value GetMany(const Napi::CallbackInfo& info)
+    {
+        Napi::Env env = info.Env();
+        if (info.Length() < 1 || !info[0].IsArray())
+            throw Napi::TypeError::New(env, "Expected ids array");
+        Napi::Array arr = info[0].As<Napi::Array>();
+        std::vector<uint64_t> ids;
+        ids.reserve(arr.Length());
+        for (uint32_t i = 0; i < arr.Length(); ++i)
+            ids.push_back(static_cast<uint64_t>(arr.Get(i).As<Napi::Number>().Int64Value()));
+        std::vector<float> out(ids.size() * static_cast<size_t>(dim_));
+        char* err = nullptr;
+        if (logosdb_get_many(db_, ids.data(), ids.size(), out.data(), out.size(), &err) != 0)
+        {
+            std::string msg = err ? err : "get_many failed";
+            if (err)
+                free(err);
+            throw Napi::Error::New(env, msg);
+        }
+        Napi::Array rows = Napi::Array::New(env, static_cast<uint32_t>(ids.size()));
+        for (size_t i = 0; i < ids.size(); ++i)
+        {
+            Napi::Array row = Napi::Array::New(env, dim_);
+            for (int d = 0; d < dim_; ++d)
+                row.Set(d,
+                        Napi::Number::New(
+                            env, out[i * static_cast<size_t>(dim_) + static_cast<size_t>(d)]));
+            rows.Set(static_cast<uint32_t>(i), row);
+        }
+        return rows;
     }
 
     Napi::Value SearchTsRange(const Napi::CallbackInfo& info)

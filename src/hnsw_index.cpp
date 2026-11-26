@@ -242,8 +242,46 @@ bool HnswIndex::has_label(uint64_t label) const
     return lookup.find((hnswlib::labeltype)label) != lookup.end();
 }
 
-std::vector<std::pair<uint64_t, float>>
-HnswIndex::search(const float* query, int top_k, std::string& err) const
+size_t HnswIndex::max_elements() const
+{
+    if (!impl_ || !impl_->alg)
+        return 0;
+    return impl_->alg->max_elements_;
+}
+
+bool HnswIndex::get_vector_by_label(uint64_t label, float* out, int dim, std::string& err) const
+{
+    if (!impl_ || !impl_->alg)
+    {
+        err = "index not open";
+        return false;
+    }
+    if (dim != impl_->params.dim)
+    {
+        err = "dimension mismatch";
+        return false;
+    }
+    try
+    {
+        std::vector<float> data =
+            impl_->alg->getDataByLabel<float>(static_cast<hnswlib::labeltype>(label));
+        if ((int)data.size() < dim)
+        {
+            err = "vector data missing for label";
+            return false;
+        }
+        std::memcpy(out, data.data(), static_cast<size_t>(dim) * sizeof(float));
+    }
+    catch (const std::exception& e)
+    {
+        err = std::string("getDataByLabel: ") + e.what();
+        return false;
+    }
+    return true;
+}
+
+std::vector<std::pair<uint64_t, float>> HnswIndex::search(
+    const float* query, int top_k, std::string& err, IdPredicate pred, void* pred_ctx) const
 {
     std::vector<std::pair<uint64_t, float>> results;
     if (!impl_ || !impl_->alg)
@@ -268,9 +306,31 @@ HnswIndex::search(const float* query, int top_k, std::string& err) const
         search_vec = normalized_query.data();
     }
 
+    hnswlib::BaseFilterFunctor* filter = nullptr;
+    class PredFilterFunctor : public hnswlib::BaseFilterFunctor
+    {
+      public:
+        PredFilterFunctor(HnswIndex::IdPredicate p, void* c)
+            : p_(p),
+              c_(c)
+        {
+        }
+        bool operator()(hnswlib::labeltype id) override
+        {
+            return p_(static_cast<uint64_t>(id), c_);
+        }
+
+      private:
+        HnswIndex::IdPredicate p_;
+        void* c_;
+    };
+    PredFilterFunctor pred_filter(pred, pred_ctx);
+
     try
     {
-        auto pq = impl_->alg->searchKnn(search_vec, k);
+        if (pred)
+            filter = &pred_filter;
+        auto pq = impl_->alg->searchKnn(search_vec, k, filter);
         results.reserve(pq.size());
         while (!pq.empty())
         {

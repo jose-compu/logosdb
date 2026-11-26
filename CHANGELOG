@@ -1,10 +1,17 @@
 logosdb change log
 ==================
 
-Unreleased
-----------
+1.7.0  (2026-11-26) — core / PyPI / npm `logosdb`
+-------------------------------------------------
 
-  * SciFact CPU benchmark table: per-passage storage and load RSS columns, MiniLM median search latency; `benchmarks/breadbowl/scifact.py` measures on-disk breakdown and VmRSS deltas.
+  * **#134, #136, #144 — Search filters, batch, get_many.** `logosdb_search_filtered` with allow/deny id sets, optional exact scan (≤4096 ids), `min_score`, and timestamp filters; `logosdb_search_batch`; `logosdb_get_many`. Python and Node bindings mirror the C API. Uncapped `logosdb_search` unchanged.
+  * SciFact routing index on disk is **276,934,164** bytes (277 MB) after `close()` writes `hnsw.idx`; the earlier ~180 MB figure was measured before that flush.
+  * Ships with `logosdb-mcp-server` **1.4.6** (depends on `logosdb` ^1.7.0).
+
+1.4.6  (2026-11-26) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * Depend on `logosdb` **^1.7.0**.
 
 1.6.0  (2026-11-25) — core / PyPI / npm `logosdb`
 -------------------------------------------------

@@ -8,12 +8,14 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -89,6 +91,8 @@ static void set_err(char** errptr, const std::string& msg)
         *errptr = platform::string_duplicate(msg.c_str());
     }
 }
+
+int logosdb_l2_normalize(float* vec, int dim);
 
 /* ── Options ───────────────────────────────────────────────────────── */
 
@@ -887,6 +891,471 @@ logosdb_search_result_t* logosdb_search_ts_range(logosdb_t* db,
     return r;
 }
 
+void logosdb_id_filter_init(logosdb_id_filter_t* f)
+{
+    if (!f)
+        return;
+    std::memset(f, 0, sizeof(*f));
+    f->min_score = std::numeric_limits<float>::quiet_NaN();
+}
+
+static bool filter_query_finite(const float* query, int dim)
+{
+    for (int i = 0; i < dim; ++i)
+    {
+        if (!std::isfinite(query[i]))
+            return false;
+    }
+    return true;
+}
+
+static bool validate_id_filter(logosdb_t* db, const logosdb_id_filter_t* f, char** errptr)
+{
+    if (!f)
+        return true;
+    size_t nrows = db->vectors.n_rows();
+    if (!f->allow && f->n_allow > 0)
+    {
+        set_err(errptr, "allow is NULL but n_allow > 0");
+        return false;
+    }
+    if (!f->deny && f->n_deny > 0)
+    {
+        set_err(errptr, "deny is NULL but n_deny > 0");
+        return false;
+    }
+    for (size_t i = 0; i < f->n_allow; ++i)
+    {
+        if (f->allow[i] >= nrows)
+        {
+            set_err(errptr, "allow id out of range");
+            return false;
+        }
+    }
+    for (size_t i = 0; i < f->n_deny; ++i)
+    {
+        if (f->deny[i] >= nrows)
+        {
+            set_err(errptr, "deny id out of range");
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool hit_passes_ts(const logosdb_search_result_t::Hit& h, const logosdb_id_filter_t* f)
+{
+    if (!f)
+        return true;
+    if (f->skip_empty_ts != 0 && h.timestamp.empty())
+        return false;
+    if (f->ts_from && !h.timestamp.empty() && h.timestamp < f->ts_from)
+        return false;
+    if (f->ts_to && !h.timestamp.empty() && h.timestamp > f->ts_to)
+        return false;
+    return true;
+}
+
+static bool hit_passes_min_score(float score, const logosdb_id_filter_t* f)
+{
+    if (!f)
+        return true;
+    if (std::isnan(f->min_score))
+        return true;
+    return score >= f->min_score;
+}
+
+struct AllowBitmap
+{
+    std::vector<uint8_t> bytes;
+    size_t nbits = 0;
+
+    void resize_bits(size_t bits)
+    {
+        nbits = bits;
+        bytes.assign((bits + 7) / 8, 0);
+    }
+    void set(size_t id)
+    {
+        if (id >= nbits)
+            return;
+        bytes[id >> 3] |= static_cast<uint8_t>(1u << (id & 7u));
+    }
+    void clear(size_t id)
+    {
+        if (id >= nbits)
+            return;
+        bytes[id >> 3] &= static_cast<uint8_t>(~(1u << (id & 7u)));
+    }
+    bool test(size_t id) const
+    {
+        if (id >= nbits)
+            return false;
+        return (bytes[id >> 3] & static_cast<uint8_t>(1u << (id & 7u))) != 0;
+    }
+    size_t count_set() const
+    {
+        size_t c = 0;
+        for (size_t i = 0; i < nbits; ++i)
+            if (test(i))
+                ++c;
+        return c;
+    }
+};
+
+static bool bitmap_pred(uint64_t label, void* ctx)
+{
+    auto* b = static_cast<const AllowBitmap*>(ctx);
+    return b->test(static_cast<size_t>(label));
+}
+
+static float
+score_indexed_vector(logosdb_t* db, const float* query, int dim, uint64_t label, std::string& err)
+{
+    std::vector<float> vec(static_cast<size_t>(dim));
+    if (!db->index.get_vector_by_label(label, vec.data(), dim, err))
+        return std::numeric_limits<float>::quiet_NaN();
+
+    std::vector<float> qnorm;
+    const float* q = query;
+    if (db->distance == LOGOSDB_DIST_COSINE)
+    {
+        qnorm.assign(query, query + dim);
+        if (logosdb_l2_normalize(qnorm.data(), dim) != 0)
+            return std::numeric_limits<float>::quiet_NaN();
+        q = qnorm.data();
+    }
+
+    if (db->distance == LOGOSDB_DIST_L2)
+    {
+        float dist = 0.f;
+        for (int i = 0; i < dim; ++i)
+        {
+            float d = q[i] - vec[i];
+            dist += d * d;
+        }
+        dist = std::sqrt(dist);
+        return 1.f / (1.f + dist);
+    }
+
+    float ip = 0.f;
+    for (int i = 0; i < dim; ++i)
+        ip += q[i] * vec[i];
+    return ip;
+}
+
+static void build_allow_bitmap(logosdb_t* db,
+                               const logosdb_id_filter_t* f,
+                               AllowBitmap& bmp,
+                               bool& explicit_allow)
+{
+    const size_t nrows = db->vectors.n_rows();
+    const size_t nbits = db->index.max_elements();
+    bmp.resize_bits(nbits);
+    explicit_allow = false;
+
+    if (f && f->allow && f->n_allow > 0)
+    {
+        explicit_allow = true;
+        for (size_t i = 0; i < f->n_allow; ++i)
+            bmp.set(static_cast<size_t>(f->allow[i]));
+    }
+    else
+    {
+        for (size_t id = 0; id < nrows; ++id)
+            bmp.set(id);
+    }
+
+    if (f && f->deny)
+    {
+        for (size_t i = 0; i < f->n_deny; ++i)
+            bmp.clear(static_cast<size_t>(f->deny[i]));
+    }
+    for (size_t id = 0; id < nrows; ++id)
+    {
+        if (db->meta.is_deleted(id) || db->index.is_deleted(id))
+            bmp.clear(id);
+    }
+}
+
+static bool use_exact_scan(const logosdb_id_filter_t* f, int dim)
+{
+    if (!f || !f->allow || f->n_allow == 0)
+        return false;
+    if (f->n_allow <= LOGOSDB_EXACT_SCAN_MAX_IDS)
+        return true;
+    const uint64_t bytes = static_cast<uint64_t>(f->n_allow) * static_cast<uint64_t>(dim) * 4u;
+    return bytes <= LOGOSDB_EXACT_SCAN_MAX_BYTES;
+}
+
+static std::vector<std::pair<uint64_t, float>> search_filtered_locked(logosdb_t* db,
+                                                                      const float* query,
+                                                                      int dim,
+                                                                      int top_k,
+                                                                      const logosdb_id_filter_t* f,
+                                                                      std::string& err)
+{
+    std::vector<std::pair<uint64_t, float>> out;
+    AllowBitmap bmp;
+    bool explicit_allow = false;
+    build_allow_bitmap(db, f, bmp, explicit_allow);
+    if (bmp.count_set() == 0)
+        return out;
+
+    if (use_exact_scan(f, dim))
+    {
+        std::vector<std::pair<uint64_t, float>> scored;
+        scored.reserve(f->n_allow);
+        for (size_t i = 0; i < f->n_allow; ++i)
+        {
+            uint64_t id = f->allow[i];
+            if (!bmp.test(static_cast<size_t>(id)))
+                continue;
+            float sc = score_indexed_vector(db, query, dim, id, err);
+            if (!err.empty())
+                return {};
+            scored.push_back({id, sc});
+        }
+        std::sort(scored.begin(),
+                  scored.end(),
+                  [](const auto& a, const auto& b) { return a.second > b.second; });
+        for (auto& p : scored)
+        {
+            if ((int)out.size() >= top_k)
+                break;
+            auto* m = db->meta.row(p.first);
+            logosdb_search_result_t::Hit h;
+            h.id = p.first;
+            h.score = p.second;
+            if (m)
+            {
+                h.text = m->text;
+                h.timestamp = m->timestamp;
+            }
+            if (!hit_passes_ts(h, f) || !hit_passes_min_score(p.second, f))
+                continue;
+            out.push_back(p);
+        }
+        return out;
+    }
+
+    auto raw = db->index.search(query, top_k, err, bitmap_pred, &bmp);
+    if (!err.empty())
+        return {};
+    for (auto& p : raw)
+    {
+        if ((int)out.size() >= top_k)
+            break;
+        auto* m = db->meta.row(p.first);
+        logosdb_search_result_t::Hit h;
+        h.id = p.first;
+        h.score = p.second;
+        if (m)
+        {
+            h.text = m->text;
+            h.timestamp = m->timestamp;
+        }
+        if (!hit_passes_ts(h, f) || !hit_passes_min_score(p.second, f))
+            continue;
+        out.push_back(p);
+    }
+    return out;
+}
+
+logosdb_search_result_t* logosdb_search_filtered(logosdb_t* db,
+                                                 const float* query,
+                                                 int dim,
+                                                 int top_k,
+                                                 const logosdb_id_filter_t* f,
+                                                 char** errptr)
+{
+    if (!db || !query)
+    {
+        set_err(errptr, "null db or query");
+        if (db)
+            db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+        return nullptr;
+    }
+    if (dim != db->dim)
+    {
+        set_err(errptr, "dimension mismatch in search");
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+        return nullptr;
+    }
+    if (top_k <= 0)
+    {
+        set_err(errptr, "top_k must be > 0");
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+        return nullptr;
+    }
+    if (top_k > LOGOSDB_FILTER_MAX_K)
+    {
+        set_err(errptr, "top_k exceeds LOGOSDB_FILTER_MAX_K");
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+        return nullptr;
+    }
+    if (!filter_query_finite(query, dim))
+    {
+        set_err(errptr, "query contains non-finite values");
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+        return nullptr;
+    }
+    if (!validate_id_filter(db, f, errptr))
+    {
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+        return nullptr;
+    }
+
+    std::lock_guard<std::mutex> lock(db->mu);
+    std::string err;
+    auto raw = search_filtered_locked(db, query, dim, top_k, f, err);
+    if (!err.empty())
+    {
+        set_err(errptr, err);
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+        return nullptr;
+    }
+
+    auto* r = new logosdb_search_result_t();
+    r->hits.reserve(raw.size());
+    for (auto& [label, score] : raw)
+    {
+        logosdb_search_result_t::Hit h;
+        h.id = label;
+        h.score = score;
+        auto* m = db->meta.row(label);
+        if (m)
+        {
+            h.text = m->text;
+            h.timestamp = m->timestamp;
+        }
+        r->hits.push_back(std::move(h));
+    }
+    db->st_search_ok.fetch_add(1, std::memory_order_relaxed);
+    return r;
+}
+
+int logosdb_search_batch(logosdb_t* db,
+                         const float* queries,
+                         int n,
+                         int dim,
+                         int k,
+                         const logosdb_id_filter_t* f,
+                         uint64_t* out_ids,
+                         float* out_scores,
+                         char** errptr)
+{
+    if (!db || !queries || !out_ids || !out_scores)
+    {
+        set_err(errptr, "null argument");
+        if (db)
+            db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+        return -1;
+    }
+    if (dim != db->dim)
+    {
+        set_err(errptr, "dimension mismatch in search");
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+        return -1;
+    }
+    if (n < 0 || n > LOGOSDB_SEARCH_BATCH_MAX_N)
+    {
+        set_err(errptr, "batch n out of range");
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+        return -1;
+    }
+    if (k <= 0 || k > LOGOSDB_FILTER_MAX_K)
+    {
+        set_err(errptr, "k out of range");
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+        return -1;
+    }
+    if (!validate_id_filter(db, f, errptr))
+    {
+        db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+        return -1;
+    }
+
+    const float nan_pad = std::numeric_limits<float>::quiet_NaN();
+    std::lock_guard<std::mutex> lock(db->mu);
+    for (int qi = 0; qi < n; ++qi)
+    {
+        const float* q = queries + static_cast<size_t>(qi) * static_cast<size_t>(dim);
+        if (!filter_query_finite(q, dim))
+        {
+            set_err(errptr, "query contains non-finite values");
+            db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+            return -1;
+        }
+        std::string err;
+        auto raw = search_filtered_locked(db, q, dim, k, f, err);
+        if (!err.empty())
+        {
+            set_err(errptr, err);
+            db->st_search_fail.fetch_add(1, std::memory_order_relaxed);
+            return -1;
+        }
+        uint64_t* row_ids = out_ids + static_cast<size_t>(qi) * static_cast<size_t>(k);
+        float* row_scores = out_scores + static_cast<size_t>(qi) * static_cast<size_t>(k);
+        int w = 0;
+        for (; w < (int)raw.size() && w < k; ++w)
+        {
+            row_ids[w] = raw[static_cast<size_t>(w)].first;
+            row_scores[w] = raw[static_cast<size_t>(w)].second;
+        }
+        for (; w < k; ++w)
+        {
+            row_ids[w] = UINT64_MAX;
+            row_scores[w] = nan_pad;
+        }
+    }
+    db->st_search_ok.fetch_add(1, std::memory_order_relaxed);
+    return 0;
+}
+
+int logosdb_get_many(
+    logosdb_t* db, const uint64_t* ids, size_t n, float* out, size_t out_cap, char** errptr)
+{
+    if (!db)
+    {
+        set_err(errptr, "null db");
+        return -1;
+    }
+    if (n == 0)
+        return 0;
+    if (!ids || !out)
+    {
+        set_err(errptr, "null ids or out");
+        return -1;
+    }
+    const size_t need = n * static_cast<size_t>(db->dim);
+    if (out_cap < need)
+    {
+        set_err(errptr, "out buffer too small");
+        return -1;
+    }
+
+    std::lock_guard<std::mutex> lock(db->mu);
+    size_t nrows = db->vectors.n_rows();
+    for (size_t i = 0; i < n; ++i)
+    {
+        uint64_t id = ids[i];
+        if (id >= nrows)
+        {
+            set_err(errptr, "id out of range");
+            return -1;
+        }
+        if (db->meta.is_deleted(id))
+        {
+            set_err(errptr, "id deleted");
+            return -1;
+        }
+        float* dst = out + i * static_cast<size_t>(db->dim);
+        db->vectors.row_to_float32(id, dst);
+    }
+    return 0;
+}
+
 int logosdb_result_count(const logosdb_search_result_t* r)
 {
     return r ? (int)r->hits.size() : 0;
@@ -1628,6 +2097,73 @@ int logosdb_l2_normalize(float* vec, int dim)
 /* C++ convenience wrappers */
 namespace logosdb
 {
+
+std::vector<SearchHit>
+DB::search_filtered(const std::vector<float>& query, int top_k, const logosdb_id_filter_t& f)
+{
+    char* err = nullptr;
+    logosdb_search_result_t* r =
+        logosdb_search_filtered(db_, query.data(), (int)query.size(), top_k, &f, &err);
+    if (err)
+    {
+        std::string msg(err);
+        free(err);
+        throw std::runtime_error("logosdb_search_filtered: " + msg);
+    }
+    std::vector<SearchHit> hits;
+    int n = logosdb_result_count(r);
+    hits.reserve(n);
+    for (int i = 0; i < n; ++i)
+    {
+        SearchHit h;
+        h.id = logosdb_result_id(r, i);
+        h.score = logosdb_result_score(r, i);
+        const char* t = logosdb_result_text(r, i);
+        if (t)
+            h.text = t;
+        const char* ts = logosdb_result_timestamp(r, i);
+        if (ts)
+            h.timestamp = ts;
+        hits.push_back(std::move(h));
+    }
+    logosdb_result_free(r);
+    return hits;
+}
+
+DB::SearchBatchResult
+DB::search_batch(const std::vector<float>& queries_flat, int n, int k, const logosdb_id_filter_t& f)
+{
+    if ((int)queries_flat.size() != n * dim())
+        throw std::runtime_error("search_batch: queries_flat size mismatch");
+    SearchBatchResult out;
+    out.ids.resize(static_cast<size_t>(n) * static_cast<size_t>(k));
+    out.scores.resize(static_cast<size_t>(n) * static_cast<size_t>(k));
+    char* err = nullptr;
+    if (logosdb_search_batch(
+            db_, queries_flat.data(), n, dim(), k, &f, out.ids.data(), out.scores.data(), &err) !=
+        0)
+    {
+        std::string msg = err ? err : "unknown";
+        free(err);
+        throw std::runtime_error("logosdb_search_batch: " + msg);
+    }
+    return out;
+}
+
+std::vector<float> DB::get_many(const std::vector<uint64_t>& ids)
+{
+    if (ids.empty())
+        return {};
+    std::vector<float> out(ids.size() * static_cast<size_t>(dim()));
+    char* err = nullptr;
+    if (logosdb_get_many(db_, ids.data(), ids.size(), out.data(), out.size(), &err) != 0)
+    {
+        std::string msg = err ? err : "unknown";
+        free(err);
+        throw std::runtime_error("logosdb_get_many: " + msg);
+    }
+    return out;
+}
 
 bool l2_normalize(std::vector<float>& v)
 {

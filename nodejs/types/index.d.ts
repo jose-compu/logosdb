@@ -138,6 +138,31 @@ export class DB {
    * @returns Search results
    */
   search(queryEmbedding: number[], topK?: number): SearchHit[];
+  search(
+    queryEmbedding: number[],
+    options: {
+      k?: number;
+      allow?: number[] | BigUint64Array;
+      deny?: number[] | BigUint64Array;
+      minScore?: number;
+      tsFrom?: string;
+      tsTo?: string;
+      skipEmptyTs?: boolean;
+    },
+  ): SearchHit[];
+  searchBatch(
+    queries: number[][],
+    k: number,
+    filter?: {
+      allow?: number[] | BigUint64Array;
+      deny?: number[] | BigUint64Array;
+      minScore?: number;
+      tsFrom?: string;
+      tsTo?: string;
+      skipEmptyTs?: boolean;
+    },
+  ): { ids: (number | null)[][]; scores: number[][] };
+  getMany(ids: number[]): number[][];
 
   /**
    * Search with timestamp range filter

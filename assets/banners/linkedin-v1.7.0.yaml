@@ -1,0 +1,18 @@
+version: "1.7.0"
+title: "Search filters and batch"
+date: "2026-11-26"
+tagline: "Embedded vector DB for AI agents and RAG"
+release_tagline: "Filter ids, batch queries, and fetch embeddings in one call"
+highlights:
+  - name: "allow / deny"
+    desc: "Search this vector DB inside an id set, or drop ids you have already seen."
+  - name: "search_batch"
+    desc: "Many queries in one call. Each row comes back as ids and scores."
+  - name: "min_score, get_many"
+    desc: "Drop weak hits, then load those embeddings from the vector DB together."
+packages:
+  - { label: "PyPI logosdb",           version: "1.7.0" }
+  - { label: "npm logosdb",            version: "1.7.0" }
+  - { label: "npm logosdb-mcp-server", version: "1.4.6" }
+install: "pip install logosdb   ·   npm i logosdb"
+github: "github.com/jose-compu/logosdb"
