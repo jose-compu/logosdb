@@ -11,10 +11,12 @@ from logosdb.mistral import MistralVectorStore
 
 
 def _fake_embedding(text: str, dim: int) -> List[float]:
-    # Deterministic one-hot-ish vector by text hash
-    idx = abs(hash(text)) % dim
     vec = [0.0] * dim
-    vec[idx] = 1.0
+    for i, b in enumerate(text.encode("utf-8")):
+        vec[(i * 11 + b) % dim] += 1.0
+    n = sum(x * x for x in vec) ** 0.5
+    if n > 0.0:
+        vec = [x / n for x in vec]
     return vec
 
 
