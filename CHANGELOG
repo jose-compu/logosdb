@@ -1,6 +1,13 @@
 logosdb change log
 ==================
 
+1.4.7  (2026-11-27) — `logosdb-mcp-server` only
+-----------------------------------------------
+
+  * Not published yet. Expose LogosDB 1.7.0 search on the MCP tools: `allow` / `deny` (max 4096 ids) and `min_score` on `logosdb_search`, plus `logosdb_search_batch` and `logosdb_get_many`.
+  * Code indexing splits on function and class boundaries. A unit longer than about 50 lines uses the existing line window. Markdown stays heading-aware. Long paragraphs break on a sentence when one is available. Stored rows are labeled with file path, line range, and symbol or heading.
+  * Codex plugin `plugins/codex-semantic-memory` 0.3.0 calls `chunking: "auto"` and pins this server.
+
 1.7.0  (2026-11-26) — core / PyPI / npm `logosdb`
 -------------------------------------------------
 

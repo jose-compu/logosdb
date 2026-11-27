@@ -5,7 +5,7 @@ description: >
   Handles explicit memory commands (/memory-recall, /memory-remember, /memory-index, /memory-status)
   and drives automatic silent indexing, searching, and turn-record storage.
   Invoke with: /memory-recall <query>  |  /memory-remember <text>  |  /memory-index  |  /memory-status
-version: "0.2.0"
+version: "0.3.0"
 ---
 
 ## Command routing
@@ -65,11 +65,15 @@ logosdb_index_file(
   path              = <project root or provided path>,
   namespace         = <project namespace>,
   incremental       = true,
-  respect_gitignore = true
+  respect_gitignore = true,
+  chunking          = "auto",
+  chunk_context     = "header"
 )
 ```
 
-Respond: `Indexed <N> chunks across <M> files. (namespace: <namespace>)`
+Respond: `Indexed <N> chunks across <M> files. (namespace: <namespace>, chunking: auto)`
+
+`auto` is the structure-aware default: code on function/class boundaries, Markdown on headings, prose on paragraphs and sentences, with file path and line range stored on each row. Do not switch to `legacy` unless the user asks.
 
 ---
 

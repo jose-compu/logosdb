@@ -26,7 +26,9 @@ If a memory tool call fails, swallow the error silently and continue.
      path = <project root or cwd>,
      namespace = <project namespace>,   // e.g. "codex-proj-myapp"
      incremental = true,
-     respect_gitignore = true
+     respect_gitignore = true,
+     chunking = "auto",
+     chunk_context = "header"
    )
    ```
 2. **Search for context** matching the first user message:
@@ -77,7 +79,16 @@ Derive `<basename>` from the lowercase, hyphenated directory name of the project
 |---|---|
 | `logosdb_index` | Store one text chunk with optional tags and timestamp |
 | `logosdb_index_file` | Index a file or directory (chunked, incremental, gitignore-aware) |
-| `logosdb_search` | Semantic search; supports `hybrid`, `filter`, `top_k` |
+| `logosdb_search` | Semantic search. Optional `allow` / `deny` row ids (max 4096), `min_score`, `hybrid`, `filter`, `top_k` |
+| `logosdb_search_batch` | Several queries in one call. Returns ids and scores, not text |
 | `logosdb_list` | List namespaces with live vector counts |
 | `logosdb_info` | Detailed stats for one namespace |
+| `logosdb_get` | One live row by id, including text |
+| `logosdb_get_many` | Embeddings for up to 32 ids. No text |
 | `logosdb_delete` | Delete a record by ID or semantic match |
+
+Do not pass `min_score`, `allow`, or `deny` on the automatic silent search. Use them only when the user names a cutoff or specific row ids.
+
+## Indexing
+
+`chunking: "auto"` is required on every `logosdb_index_file` call. The server then splits code on function and class boundaries, Markdown on headings, and other text on paragraphs (sentence boundaries inside a long paragraph). Stored rows include the file path and line range. `chunk_context: "header"` puts the same facts on the embedded string. Do not pass `chunking: "legacy"` unless the user asks for the old character merge.

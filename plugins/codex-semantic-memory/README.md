@@ -1,97 +1,101 @@
 # codex-semantic-memory
 
-Local-first semantic memory for [Codex](https://github.com/openai/codex).
-Powered by [LogosDB](https://github.com/jose-compu/logosdb) — vector search, zero cloud, stdio MCP.
+Local semantic memory for [Codex](https://developers.openai.com/codex). The plugin talks to [logosdb-mcp-server](https://www.npmjs.com/package/logosdb-mcp-server) over stdio. Indexes and turn records stay on disk.
 
-## What it does automatically
+Requires **logosdb-mcp-server 1.4.7** (LogosDB 1.7.0 search filters, batch get, and structure-aware indexing). 1.4.7 is in this repository and is not on npm until it is published. Until then, install it from the repo (see below). A global binary older than 1.4.7 is ignored.
 
-| Event | Action |
+## What it indexes
+
+`logosdb_index_file` is called with `chunking: "auto"` and `chunk_context: "header"`.
+
+| File | Split |
 |---|---|
-| Session start | Background-indexes the project directory (incremental, honours `.gitignore`) |
-| Every user prompt | Semantic search → injects relevant memories silently |
-| After each response | Persists a turn record (Q + A + key reasoning) to memory |
+| Code (`.ts`, `.py`, `.go`, `.rs`, …) | Function and class boundaries. A unit longer than about 50 lines becomes a sliding window with about 10 lines of overlap. |
+| Markdown and RST | Headings. Small sections are merged. A long section falls back to paragraphs. |
+| Other text | Paragraphs. A long paragraph breaks on a sentence when it can, with about 100 characters of overlap. |
 
-All automatic actions are **silent** — nothing is printed to the console.
+Each stored row is labeled with the file path, line range, and the function, class, or heading when there is one. The embedded string gets the same facts in a short header. Details: [`mcp/README.md`](../../mcp/README.md#chunking-strategies).
+
+Search can take `allow` and `deny` row-id lists (at most 4096) and `min_score`. `logosdb_search_batch` runs several queries at once. `logosdb_get_many` returns embeddings for up to 32 ids. The silent recall path does not set a score cutoff.
 
 ## Prerequisites
 
+Node.js 18 or newer, `bash`, and `git` (so the wrapper can find the project root).
+
 ```bash
-npm install -g logosdb-mcp-server@1.1.0   # or: npx logosdb-mcp-server@1.1.0 as fallback
+# from a checkout of this repository, until 1.4.7 is on npm
+npm install -g ./mcp
+logosdb-mcp-server --version   # 1.4.7
+
+# after publish
+npm install -g logosdb-mcp-server@1.4.7
 ```
 
-## Install
+## Install in Codex
 
-### Option 1 — home-local (recommended, available across all projects)
+The catalog for this repo is [`.agents/plugins/marketplace.json`](../../.agents/plugins/marketplace.json).
+
+From the repository root:
+
+```bash
+codex plugin marketplace add .
+```
+
+Or from GitHub:
+
+```bash
+codex plugin marketplace add jose-compu/logosdb
+```
+
+Restart Codex, then install **LogosDB Memory** from the marketplace named `logosdb`. To enable it for one trusted project, add this to `.codex/config.toml`:
+
+```toml
+[plugins."codex-semantic-memory@logosdb"]
+enabled = true
+```
+
+A personal copy:
 
 ```bash
 mkdir -p ~/.codex/plugins
-cp -R /path/to/codex-semantic-memory ~/.codex/plugins/codex-semantic-memory
+cp -R plugins/codex-semantic-memory ~/.codex/plugins/codex-semantic-memory
 ```
 
-Add to `~/.agents/plugins/marketplace.json`:
+Point `~/.agents/plugins/marketplace.json` at that directory with a `./` path relative to your home directory, then restart Codex.
 
-```json
-{
-  "plugins": [
-    {
-      "name": "codex-semantic-memory",
-      "source": { "source": "local", "path": "./plugins/codex-semantic-memory" },
-      "policy": { "installation": "AVAILABLE", "authentication": "NONE" },
-      "category": "Productivity"
-    }
-  ]
-}
+Without the plugin, the same server can be registered directly:
+
+```toml
+[mcp_servers.logosdb]
+command = "bash"
+args = ["scripts/logosdb-mcp-wrap.sh"]
+cwd = "/absolute/path/to/plugins/codex-semantic-memory"
 ```
 
-Then restart Codex and install via `/plugins`.
-
-### Option 2 — repo-local
-
-Copy the folder into `<repo-root>/plugins/codex-semantic-memory` and add the same
-entry to `<repo-root>/.agents/plugins/marketplace.json` with `"path": "./plugins/codex-semantic-memory"`.
+The wrapper sets `LOGOSDB_INDEX_ROOT` to the git root of the process working directory, which is what allows `logosdb_index_file` to read the project when the server is not started inside it. Set `LOGOSDB_INDEX_ROOT` yourself to override that.
 
 ## Memory scope
 
-Controlled by `LOGOS_MEMORY_MODE` (default: `global`).
+`LOGOS_MEMORY_MODE` defaults to `global`.
 
 | Mode | Behaviour |
 |---|---|
-| `global` (default) | Turn records → `codex-global` namespace, shared across all projects. Source files → `codex-proj-<name>`. Context search covers both. |
-| `project` | All storage and search isolated to `codex-proj-<name>`. Each repo is independent. |
+| `global` | Turn records go to `codex-global`. Source files go to `codex-proj-<name>`. Search covers both. Database: `~/.codex/.logosdb`. |
+| `project` | Everything stays in `codex-proj-<name>`. Database: `<project>/.logosdb`. |
 
 ```bash
-# project-only memory
 export LOGOS_MEMORY_MODE=project
 ```
 
-## Explicit commands
+`LOGOSDB_PATH`, when set, replaces that choice.
+
+## Commands
 
 | Command | Description |
 |---|---|
-| `/memory-recall <query>` | Semantic search past memories |
-| `/memory-remember <text>` | Explicitly store text to memory |
-| `/memory-index [path]` | Re-index project (or given path) |
-| `/memory-status` | Show namespace, mode, vector counts |
+| `/memory-recall <query>` | Search past memories |
+| `/memory-remember <text>` | Store text |
+| `/memory-index [path]` | Re-index with `chunking: "auto"` |
+| `/memory-status` | Namespace, mode, vector counts |
 
-## Namespaces
-
-| Namespace | Purpose |
-|---|---|
-| `codex-global` | Cross-project turn records (default store in global mode) |
-| `codex-proj-<name>` | Project-specific source-file chunks; auto-derived from cwd basename |
-
-## DB location
-
-| Mode | Path |
-|---|---|
-| `global` | `~/.codex/.logosdb` |
-| `project` | `<project-root>/.logosdb` |
-
-## Configuration
-
-| Env var | Default | Description |
-|---|---|---|
-| `LOGOS_MEMORY_MODE` | `global` | `global` or `project` |
-| `LOGOSDB_PATH` | Set by wrapper | Override DB path directly |
-| `LOGOSDB_QUOTA_MAX_VECTORS` | `0` (unlimited) | Max vectors per namespace |
-| `LOGOSDB_QUOTA_MAX_NAMESPACES` | `0` (unlimited) | Max namespace count |
+Automatic indexing, recall, and turn storage stay silent. The rules are in `AGENTS.md` and `skills/semantic-memory/SKILL.md`.

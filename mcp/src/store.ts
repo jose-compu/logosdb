@@ -49,6 +49,30 @@ interface LogosDB {
   /** Fetch a live row by id (logosdb ≥ 1.2.0). Throws if OOB or tombstoned. */
   get(id: number): Row;
   search(queryEmbedding: number[], topK?: number): SearchHit[];
+  search(
+    queryEmbedding: number[],
+    options: {
+      k?: number;
+      allow?: number[];
+      deny?: number[];
+      minScore?: number;
+      tsFrom?: string;
+      tsTo?: string;
+    },
+  ): SearchHit[];
+  searchBatch(
+    queries: number[][],
+    k: number,
+    filter?: {
+      allow?: number[];
+      deny?: number[];
+      minScore?: number;
+      tsFrom?: string;
+      tsTo?: string;
+    },
+  ): { ids: (number | null)[][]; scores: number[][] };
+  /** Live embeddings for the given ids (logosdb ≥ 1.7.0). One vector per id. */
+  getMany(ids: number[]): number[][];
   searchTsRange(
     queryEmbedding: number[],
     options?: { topK?: number; tsFrom?: string; tsTo?: string; candidateK?: number },

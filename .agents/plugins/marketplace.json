@@ -1,0 +1,20 @@
+{
+  "name": "logosdb",
+  "interface": {
+    "displayName": "LogosDB"
+  },
+  "plugins": [
+    {
+      "name": "codex-semantic-memory",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-semantic-memory"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "NONE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

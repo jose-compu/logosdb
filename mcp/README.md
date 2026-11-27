@@ -206,7 +206,7 @@ Run [Ollama](https://ollama.com) with an embedding model (e.g. `nomic-embed-text
 
 ## Google Antigravity
 
-[Google Antigravity](https://codelabs.developers.google.com/google-workspace-mcp-antigravity) is an agentic IDE stack that can load **MCP servers** over **stdio** — the same pattern as Claude Code. **`logosdb-mcp-server`** is published as [`logosdb-mcp-server`](https://www.npmjs.com/package/logosdb-mcp-server) on npm and speaks standard MCP tools (`logosdb_index`, `logosdb_index_file`, `logosdb_search`, `logosdb_list`, `logosdb_info`, `logosdb_get`, `logosdb_delete`). See the [MCP specification](https://modelcontextprotocol.io).
+[Google Antigravity](https://codelabs.developers.google.com/google-workspace-mcp-antigravity) is an agentic IDE stack that can load **MCP servers** over **stdio** — the same pattern as Claude Code. **`logosdb-mcp-server`** is published as [`logosdb-mcp-server`](https://www.npmjs.com/package/logosdb-mcp-server) on npm and speaks standard MCP tools (`logosdb_index`, `logosdb_index_file`, `logosdb_search`, `logosdb_search_batch`, `logosdb_list`, `logosdb_info`, `logosdb_get`, `logosdb_get_many`, `logosdb_delete`). See the [MCP specification](https://modelcontextprotocol.io).
 
 ### Where to configure
 
@@ -359,24 +359,26 @@ Noted. I'll keep that in the "decisions" namespace for future sessions.
 |---|---|---|
 | `logosdb_index` | `text`, `namespace`, `metadata?`, `tags?` | Embed and store a text snippet; optional structured `tags` for later `filter` |
 | `logosdb_index_file` | `path`, `namespace`, `chunk_size?`, `chunking?`, `chunk_context?`, `incremental?`, `respect_gitignore?`, `tags?` | Chunk, embed, and store a file or tree; **`incremental: true`** skips unchanged files, replaces chunks for changed files, and prunes removed files under a directory (state in `LOGOSDB_PATH/_logosdb_mcp_manifests/`). When the path lives inside a Git working tree, `.gitignore` rules are applied by default (override per call with `respect_gitignore: false` or globally with `LOGOSDB_RESPECT_GITIGNORE=0`; see [`.gitignore`-aware walking](#gitignore-aware-walking-091)). `chunking` selects the splitting strategy — see [Chunking strategies](#chunking-strategies). `chunk_context` selects the situating prefix on embeddings — see [Contextual Retrieval](#contextual-retrieval). |
-| `logosdb_search` | `query`, `namespace`, `top_k?`, `ts_from?`, `ts_to?`, `candidate_k?`, `hybrid?`, `fusion?`, `lexical_weight?`, `filter?` | Semantic search; optional ISO 8601 window; optional hybrid ANN+lexical fusion; optional metadata `filter` |
+| `logosdb_search` | `query`, `namespace`, `top_k?`, `ts_from?`, `ts_to?`, `candidate_k?`, `hybrid?`, `fusion?`, `lexical_weight?`, `filter?`, `allow?`, `deny?`, `min_score?` | Semantic search. `allow` / `deny` are row-id sets (max 4096). `min_score` drops weaker hits. Metadata `filter` is separate and runs after ANN. Requires LogosDB ≥ 1.7.0 for the id and score cuts (mcp 1.4.7). |
 | `logosdb_list` | — | List namespaces (includes live counts / quota summary when configured) |
 | `logosdb_info` | `namespace` | Stats: count, live count, dimension |
+| `logosdb_search_batch` | `queries`, `namespace`, `top_k?`, `allow?`, `deny?`, `min_score?`, `ts_from?`, `ts_to?` | Embed up to 16 queries and search once (`search_batch`). Returns ids and scores, not stored text. |
 | `logosdb_get` | `namespace`, `id` | Fetch a live row by id (embedding, text, timestamp); fails if OOB or tombstoned (`logosdb` ≥ 1.2.0) |
+| `logosdb_get_many` | `namespace`, `ids` | Fetch up to 32 live embeddings (`get_many`). Vectors only; use `logosdb_get` for text. |
 | `logosdb_delete` | `namespace`, `id?` **or** `query?`, `search_top_k?`, `match_rank?` | Delete by row id, or embed `query` and delete the `match_rank` hit (default 0) among `search_top_k` neighbors |
 
 Timestamp-filtered search matches the core library: when `ts_from` and/or `ts_to` are set, results are drawn from that window; `candidate_k` defaults to `10 × top_k` if omitted.
 
 ## Chunking strategies
 
-`logosdb_index_file` splits each file into chunks before embedding. The strategy is chosen automatically per file type (`"auto"`, the default) or can be forced per-call or globally.
+`logosdb_index_file` splits each file into chunks before embedding. The strategy is chosen automatically per file type (`"auto"`, the default) or can be forced per-call or globally. Each stored row is labeled `[file:…][lines:start-end][symbol:…][chunk:i/n]` when those fields exist. The embedded string also gets the situating header (file, lines, symbol or section) unless `chunk_context` is `off`.
 
 | Mode | Files (auto) | How it splits | When to use |
 |------|-------------|---------------|-------------|
 | `auto` | — | Delegates to `line`, `section`, or `legacy` based on extension | Default — best choice for mixed repositories |
-| `line` | `.ts` `.tsx` `.js` `.jsx` `.mjs` `.cjs` `.py` `.go` `.rs` `.java` `.c` `.cpp` `.h` `.cs` `.rb` `.php` `.swift` `.kt` `.scala` `.sh` `.sql` | Sliding **~50-line windows**, **~10-line overlap**. Prefers blank-line boundaries at window edges to avoid cutting mid-function. | Code; improves recall on function/class-level queries |
+| `line` | `.ts` `.tsx` `.js` `.jsx` `.mjs` `.cjs` `.py` `.go` `.rs` `.java` `.c` `.cpp` `.h` `.cs` `.rb` `.php` `.swift` `.kt` `.scala` `.sh` `.sql` | **Function/class boundaries** (indent 0–8). A unit longer than ~50 lines is a sliding window with ~10-line overlap. No signature → the window alone. | Code; one chunk per function or class when it fits |
 | `section` | `.md` `.rst` | **Heading-aware**: splits on ATX (`# … ######`) and Setext (`=== / ---`) boundaries. Small consecutive sections are merged up to `chunk_size`. Large sections are sub-split with the paragraph chunker. | Documentation, READMEs, RST manuals |
-| `legacy` | `.json` `.yaml` `.toml` `.txt` `.cfg` `.ini` `.graphql` `.proto` and anything else | **Paragraph / character merge**: splits on blank lines, merges short paragraphs up to `chunk_size` (default 800 chars), carries `overlapChars` (100 chars) into the next chunk. Long single-paragraph blocks are sub-split by character window. | Config files, plain text, and **compatibility with namespaces indexed before the smart chunker was introduced** |
+| `legacy` | `.json` `.yaml` `.toml` `.txt` `.cfg` `.ini` `.graphql` `.proto` and anything else | **Paragraphs**, merged up to `chunk_size` (default 800 chars) with ~100 characters of overlap. A long paragraph breaks on a sentence boundary when one falls in the second half of the window, otherwise on a character window. | Config files, plain text, and compatibility with older namespaces |
 
 ### Selecting a strategy
 

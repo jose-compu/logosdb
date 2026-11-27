@@ -155,6 +155,9 @@ jobs:
       - name: check_versions.sh
         run: ./scripts/check_versions.sh
 
+      - name: Validate Codex plugin
+        run: node plugins/codex-semantic-memory/scripts/validate-plugin.mjs
+
   npm-verify:
     name: npm run npm:verify
     runs-on: ubuntu-latest

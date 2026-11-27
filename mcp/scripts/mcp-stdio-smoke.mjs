@@ -131,7 +131,13 @@ async function main() {
 
       if (msg.id === listId && msg.result?.tools && Array.isArray(msg.result.tools)) {
         const names = msg.result.tools.map((t) => t.name);
-        const need = ['logosdb_search', 'logosdb_index_file', 'logosdb_list'];
+        const need = [
+          'logosdb_search',
+          'logosdb_search_batch',
+          'logosdb_get_many',
+          'logosdb_index_file',
+          'logosdb_list',
+        ];
         const missing = need.filter((n) => !names.includes(n));
         if (missing.length) {
           fail(`smoke: tools/list missing tools: ${missing.join(', ')} (got ${names.length} tools)`);
@@ -168,7 +174,9 @@ async function main() {
     fail('smoke: internal state toolsOk=false');
   }
 
-  console.log(`smoke: ok (${TIMEOUT_MS}ms budget) — tools/list returned logosdb_search, logosdb_index_file, logosdb_list`);
+  console.log(
+    `smoke: ok (${TIMEOUT_MS}ms budget) — tools/list returned logosdb_search, logosdb_search_batch, logosdb_get_many, logosdb_index_file, logosdb_list`,
+  );
 }
 
 main().catch((e) => {
