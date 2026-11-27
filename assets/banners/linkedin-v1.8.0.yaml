@@ -13,6 +13,6 @@ highlights:
 packages:
   - { label: "PyPI logosdb",           version: "1.8.0" }
   - { label: "npm logosdb",            version: "1.8.0" }
-  - { label: "npm logosdb-mcp-server", version: "1.4.6" }
+  - { label: "npm logosdb-mcp-server", version: "1.4.7" }
 install: "pip install logosdb   ·   npm i logosdb"
 github: "github.com/jose-compu/logosdb"

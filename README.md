@@ -23,7 +23,7 @@ Authors: Jose ([@jose-compu](https://github.com/jose-compu))
 |---------|---------|---------|
 | [logosdb](https://pypi.org/project/logosdb/) (Python / PyPI) | 1.8.0 | `pip install logosdb==1.8.0` |
 | [logosdb](https://www.npmjs.com/package/logosdb) (Node.js) | 1.8.0 | `npm install logosdb@1.8.0` |
-| [logosdb-mcp-server](https://www.npmjs.com/package/logosdb-mcp-server) | 1.4.6 | `npm install logosdb-mcp-server@1.4.6` |
+| [logosdb-mcp-server](https://www.npmjs.com/package/logosdb-mcp-server) | 1.4.7 | `npm install logosdb-mcp-server@1.4.7` |
 | [n8n-nodes-logosdb](https://www.npmjs.com/package/n8n-nodes-logosdb) | 1.0.3 | `npm install n8n-nodes-logosdb@1.0.3` |
 
 Omit the `==` / `@version` pin to get the latest matching release on each registry.
@@ -138,7 +138,7 @@ Past releases are summarized in the [CHANGELOG](CHANGELOG) and the [closed miles
 
 ### **SHIPPED** [1.8.0](https://github.com/jose-compu/logosdb/releases/tag/v1.8.0) — minor — auto-growing HNSW capacity
 
-  * [#186](https://github.com/jose-compu/logosdb/issues/186) — Initial HNSW capacity doubles via `resizeIndex` under the DB mutex; optional `max_capacity`. [#165](https://github.com/jose-compu/logosdb/issues/165), [#140](https://github.com/jose-compu/logosdb/issues/140), [#137](https://github.com/jose-compu/logosdb/issues/137) — Python GIL release; Node `Float32Array` and Promise search/batch helpers. [#141](https://github.com/jose-compu/logosdb/issues/141) — `search_ts_range_ex` / `skip_empty_ts`. Ships with `logosdb-mcp-server` **1.4.6** (unchanged).
+  * [#186](https://github.com/jose-compu/logosdb/issues/186) — Initial HNSW capacity doubles via `resizeIndex` under the DB mutex; optional `max_capacity`. [#165](https://github.com/jose-compu/logosdb/issues/165), [#140](https://github.com/jose-compu/logosdb/issues/140), [#137](https://github.com/jose-compu/logosdb/issues/137) — Python GIL release; Node `Float32Array` and Promise search/batch helpers. [#141](https://github.com/jose-compu/logosdb/issues/141) — `search_ts_range_ex` / `skip_empty_ts`. Ships with `logosdb-mcp-server` **1.4.7** (MCP search tools, smart chunking, Codex plugin).
 
 ### **SHIPPED** [1.7.0](https://github.com/jose-compu/logosdb/releases/tag/v1.7.0) — minor — search filters and batch
 
