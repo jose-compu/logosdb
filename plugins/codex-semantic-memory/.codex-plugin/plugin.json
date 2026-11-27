@@ -1,22 +1,33 @@
 {
   "name": "codex-semantic-memory",
-  "version": "0.2.0",
-  "description": "Local-first semantic memory for Codex powered by LogosDB. Auto-indexes the project, injects relevant past context silently before every response, and persists turn records across sessions — no cloud, no API keys.",
-  "author": "Jose Ignacio",
+  "version": "0.3.0",
+  "description": "Local semantic memory for Codex. Indexes the project with LogosDB structure-aware chunking, recalls relevant context, and stores turn records on disk.",
+  "author": {
+    "name": "Jose Ignacio",
+    "url": "https://github.com/jose-compu"
+  },
+  "homepage": "https://github.com/jose-compu/logosdb",
+  "repository": "https://github.com/jose-compu/logosdb",
   "license": "MIT",
-  "homepage": "https://github.com/jose-compu/codex-semantic-memory",
-  "keywords": [
-    "memory",
-    "semantic-search",
-    "logosdb",
-    "mcp",
-    "local-first",
-    "vector-search",
-    "rag",
-    "context"
-  ],
-  "mcpConfig": "../.mcp.json",
-  "skills": [
-    "../skills/semantic-memory/SKILL.md"
-  ]
+  "keywords": ["memory", "semantic-search", "logosdb", "mcp", "local-first"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "LogosDB Memory",
+    "shortDescription": "Local semantic memory",
+    "longDescription": "Indexes a project with LogosDB and recalls it in later Codex sessions. Code is split on function and class boundaries, Markdown on headings, and prose on paragraphs. Data stays on disk. Requires Node.js and logosdb-mcp-server 1.4.7.",
+    "developerName": "Jose Ignacio",
+    "category": "Productivity",
+    "capabilities": ["Index project", "Recall memory"],
+    "websiteURL": "https://github.com/jose-compu/logosdb",
+    "supportURL": "https://github.com/jose-compu/logosdb/issues",
+    "defaultPrompt": [
+      "Recall what we decided about this project.",
+      "Re-index this repository into local memory.",
+      "Show the local memory status."
+    ],
+    "brandColor": "#1B3A4B",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/icon.svg"
+  }
 }

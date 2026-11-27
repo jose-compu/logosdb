@@ -735,6 +735,8 @@ Copy the **`CLAUDE.md`** template block from [Agent instructions (`CLAUDE.md` an
 
 **Google Antigravity:** same stdio MCP pattern (`node` + local script, or `npx` + package). Step-by-step: [`mcp/README.md` — Google Antigravity](mcp/README.md#google-antigravity).
 
+**Codex:** the repo marketplace is [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) and the plugin is [`plugins/codex-semantic-memory`](plugins/codex-semantic-memory/README.md). Indexing uses `chunking: "auto"` (function and class boundaries, Markdown headings, paragraph and sentence splits, file path and line range on each row). The plugin launches `logosdb-mcp-server` 1.4.7 (those chunkers, plus id allow/deny filters, `min_score`, `search_batch`, and `get_many`). That patch is in this tree and is not on npm until it is published; install instructions are in the plugin README.
+
 ### Claude Code slash commands
 
 This repo ships **project slash commands** under [.claude/commands/](.claude/commands/) (in addition to [`.claude/mcp.json`](.claude/mcp.json) for the MCP server):

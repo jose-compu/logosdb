@@ -8,10 +8,11 @@
  *                 · docs (.md .rst)                               → "section"
  *                 · config/data (.json .yaml .toml .txt …)        → "legacy"
  *
- *   "line"    — sliding line-window (code files).
- *               Target ~50 lines per chunk, ~10-line overlap.
- *               Prefers blank-line boundaries at window edges to avoid
- *               splitting mid-function. Best for retrieval precision on code.
+ *   "line"    — structure-aware code chunking.
+ *               Splits on top-level and one-level function/class/method
+ *               signatures. A unit larger than ~50 lines is then a sliding
+ *               window (~10-line overlap, blank-line edges). Files with no
+ *               signature fall back to that window.
  *
  *   "section" — heading-aware (Markdown / RST).
  *               Splits on ATX headings (# … ###### …) and Setext underlines
@@ -143,13 +144,103 @@ export function chunk(text: string, opts?: ChunkOptions | number, _legacyOverlap
 
 // ── Strategy: line-window (code files) ───────────────────────────────────────
 
+const CODE_SIG_RE =
+  /^\s*(?:export\s+|pub(?:\([^)]*\))?\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type|enum|def|fn|func|struct|impl|trait)\b/;
+
+/** Signature lines at indent 0–8 are chunk boundaries. Deeper nests stay inside the parent. */
+function isCodeBoundary(line: string): boolean {
+  if (!CODE_SIG_RE.test(line)) return false;
+  const indent = (line.match(/^[\t ]*/)?.[0] ?? '').replace(/\t/g, '    ').length;
+  if (indent > 8) return false;
+  const trimmed = line.trim();
+  if (
+    trimmed.startsWith('//') ||
+    trimmed.startsWith('#') ||
+    trimmed.startsWith('*') ||
+    trimmed.startsWith('/*')
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Code chunker. Signature ranges stay intact when they fit in
+ * `linesPerChunk`. Larger ranges use the line window, and that window does
+ * not cross into the next signature. Returns null when the file has no
+ * usable signature so the caller can use a plain line window.
+ */
+function chunkByCodeBoundaries(
+  text: string,
+  linesPerChunk: number,
+  lineOverlap: number,
+): Chunk[] | null {
+  const lines = text.split('\n');
+  const bounds: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (isCodeBoundary(lines[i]!)) bounds.push(i);
+  }
+  if (bounds.length === 0) return null;
+
+  const lineOffsets: number[] = new Array(lines.length);
+  let off = 0;
+  for (let i = 0; i < lines.length; i++) {
+    lineOffsets[i] = off;
+    off += lines[i]!.length + 1;
+  }
+
+  const ranges: { start: number; end: number; heading?: string }[] = [];
+  if (bounds[0]! > 0) ranges.push({ start: 0, end: bounds[0]! });
+  for (let b = 0; b < bounds.length; b++) {
+    const start = bounds[b]!;
+    const end = b + 1 < bounds.length ? bounds[b + 1]! : lines.length;
+    ranges.push({ start, end, heading: lines[start]!.trim().slice(0, 120) });
+  }
+
+  const chunks: Chunk[] = [];
+  for (const range of ranges) {
+    const span = range.end - range.start;
+    if (span <= linesPerChunk) {
+      const chunkText = lines.slice(range.start, range.end).join('\n').trim();
+      if (!chunkText) continue;
+      chunks.push({
+        text: chunkText,
+        offset: lineOffsets[range.start]!,
+        lineStart: range.start + 1,
+        lineEnd: range.end,
+        heading: range.heading ?? lastSeenSignature(lines, range.start),
+      });
+      continue;
+    }
+    const slice = lines.slice(range.start, range.end).join('\n');
+    const sub = chunkByLineWindow(slice, linesPerChunk, lineOverlap);
+    for (const c of sub) {
+      chunks.push({
+        text: c.text,
+        offset: lineOffsets[range.start]! + c.offset,
+        lineStart: c.lineStart != null ? range.start + c.lineStart : undefined,
+        lineEnd: c.lineEnd != null ? range.start + c.lineEnd : undefined,
+        heading: range.heading ?? c.heading,
+      });
+    }
+  }
+  return chunks.length ? chunks : null;
+}
+
+/**
+ * Structure-aware code chunking, with a line-window fallback.
+ */
+function chunkByLines(text: string, linesPerChunk: number, lineOverlap: number): Chunk[] {
+  return chunkByCodeBoundaries(text, linesPerChunk, lineOverlap) ?? chunkByLineWindow(text, linesPerChunk, lineOverlap);
+}
+
 /**
  * Sliding line-window chunker.
  * Each chunk is `linesPerChunk` lines; consecutive chunks overlap by
  * `lineOverlap` lines. Splits prefer blank-line boundaries within the last
  * 10 lines of a window, avoiding mid-statement cuts where possible.
  */
-function chunkByLines(text: string, linesPerChunk: number, lineOverlap: number): Chunk[] {
+function chunkByLineWindow(text: string, linesPerChunk: number, lineOverlap: number): Chunk[] {
   const lines = text.split('\n');
   if (lines.length === 0) return [{ text: text.trim(), offset: 0 }];
 
@@ -161,7 +252,6 @@ function chunkByLines(text: string, linesPerChunk: number, lineOverlap: number):
     off += lines[i].length + 1; // +1 for the '\n' we split on
   }
 
-  const step = Math.max(1, linesPerChunk - lineOverlap);
   const chunks: Chunk[] = [];
   let start = 0;
 
@@ -326,14 +416,15 @@ function splitLongText(
   baseOffset: number,
 ): Chunk[] {
   const chunks: Chunk[] = [];
-  const step = Math.max(1, targetChars - overlapChars);
   let pos = 0;
   while (pos < text.length) {
-    const end = Math.min(pos + targetChars, text.length);
+    const hardEnd = Math.min(pos + targetChars, text.length);
+    const end = breakAtSentence(text, pos, hardEnd);
     const slice = text.slice(pos, end).trim();
     if (slice) chunks.push({ text: slice, offset: baseOffset + pos });
     if (end >= text.length) break;
-    pos += step;
+    const advanced = Math.max(pos + 1, end - overlapChars);
+    pos = advanced;
   }
   return chunks.length ? chunks : [{ text: text.trim(), offset: baseOffset }];
 }
@@ -395,8 +486,22 @@ function chunkByParagraph(text: string, targetChars: number, overlapChars: numbe
 
 // ── Situating helpers ────────────────────────────────────────────────────────
 
-const CODE_SIG_RE =
-  /^\s*(export\s+)?(async\s+)?(function|class|interface|type|enum|def|fn|pub\s+fn|func|struct|impl)\b/;
+/** Prefer a sentence or newline end in the second half of a long window. */
+function breakAtSentence(text: string, pos: number, hardEnd: number): number {
+  if (hardEnd >= text.length || hardEnd - pos < 40) return hardEnd;
+  const from = pos + Math.floor((hardEnd - pos) * 0.5);
+  const slice = text.slice(from, hardEnd);
+  const re = /[.!?]["')\]]?(?:\s|$)|\n/g;
+  let best = -1;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(slice))) {
+    const at = from + match.index + match[0].length;
+    if (at > pos && at <= hardEnd) best = at;
+  }
+  return best > pos ? best : hardEnd;
+}
+
+
 
 function lastSeenSignature(lines: string[], startLine0: number): string | undefined {
   for (let i = startLine0 - 1; i >= 0; i--) {

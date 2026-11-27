@@ -137,6 +137,74 @@ test('line: 100 lines, linesPerChunk=50, lineOverlap=10 → multiple chunks', ()
   assert.ok(chunks.length >= 2);
 });
 
+test('line: function and class boundaries stay apart', () => {
+  const src = [
+    'function alpha() {',
+    '  return 1;',
+    '}',
+    '',
+    'class Beta {',
+    '  run() { return 2; }',
+    '}',
+    '',
+    'export async function gamma() {',
+    '  return 3;',
+    '}',
+  ].join('\n');
+  const chunks = chunk(src, { mode: 'line', linesPerChunk: 50 });
+  assert.equal(chunks.length, 3);
+  assert.match(chunks[0].text, /function alpha/);
+  assert.doesNotMatch(chunks[0].text, /class Beta/);
+  assert.match(chunks[1].heading ?? '', /class Beta/);
+  assert.match(chunks[2].text, /function gamma/);
+  assert.equal(chunks[0].lineStart, 1);
+  assert.equal(chunks[2].lineEnd, src.split('\n').length);
+});
+
+test('line: oversized function is windowed and does not swallow the next one', () => {
+  const body = Array.from({ length: 80 }, (_, i) => `  const a${i} = ${i};`).join('\n');
+  const src = `function big() {\n${body}\n}\nfunction next() {\n  return 1;\n}\n`;
+  const chunks = chunk(src, { mode: 'line', linesPerChunk: 40, lineOverlap: 5 });
+  const nextChunks = chunks.filter((c) => c.text.includes('function next'));
+  assert.equal(nextChunks.length, 1);
+  assert.doesNotMatch(nextChunks[0].text, /const a0/);
+  const big = chunks.filter((c) => c.heading === 'function big() {');
+  assert.ok(big.length >= 2);
+  assert.ok(big.some((c) => c.text.includes('const a0')));
+  assert.ok(big.some((c) => c.text.includes('const a79')));
+});
+
+test('line: python class and def are boundaries', () => {
+  const src = 'class Box:\n    def area(self):\n        return 1\n\ndef other():\n    return 2\n';
+  const chunks = chunk(src, { mode: 'line', linesPerChunk: 50 });
+  assert.ok(chunks.some((c) => c.heading === 'class Box:'));
+  assert.ok(chunks.some((c) => /def area/.test(c.heading ?? '')));
+  assert.ok(chunks.some((c) => /def other/.test(c.heading ?? '')));
+  const other = chunks.find((c) => /def other/.test(c.text));
+  assert.ok(other);
+  assert.doesNotMatch(other.text, /def area/);
+});
+
+test('line: a commented signature is not a boundary', () => {
+  const src = '// function ignored() {}\nconst x = 1;\nfunction real() {\n  return 1;\n}\n';
+  const chunks = chunk(src, { mode: 'line', linesPerChunk: 50 });
+  assert.equal(chunks.length, 2);
+  assert.match(chunks[0].text, /function ignored/);
+  assert.match(chunks[1].text, /function real/);
+});
+
+test('legacy: long prose prefers sentence boundaries', () => {
+  const sentences = Array.from({ length: 20 }, (_, i) => `Sentence number ${i} ends here.`);
+  const text = sentences.join(' ');
+  const chunks = chunk(text, { mode: 'legacy', targetChars: 80, overlapChars: 0 });
+  assert.ok(chunks.length >= 2);
+  for (const c of chunks) {
+    assert.ok(c.text.endsWith('.'), `chunk cut mid-sentence: ${c.text}`);
+  }
+  assert.ok(chunks.some((c) => c.text.includes('Sentence number 0')));
+  assert.ok(chunks.some((c) => c.text.includes('Sentence number 19')));
+});
+
 test('line: overlap lines appear in consecutive chunks', () => {
   const src = makeLines(60);
   const chunks = chunk(src, { mode: 'line', linesPerChunk: 50, lineOverlap: 10 });

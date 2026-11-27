@@ -1,33 +1,51 @@
 #!/usr/bin/env bash
-# logosdb-mcp-wrap.sh — launch logosdb-mcp-server with the correct LOGOSDB_PATH.
+# Launch logosdb-mcp-server 1.4.7+ with LOGOSDB_PATH and LOGOSDB_INDEX_ROOT.
 #
-# Memory scope is controlled by LOGOS_MEMORY_MODE (default: global).
+# LOGOS_MEMORY_MODE (default: global)
+#   global   — database at ~/.codex/.logosdb
+#   project  — database at <project>/.logosdb
 #
-#   global  (default) — all sessions share ~/.codex/.logosdb
-#                        Turn records and searches are visible across ALL projects.
-#   project            — storage is isolated to <project-root>/.logosdb
-#                        Each repository has its own independent memory.
-#
-# Set in shell profile:
-#   export LOGOS_MEMORY_MODE=project     # per-repo isolation
-#   (omit / set to "global" for the default cross-project shared memory)
+# Indexing is confined to LOGOSDB_INDEX_ROOT. When that variable is unset,
+# the wrapper sets it to the git root of the current directory, or to the
+# current directory when there is no git root. Codex should start this
+# process with the session directory as cwd (do not set plugin cwd).
 
 set -euo pipefail
 
-MODE="${LOGOS_MEMORY_MODE:-global}"
+PIN="1.4.7"
 
-if [ "$MODE" = "project" ]; then
-  # Use the nearest git root, falling back to cwd
-  PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-  export LOGOSDB_PATH="${PROJECT_ROOT}/.logosdb"
-else
-  # Global: shared across all projects — default
-  export LOGOSDB_PATH="${HOME}/.codex/.logosdb"
+if [ -z "${LOGOSDB_INDEX_ROOT:-}" ]; then
+  if git rev-parse --show-toplevel >/dev/null 2>&1; then
+    LOGOSDB_INDEX_ROOT="$(git rev-parse --show-toplevel)"
+  else
+    LOGOSDB_INDEX_ROOT="${PWD}"
+  fi
+  export LOGOSDB_INDEX_ROOT
 fi
 
-# Locate logosdb-mcp-server: installed globally, or fall back to npx
+if [ -z "${LOGOSDB_PATH:-}" ]; then
+  MODE="${LOGOS_MEMORY_MODE:-global}"
+  if [ "$MODE" = "project" ]; then
+    export LOGOSDB_PATH="${LOGOSDB_INDEX_ROOT}/.logosdb"
+  else
+    export LOGOSDB_PATH="${HOME}/.codex/.logosdb"
+  fi
+fi
+
+version_at_least() {
+  # $1 = have, $2 = need. sort -V puts the older version first.
+  [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n 1)" = "$2" ]
+}
+
+if [ -n "${LOGOSDB_MCP_BIN:-}" ]; then
+  exec "$LOGOSDB_MCP_BIN"
+fi
+
 if command -v logosdb-mcp-server >/dev/null 2>&1; then
-  exec logosdb-mcp-server
-else
-  exec npx --yes logosdb-mcp-server@1.1.0
+  got="$(logosdb-mcp-server --version 2>/dev/null | head -n 1 | tr -d '[:space:]' || true)"
+  if [ -n "$got" ] && version_at_least "$got" "$PIN"; then
+    exec logosdb-mcp-server
+  fi
 fi
+
+exec npx --yes "logosdb-mcp-server@${PIN}"

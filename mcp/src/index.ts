@@ -149,7 +149,7 @@ const TOOLS: Tool[] = [
       'When a Git working tree is detected the walker honours `.gitignore` (root + nested + `.git/info/exclude` + global excludes); disable with `respect_gitignore=false` or `LOGOSDB_RESPECT_GITIGNORE=0`. ' +
       'Supports any UTF-8 text file (source code, markdown, plain text). ' +
       'With incremental=true, skips files unchanged since last index (mtime+size+chunk_size+chunking), re-indexes modified files after deleting their previous chunk rows, and when indexing a directory removes DB rows for files that disappeared from disk. ' +
-      'Chunking strategy is selected automatically per file type ("auto"): code → line-window (~50 lines, 10-line overlap), markdown/rst → section-aware, everything else → paragraph/char. Override with `chunking`.',
+      'Chunking defaults to "auto": code splits on function/class boundaries (large units then use a ~50-line window with overlap), markdown/rst splits on headings, other text splits on paragraphs and sentence boundaries. Each stored row is labeled with the file path and line range. Override with `chunking`.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -166,9 +166,9 @@ const TOOLS: Tool[] = [
           type: 'string',
           enum: ['auto', 'line', 'section', 'legacy'],
           description:
-            'Chunking strategy. "auto" (default) picks per file type: code → "line" (sliding ~50-line windows, 10-line overlap); .md/.rst → "section" (heading-aware); everything else → "legacy" (paragraph/char). ' +
-            '"line": force line-window for all files. "section": force heading-split for all files. "legacy": original 800-char paragraph merge. ' +
-            'Env override: LOGOSDB_CHUNK_MODE.',
+            'Chunking strategy. "auto" (default) picks per file type: code → function/class boundaries, then a ~50-line window with overlap inside a large unit; .md/.rst → heading sections; everything else → paragraphs, with sentence boundaries inside a long paragraph. ' +
+            '"line": force the code strategy. "section": force heading splits. "legacy": paragraph/character merge. ' +
+            'Pass "auto" to force this selection. Omit the field to use LOGOSDB_CHUNK_MODE (default auto).',
         },
         incremental: {
           type: 'boolean',
@@ -208,7 +208,9 @@ const TOOLS: Tool[] = [
       'Semantic search over a LogosDB namespace. Returns the most relevant stored texts ranked by similarity. ' +
       'Optional ISO 8601 bounds (`ts_from` / `ts_to`, inclusive) restrict candidates to a timestamp window. ' +
       'Optional `hybrid: true` blends ANN vector similarity with BM25-lite lexical matching (see `fusion`, `lexical_weight`). ' +
-      'Optional `filter` applies structured metadata predicates to post-filter results (requires rows indexed with `tags`).',
+      'Optional `filter` applies structured metadata predicates to post-filter results (requires rows indexed with `tags`). ' +
+      'Optional `allow` / `deny` are row-id sets (at most 4096 each) applied inside the engine. ' +
+      'Optional `min_score` drops hits whose score is below the cutoff (same scale as the returned `score`).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -256,8 +258,79 @@ const TOOLS: Tool[] = [
             'Supports: equality {"key":"val"}, $eq, $ne, $in, $nin, $gt, $gte, $lt, $lte, $exists. ' +
             'Multiple keys are ANDed. Example: {"lang":"typescript","priority":{"$gte":2}}',
         },
+        allow: {
+          type: 'array',
+          items: { type: 'number' },
+          description:
+            'Row ids the engine may return (at most 4096). Omit for no allow-list. LogosDB ≥ 1.7.0.',
+        },
+        deny: {
+          type: 'array',
+          items: { type: 'number' },
+          description:
+            'Row ids the engine must not return (at most 4096). LogosDB ≥ 1.7.0.',
+        },
+        min_score: {
+          type: 'number',
+          description:
+            'Drop hits with score below this cutoff (compared to SearchHit.score). LogosDB ≥ 1.7.0.',
+        },
       },
       required: ['query', 'namespace'],
+    },
+  },
+  {
+    name: 'logosdb_search_batch',
+    description:
+      'Embed several queries and search one namespace in one call (LogosDB search_batch, ≥ 1.7.0). ' +
+      'Returns ids and scores per query. Does not return stored text; use logosdb_get for a row. ' +
+      'At most 16 queries. Optional allow, deny, and min_score apply to every query.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        queries: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Natural-language queries (1 to 16)',
+        },
+        namespace: { type: 'string', description: 'Collection name to search in' },
+        top_k: { type: 'number', description: 'Neighbors per query (default: 5)' },
+        allow: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Row ids the engine may return (at most 4096)',
+        },
+        deny: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Row ids the engine must not return (at most 4096)',
+        },
+        min_score: {
+          type: 'number',
+          description: 'Drop hits with score below this cutoff',
+        },
+        ts_from: { type: 'string', description: 'Optional inclusive lower bound (ISO 8601)' },
+        ts_to: { type: 'string', description: 'Optional inclusive upper bound (ISO 8601)' },
+      },
+      required: ['queries', 'namespace'],
+    },
+  },
+  {
+    name: 'logosdb_get_many',
+    description:
+      'Fetch live embeddings for several row ids in one call (LogosDB get_many, ≥ 1.7.0). ' +
+      'Returns vectors only, not text or timestamps. At most 32 ids. Use logosdb_get for one full row.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        namespace: { type: 'string', description: 'Collection name' },
+        ids: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Row ids (1 to 32)',
+        },
+      },
+      required: ['namespace', 'ids'],
     },
   },
   {
@@ -366,7 +439,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
         const chunkingRaw = typeof args.chunking === 'string' ? args.chunking.trim().toLowerCase() : null;
         const chunkMode: ChunkMode =
-          chunkingRaw === 'line' || chunkingRaw === 'section' || chunkingRaw === 'legacy'
+          chunkingRaw === 'auto' ||
+          chunkingRaw === 'line' ||
+          chunkingRaw === 'section' ||
+          chunkingRaw === 'legacy'
             ? (chunkingRaw as ChunkMode)
             : CHUNK_MODE_DEFAULT;
         const incremental = Boolean(args.incremental);
@@ -512,7 +588,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const n = texts.length;
           const labels: string[] = new Array(n);
           for (let i = 0; i < n; i++) {
-            let label = `[file:${filePath}][chunk:${i}/${n}] ${texts[i]}`;
+            const piece = fileChunks[i]!;
+            let label = `[file:${filePath}]`;
+            if (piece.lineStart != null && piece.lineEnd != null) {
+              label += `[lines:${piece.lineStart}-${piece.lineEnd}]`;
+            }
+            if (piece.heading) {
+              label += `[symbol:${piece.heading.replace(/[[\]]/g, '').slice(0, 120)}]`;
+            }
+            label += `[chunk:${i}/${n}] ${texts[i]}`;
             if (fileTags) label = serializeTags(label, fileTags);
             labels[i] = label;
           }
@@ -586,6 +670,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const filter: FilterPredicate | undefined =
           args.filter != null ? validateFilter(args.filter) : undefined;
+        const allow = parseIdList(args.allow, 'allow');
+        const deny = parseIdList(args.deny, 'deny');
+        const minScore = parseMinScore(args.min_score);
 
         // When hybrid or filter is active, fetch a larger candidate pool first.
         const needsPool = useHybrid || filter !== undefined;
@@ -617,10 +704,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           db = store.open(namespace, vec.length);
         }
 
-        // 1. ANN retrieval
-        let hits = useTsWindow
-          ? db.searchTsRange(vec, { topK: annK, tsFrom, tsTo, candidateK: tsCandidateK })
-          : db.search(vec, annK);
+        // 1. ANN retrieval. Id allow/deny and min_score run inside the engine (1.7.0).
+        const useEngineFilter = allow !== undefined || deny !== undefined || minScore !== undefined;
+        let hits = useEngineFilter
+          ? db.search(vec, {
+              k: annK,
+              allow,
+              deny,
+              minScore,
+              tsFrom,
+              tsTo,
+            })
+          : useTsWindow
+            ? db.searchTsRange(vec, { topK: annK, tsFrom, tsTo, candidateK: tsCandidateK })
+            : db.search(vec, annK);
 
         // 2. Hybrid re-rank (operates on the full candidate pool, trims to topK)
         const isHybridResult = useHybrid && hits.length > 0;
@@ -674,6 +771,94 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           hybrid: useHybrid,
           fusion: useHybrid ? fusion : null,
           filter: filter ?? null,
+          allow: allow ?? null,
+          deny: deny ?? null,
+          min_score: minScore ?? null,
+        });
+      }
+
+      // ── logosdb_search_batch ───────────────────────────────────────────────
+      case 'logosdb_search_batch': {
+        if (!Array.isArray(args.queries) || args.queries.length === 0) {
+          throw new Error('"queries" must be a non-empty array of strings');
+        }
+        if (args.queries.length > 16) throw new Error('"queries" supports at most 16 strings');
+        const queries = args.queries.map((q, i) => {
+          const text = validateUserText(String(q ?? ''), `queries[${i}]`);
+          if (!text) throw new Error(`"queries[${i}]" is required`);
+          return text;
+        });
+        const namespace = String(args.namespace ?? '');
+        if (!namespace) throw new Error('"namespace" is required');
+        const topK = clampTopK(typeof args.top_k === 'number' ? args.top_k : 5);
+        const allow = parseIdList(args.allow, 'allow');
+        const deny = parseIdList(args.deny, 'deny');
+        const minScore = parseMinScore(args.min_score);
+        const tsFromRaw = args.ts_from != null ? String(args.ts_from).trim() : '';
+        const tsToRaw = args.ts_to != null ? String(args.ts_to).trim() : '';
+
+        ensureEmbeddingsConfigured();
+        const vecs = await embedBatch(queries, embCfg);
+        const nsPath = path.join(LOGOSDB_PATH, namespace);
+        if (!fs.existsSync(nsPath)) {
+          return ok({
+            namespace,
+            top_k: topK,
+            results: queries.map((query) => ({ query, hits: [] })),
+            message: `Namespace "${namespace}" does not exist.`,
+          });
+        }
+        const db = openNamespace(namespace, vecs[0]!.length);
+        const batch = db.searchBatch(vecs, topK, {
+          allow,
+          deny,
+          minScore,
+          tsFrom: tsFromRaw || undefined,
+          tsTo: tsToRaw || undefined,
+        });
+        const results = queries.map((query, qi) => {
+          const ids = batch.ids[qi] ?? [];
+          const scores = batch.scores[qi] ?? [];
+          const hits = [];
+          for (let j = 0; j < ids.length; j++) {
+            const id = ids[j];
+            const score = scores[j];
+            if (id == null || score == null || Number.isNaN(score)) continue;
+            hits.push({ id, score: Math.round(score * 10000) / 10000 });
+          }
+          return { query, hits };
+        });
+        return ok({
+          namespace,
+          top_k: topK,
+          allow: allow ?? null,
+          deny: deny ?? null,
+          min_score: minScore ?? null,
+          results,
+        });
+      }
+
+      // ── logosdb_get_many ───────────────────────────────────────────────────
+      case 'logosdb_get_many': {
+        const namespace = String(args.namespace ?? '');
+        if (!namespace) throw new Error('"namespace" is required');
+        const ids = parseIdList(args.ids, 'ids');
+        if (!ids || ids.length === 0) throw new Error('"ids" must be a non-empty array');
+        if (ids.length > 32) throw new Error('"ids" supports at most 32 ids');
+
+        const nsPath = path.join(LOGOSDB_PATH, namespace);
+        if (!fs.existsSync(nsPath)) {
+          throw new Error(`Namespace "${namespace}" does not exist.`);
+        }
+        const db = openNamespace(namespace, embCfg.dim);
+        const vectors = db.getMany(ids);
+        return ok({
+          namespace,
+          rows: ids.map((id, i) => ({
+            id,
+            dim: vectors[i]?.length ?? 0,
+            embedding: vectors[i] ?? [],
+          })),
         });
       }
 
@@ -844,6 +1029,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 function ok(data: unknown) {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+}
+
+const MAX_ID_FILTER = 4096;
+
+function parseIdList(value: unknown, label: string): number[] | undefined {
+  if (value == null) return undefined;
+  if (!Array.isArray(value)) throw new Error(`"${label}" must be an array of ids`);
+  if (value.length === 0) return undefined;
+  if (value.length > MAX_ID_FILTER) {
+    throw new Error(`"${label}" supports at most ${MAX_ID_FILTER} ids`);
+  }
+  return value.map((item, i) => {
+    const n = typeof item === 'number' ? item : Number(item);
+    if (!Number.isInteger(n) || n < 0) {
+      throw new Error(`"${label}[${i}]" must be a non-negative integer`);
+    }
+    return n;
+  });
+}
+
+function parseMinScore(value: unknown): number | undefined {
+  if (value == null) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error('"min_score" must be a finite number');
+  }
+  return value;
+}
+
+function openNamespace(namespace: string, dim: number) {
+  try {
+    return store.get(namespace);
+  } catch {
+    const nsPath = path.join(LOGOSDB_PATH, namespace);
+    if (!fs.existsSync(nsPath)) {
+      throw new Error(`Namespace "${namespace}" does not exist.`);
+    }
+    return store.open(namespace, dim);
+  }
 }
 
 function ensureEmbeddingsConfigured() {
