@@ -33,7 +33,7 @@
       <div class="container hero-grid">
         <div>
           <p class="section-label">Semantic memory</p>
-          <p class="version-badge">1.7.0</p>
+          <p class="version-badge">1.8.0</p>
           <h1>
             <span class="word-cyan">Semantic.</span>
             <span class="word-blue">Fast.</span>
@@ -144,9 +144,9 @@
       <div class="container">
         <span class="section-label">Features</span>
         <!-- RELEASE_HEADLINE_START -->
-<h2>1.7.0 — Search filters and batch</h2>
+<h2>1.8.0 — Auto-growing HNSW capacity</h2>
         <p class="section-intro">
-          C API and bindings: id allow/deny filters on HNSW or exact scan (up to 4096 ids), search_batch, min_score, get_many, and timestamp cuts on search_filtered. Closes #134, #136, #144.
+          max_elements is initial HNSW capacity; the index doubles via resizeIndex under the DB mutex, with optional max_capacity. Python GIL release, Node Float32Array and async search, skip_empty_ts on ts-range search.
         </p>
 
         <table class="pkg-table" aria-label="Published package versions">
@@ -154,14 +154,14 @@
             <tr><th>Package</th><th>Version</th><th>Registry</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>logosdb</code></td><td><strong>1.7.0</strong></td><td>PyPI, npm</td></tr>
-            <tr><td><code>logosdb-mcp-server</code></td><td><strong>1.4.6</strong></td><td>npm (<code>^1.7.0</code>)</td></tr>
+            <tr><td><code>logosdb</code></td><td><strong>1.8.0</strong></td><td>PyPI, npm</td></tr>
+            <tr><td><code>logosdb-mcp-server</code></td><td><strong>1.4.7</strong></td><td>npm (<code>^1.8.0</code>)</td></tr>
             <tr><td><code>n8n-nodes-logosdb</code></td><td>1.0.3</td><td>npm (unchanged)</td></tr>
           </tbody>
         </table>
 
-        <a class="release-banner" href="https://github.com/jose-compu/logosdb/releases/tag/v1.7.0" target="_blank" rel="noopener">
-          <img src="https://github.com/jose-compu/logosdb/releases/download/v1.7.0/linkedin-v1.7.0.png" alt="LogosDB 1.7.0 release" width="1200" height="675" loading="lazy" />
+        <a class="release-banner" href="https://github.com/jose-compu/logosdb/releases/tag/v1.8.0" target="_blank" rel="noopener">
+          <img src="https://github.com/jose-compu/logosdb/releases/download/v1.8.0/linkedin-v1.8.0.png" alt="LogosDB 1.8.0 release" width="1200" height="675" loading="lazy" />
         </a>
         <!-- RELEASE_HEADLINE_END -->
 
@@ -209,7 +209,7 @@
           </article>
           <article class="feature-card purple">
             <h3>MCP &amp; n8n</h3>
-            <p><code>logosdb-mcp-server@1.4.6</code> depends on <code>logosdb@^1.7.0</code>. <code>n8n-nodes-logosdb@1.0.3</code> unchanged.</p>
+            <p><code>logosdb-mcp-server@1.4.7</code> depends on <code>logosdb@^1.7.0</code>. <code>n8n-nodes-logosdb@1.0.3</code> unchanged.</p>
           </article>
         </div>
       </div>
@@ -229,7 +229,7 @@
             <div class="badge-icon">🧩</div>
             <div>
               <h3>MCP server — Claude Code</h3>
-              <p><code>logosdb-mcp-server@1.4.6</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default. Launch with <code>npx -y logosdb-mcp-server --path ./.logosdb</code>.</p>
+              <p><code>logosdb-mcp-server@1.4.7</code> indexes files, persists knowledge across sessions, and runs semantic search over stdio. Local Transformers.js embeddings by default. Launch with <code>npx -y logosdb-mcp-server --path ./.logosdb</code>.</p>
             </div>
           </article>
           <article class="integration-card">
@@ -342,7 +342,7 @@ db.close();</code></pre>
         <a href="https://www.npmjs.com/package/logosdb-mcp-server">MCP server</a>
         <a href="https://github.com/jose-compu/logosdb/blob/main/LICENSE">MIT License</a>
       </div>
-      <p class="footer-copy">LogosDB 1.7.0 · MCP 1.4.6 · n8n 1.0.3 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
+      <p class="footer-copy">LogosDB 1.8.0 · MCP 1.4.7 · n8n 1.0.3 · Jose (<a href="https://github.com/jose-compu">@jose-compu</a>)</p>
     </div>
   </footer>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
