@@ -936,15 +936,8 @@ logosdb_search_result_t* logosdb_search_ts_range(logosdb_t* db,
                                                  int candidate_k,
                                                  char** errptr)
 {
-    return logosdb_search_ts_range_ex(db,
-                                      query,
-                                      dim,
-                                      top_k,
-                                      ts_from_iso8601,
-                                      ts_to_iso8601,
-                                      candidate_k,
-                                      0,
-                                      errptr);
+    return logosdb_search_ts_range_ex(
+        db, query, dim, top_k, ts_from_iso8601, ts_to_iso8601, candidate_k, 0, errptr);
 }
 
 size_t logosdb_index_capacity(const logosdb_t* db)

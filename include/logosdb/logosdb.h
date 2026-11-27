@@ -651,14 +651,14 @@ class DB
         int ck = candidate_k > 0 ? candidate_k : top_k * 10;
         logosdb_search_result_t* r =
             logosdb_search_ts_range_ex(db_,
-                                    query.data(),
-                                    (int)query.size(),
-                                    top_k,
-                                    ts_from.empty() ? nullptr : ts_from.c_str(),
-                                    ts_to.empty() ? nullptr : ts_to.c_str(),
-                                    ck,
-                                    skip_empty_ts ? 1 : 0,
-                                    &err);
+                                       query.data(),
+                                       (int)query.size(),
+                                       top_k,
+                                       ts_from.empty() ? nullptr : ts_from.c_str(),
+                                       ts_to.empty() ? nullptr : ts_to.c_str(),
+                                       ck,
+                                       skip_empty_ts ? 1 : 0,
+                                       &err);
         if (err)
         {
             std::string msg(err);

@@ -7,13 +7,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <random>
-#include <atomic>
 #include <string>
 #include <thread>
 #include <vector>
@@ -2434,8 +2434,8 @@ TEST_SUITE("capacity")
         for (int i = 0; i < 20; ++i)
             dbc.put(unit_vec(dim, 9300 + i));
         char* err = nullptr;
-        uint64_t bad = logosdb_put(
-            dbc.handle(), unit_vec(dim, 9399).data(), dim, nullptr, nullptr, &err);
+        uint64_t bad =
+            logosdb_put(dbc.handle(), unit_vec(dim, 9399).data(), dim, nullptr, nullptr, &err);
         CHECK(bad == UINT64_MAX);
         CHECK(err != nullptr);
         std::string emsg = err;
@@ -2474,9 +2474,7 @@ TEST_SUITE("capacity")
         logosdb::DB dbu(path, o);
         for (int i = 0; i < 16; ++i)
             dbu.put(unit_vec(dim, 9500 + i));
-        CHECK_THROWS_AS(
-            dbu.update(0, unit_vec(dim, 9599), "new"),
-            std::runtime_error);
+        CHECK_THROWS_AS(dbu.update(0, unit_vec(dim, 9599), "new"), std::runtime_error);
         auto row = dbu.get(0);
         CHECK(row.text == "");
         std::filesystem::remove_all(path);

@@ -201,8 +201,8 @@ bool HnswIndex::reserve(size_t additional, std::string& err)
         err = "index not open";
         return false;
     }
-  if (additional == 0)
-      return true;
+    if (additional == 0)
+        return true;
     const size_t need = count() + additional;
     const size_t max_cap = impl_->params.max_capacity;
     if (max_cap > 0 && need > max_cap)
