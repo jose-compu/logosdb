@@ -2,7 +2,7 @@
 
 <img width="1248" height="832" alt="image" src="https://github.com/user-attachments/assets/490d2c94-bebf-4841-a12f-cd230600c65a" />
 
-[![LogosDB v1.7.0 release banner](assets/banners/linkedin-v1.7.0.png)](https://github.com/jose-compu/logosdb/releases/tag/v1.7.0)
+[![LogosDB v1.8.0 release banner](assets/banners/linkedin-v1.8.0.png)](https://github.com/jose-compu/logosdb/releases/tag/v1.8.0)
 
 [![CI](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/ci.yml)
 [![Python](https://github.com/jose-compu/logosdb/actions/workflows/python.yml/badge.svg?branch=main)](https://github.com/jose-compu/logosdb/actions/workflows/python.yml)
@@ -17,13 +17,13 @@ Authors: Jose ([@jose-compu](https://github.com/jose-compu))
 
 **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, style guide, and PR workflow.
 
-## Packages (release 1.7.0)
+## Packages (release 1.8.0)
 
 | Package | Version | Install |
 |---------|---------|---------|
-| [logosdb](https://pypi.org/project/logosdb/) (Python / PyPI) | 1.7.0 | `pip install logosdb==1.7.0` |
-| [logosdb](https://www.npmjs.com/package/logosdb) (Node.js) | 1.7.0 | `npm install logosdb@1.7.0` |
-| [logosdb-mcp-server](https://www.npmjs.com/package/logosdb-mcp-server) | 1.4.6 | `npm install logosdb-mcp-server@1.4.6` |
+| [logosdb](https://pypi.org/project/logosdb/) (Python / PyPI) | 1.8.0 | `pip install logosdb==1.8.0` |
+| [logosdb](https://www.npmjs.com/package/logosdb) (Node.js) | 1.8.0 | `npm install logosdb@1.8.0` |
+| [logosdb-mcp-server](https://www.npmjs.com/package/logosdb-mcp-server) | 1.4.7 | `npm install logosdb-mcp-server@1.4.7` |
 | [n8n-nodes-logosdb](https://www.npmjs.com/package/n8n-nodes-logosdb) | 1.0.3 | `npm install n8n-nodes-logosdb@1.0.3` |
 
 Omit the `==` / `@version` pin to get the latest matching release on each registry.
@@ -39,6 +39,7 @@ Omit the `==` / `@version` pin to get the latest matching release on each regist
   * Bulk vector access for direct tensor construction (e.g. loading into GPU memory).
   * Thread-safe API on a single open handle: an internal mutex serializes operations that touch the index and metadata (including search).
   * Crash recovery: HNSW index is automatically backfilled from the append-only vector store on open.
+  * **Auto-growing HNSW capacity** (1.8.0): `max_elements` is the starting slot count; the index doubles on demand; optional `max_capacity`; Python GIL release on search; Node `Float32Array` and async search. See [#186](https://github.com/jose-compu/logosdb/issues/186), [#165](https://github.com/jose-compu/logosdb/issues/165), [#140](https://github.com/jose-compu/logosdb/issues/140), [#137](https://github.com/jose-compu/logosdb/issues/137), [#141](https://github.com/jose-compu/logosdb/issues/141).
   * **Search filters and batch** (1.7.0): `search_filtered` / `search_batch` / `get_many` with allow/deny id sets, `min_score`, and timestamp cuts; see [#134](https://github.com/jose-compu/logosdb/issues/134), [#136](https://github.com/jose-compu/logosdb/issues/136), [#144](https://github.com/jose-compu/logosdb/issues/144).
   * Default embedder for examples is **MiniLM** (`sentence-transformers/all-MiniLM-L6-v2` in Python; `Xenova/all-MiniLM-L6-v2` in the MCP server unless `TRANSFORMERS_MODEL` is set). **BreadBowl** is an optional Python layout only (not a `logosdb` dependency; not on Node); weights load when you call `BreadBowl.from_pretrained`.
   * **BreadBowl-Embed v1.3 slots** (optional example): 16 routing rows per passage (256-d, `DIST_IP`) plus `model.score()` rerank over stored value vectors. See [docs/breadbowl-embed.md](docs/breadbowl-embed.md).
@@ -134,6 +135,10 @@ Past releases are summarized in the [CHANGELOG](CHANGELOG) and the [closed miles
 ### **SHIPPED** [1.0.1](https://github.com/jose-compu/logosdb/issues/116) — patch — release hygiene
 
   * [#116](https://github.com/jose-compu/logosdb/issues/116) — Sync `CHANGELOG`, version macros, package metadata, and post-1.0 docs.
+
+### **SHIPPED** [1.8.0](https://github.com/jose-compu/logosdb/releases/tag/v1.8.0) — minor — auto-growing HNSW capacity
+
+  * [#186](https://github.com/jose-compu/logosdb/issues/186) — Initial HNSW capacity doubles via `resizeIndex` under the DB mutex; optional `max_capacity`. [#165](https://github.com/jose-compu/logosdb/issues/165), [#140](https://github.com/jose-compu/logosdb/issues/140), [#137](https://github.com/jose-compu/logosdb/issues/137) — Python GIL release; Node `Float32Array` and Promise search/batch helpers. [#141](https://github.com/jose-compu/logosdb/issues/141) — `search_ts_range_ex` / `skip_empty_ts`. Ships with `logosdb-mcp-server` **1.4.7** (MCP search tools, smart chunking, Codex plugin).
 
 ### **SHIPPED** [1.7.0](https://github.com/jose-compu/logosdb/releases/tag/v1.7.0) — minor — search filters and batch
 
@@ -351,10 +356,10 @@ auto results = db.search(query, 5);
 
 LogosDB ships Python bindings built with [pybind11](https://pybind11.readthedocs.io/) and [scikit-build-core](https://scikit-build-core.readthedocs.io/).
 
-Install from PyPI (release **1.7.0**; binary wheels for Linux x86_64/aarch64 and macOS x86_64/arm64 on CPython 3.9–3.13):
+Install from PyPI (release **1.8.0**; binary wheels for Linux x86_64/aarch64 and macOS x86_64/arm64 on CPython 3.9–3.13):
 
 ```bash
-pip install logosdb==1.7.0
+pip install logosdb==1.8.0
 ```
 
 Or build from source in a clone:
@@ -596,7 +601,7 @@ logosdb-cli import /tmp/mydb --dim 768 --input rows.ndjson \
 The [`logosdb`](https://www.npmjs.com/package/logosdb) package provides native bindings (N-API). The binding stores vectors you supply; it does not embed text. For a bundled embedding backend in an MCP agent, use [`logosdb-mcp-server`](#mcp-server--claude-code-integration) below.
 
 ```bash
-npm install logosdb@1.7.0
+npm install logosdb@1.8.0
 ```
 
 ```javascript
@@ -881,7 +886,7 @@ We use databases with 1K, 10K, and 100K vectors. Each vector has 2048 dimensions
 
 *(Numbers below are illustrative ballparks; absolute values depend on hardware and build flags. Relative HNSW vs brute-force behavior is what to focus on.)*
 
-    LogosDB:    version 1.7.0
+    LogosDB:    version 1.8.0
     CPU:        Apple M-series (ARM64)
     Dim:        2048
     HNSW M:     16, ef_construction: 200, ef_search: 50

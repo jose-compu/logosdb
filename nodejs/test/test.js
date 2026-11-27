@@ -67,6 +67,7 @@ describe('LogosDB Node.js', function() {
     it('should export version', () => {
       assert.strictEqual(typeof VERSION, 'string');
       assert.ok(VERSION.match(/^\d+\.\d+\.\d+/));
+      assert.strictEqual(VERSION, '1.8.0');
     });
   });
 
@@ -253,6 +254,7 @@ describe('LogosDB Node.js', function() {
         assert.ok(Math.abs(many[0][d] - row0.embedding[d]) < 1e-4);
         assert.ok(Math.abs(many[1][d] - row1.embedding[d]) < 1e-4);
       }
+      assert.ok(row0.embedding instanceof Float32Array);
     });
   });
 
@@ -563,6 +565,77 @@ describe('LogosDB Node.js', function() {
       assert.strictEqual(row.id, 0);
       assert.strictEqual(row.text, 'row0');
       db.close();
+    });
+  });
+
+  describe('capacity and async (1.8.0)', () => {
+    let dbPath;
+
+    afterEach(() => {
+      cleanup(dbPath);
+    });
+
+    it('grows past maxElements and reopens', () => {
+      dbPath = createTempDir();
+      const db = new DB(dbPath, { dim: 8, maxElements: 16, efSearch: 64 });
+      for (let i = 0; i < 20; i++) {
+        db.put(randomUnitVector(8, 500 + i));
+      }
+      assert.strictEqual(db.indexCapacity(), 32);
+      db.close();
+      const db2 = new DB(dbPath, { dim: 8, maxElements: 16, efSearch: 64 });
+      assert.strictEqual(db2.indexCapacity(), 32);
+      db2.close();
+    });
+
+    it('rejects insert over maxCapacity', () => {
+      dbPath = createTempDir();
+      const db = new DB(dbPath, { dim: 8, maxElements: 16, maxCapacity: 20 });
+      for (let i = 0; i < 20; i++) {
+        db.put(randomUnitVector(8, 600 + i));
+      }
+      assert.throws(() => db.put(randomUnitVector(8, 699)), /hnsw capacity cap exceeded/);
+      assert.strictEqual(db.count(), 20);
+      db.close();
+    });
+
+    it('accepts Float32Array in and out', () => {
+      dbPath = createTempDir();
+      const db = new DB(dbPath, { dim: 4, maxElements: 64 });
+      const vec = Float32Array.from(randomUnitVector(4, 1));
+      const id = db.put(vec, 'f32');
+      const row = db.get(id);
+      assert.ok(row.embedding instanceof Float32Array);
+      assert.strictEqual(row.embedding.length, 4);
+      db.close();
+    });
+
+    it('searchAsync matches sync search', async () => {
+      dbPath = createTempDir();
+      const db = new DB(dbPath, { dim: 8, maxElements: 64 });
+      const q = randomUnitVector(8, 7);
+      db.put(randomUnitVector(8, 8), 'a');
+      db.put(q, 'b');
+      const sync = db.search(q, 2);
+      const asyncHits = await db.searchAsync(q, 2);
+      assert.strictEqual(sync.length, asyncHits.length);
+      assert.strictEqual(sync[0].id, asyncHits[0].id);
+      db.close();
+    });
+
+    it('putBatchAsync matches putBatch', async () => {
+      dbPath = createTempDir();
+      const db = new DB(dbPath, { dim: 4, maxElements: 64 });
+      const flat = [];
+      for (let i = 0; i < 3; i++) flat.push(...randomUnitVector(4, 20 + i));
+      const syncIds = db.putBatch(flat, 3);
+      const db2Path = createTempDir();
+      const db2 = new DB(db2Path, { dim: 4, maxElements: 64 });
+      const asyncIds = await db2.putBatchAsync(Float32Array.from(flat), 3);
+      assert.deepStrictEqual(syncIds, asyncIds);
+      db.close();
+      db2.close();
+      cleanup(db2Path);
     });
   });
 

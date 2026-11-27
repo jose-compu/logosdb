@@ -1,12 +1,35 @@
 logosdb change log
 ==================
 
+1.8.0  (2026-11-27) — core / PyPI / npm `logosdb`
+-------------------------------------------------
+
+  * **#186 — Auto-growing HNSW capacity.** `max_elements` is the initial
+    capacity (default 1,000,000). Inserts that would pass it call hnswlib
+    `resizeIndex`, doubling, while the database mutex is held. Optional
+    `max_capacity` (0 = no cap) rejects the insert before any WAL or
+    tombstone write. Grown capacity is the value already stored in
+    `hnsw.idx`. `max_capacity` is not stored. Python and Node expose the
+    same options and `index_capacity` / `indexCapacity`.
+  * **#165 — Python GIL.** `search`, `search_batch`, and `get_many` copy
+    their inputs, release the GIL for the C call, and return owned NumPy
+    arrays.
+  * **#140, #137 — Node buffers and async.** `Float32Array` or `number[]`
+    in. Embeddings come back as a copied `Float32Array`. `searchAsync`,
+    `putBatchAsync`, and `searchBatchAsync` return Promises. Sync methods
+    stay.
+  * **#141 — `skip_empty_ts` on timestamp range search.** New
+    `logosdb_search_ts_range_ex`. Default remains off, matching
+    `logosdb_search_ts_range`.
+  * Ships with `logosdb-mcp-server` **1.4.7** (`logosdb` ^1.8.0). `n8n-nodes-logosdb` stays **1.0.3**.
+
 1.4.7  (2026-11-27) — `logosdb-mcp-server` only
 -----------------------------------------------
 
-  * Not published yet. Expose LogosDB 1.7.0 search on the MCP tools: `allow` / `deny` (max 4096 ids) and `min_score` on `logosdb_search`, plus `logosdb_search_batch` and `logosdb_get_many`.
+  * Expose LogosDB 1.7.0 search on the MCP tools: `allow` / `deny` (max 4096 ids) and `min_score` on `logosdb_search`, plus `logosdb_search_batch` and `logosdb_get_many`.
   * Code indexing splits on function and class boundaries. A unit longer than about 50 lines uses the existing line window. Markdown stays heading-aware. Long paragraphs break on a sentence when one is available. Stored rows are labeled with file path, line range, and symbol or heading.
   * Codex plugin `plugins/codex-semantic-memory` 0.3.0 calls `chunking: "auto"` and pins this server.
+  * Depend on `logosdb` **^1.8.0** with the 1.8.0 core release.
 
 1.7.0  (2026-11-26) — core / PyPI / npm `logosdb`
 -------------------------------------------------

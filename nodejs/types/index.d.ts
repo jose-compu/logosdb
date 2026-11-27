@@ -23,8 +23,8 @@ export interface SearchHit {
 export interface Row {
   /** Row ID */
   id: number;
-  /** Float32 embedding vector */
-  embedding: number[];
+  /** Float32 embedding vector (owned copy) */
+  embedding: Float32Array;
   /** Associated text */
   text: string | null;
   /** ISO 8601 timestamp */
@@ -37,8 +37,10 @@ export interface Row {
 export interface DBOptions {
   /** Vector dimension (default: 128) */
   dim?: number;
-  /** Maximum capacity (default: 1,000,000) */
+  /** Initial HNSW capacity (default: 1,000,000); doubles when full */
   maxElements?: number;
+  /** Optional hard slot cap (0 = unlimited; not stored on disk) */
+  maxCapacity?: number;
   /** HNSW construction parameter (default: 200) */
   efConstruction?: number;
   /** HNSW M parameter (default: 16) */
@@ -87,7 +89,10 @@ export interface TsRangeOptions {
   tsTo?: string;
   /** Internal candidate multiplier */
   candidateK?: number;
+  skipEmptyTs?: boolean;
 }
+
+type FloatVector = number[] | Float32Array;
 
 /**
  * LogosDB database instance
@@ -107,7 +112,7 @@ export class DB {
    * @param timestamp - Optional ISO 8601 timestamp
    * @returns Assigned row ID
    */
-  put(embedding: number[], text?: string, timestamp?: string): number;
+  put(embedding: FloatVector, text?: string, timestamp?: string): number;
 
   /**
    * Batch-insert N vectors with a single WAL fsync — ~N× faster than N individual put() calls.
@@ -118,7 +123,7 @@ export class DB {
    * @returns Array of n assigned row IDs in insertion order
    */
   putBatch(
-    embeddings: number[],
+    embeddings: FloatVector,
     n: number,
     texts?: (string | null | undefined)[],
     timestamps?: (string | null | undefined)[],
@@ -137,9 +142,9 @@ export class DB {
    * @param topK - Number of results (default: 10)
    * @returns Search results
    */
-  search(queryEmbedding: number[], topK?: number): SearchHit[];
+  search(queryEmbedding: FloatVector, topK?: number): SearchHit[];
   search(
-    queryEmbedding: number[],
+    queryEmbedding: FloatVector,
     options: {
       k?: number;
       allow?: number[] | BigUint64Array;
@@ -162,7 +167,33 @@ export class DB {
       skipEmptyTs?: boolean;
     },
   ): { ids: (number | null)[][]; scores: number[][] };
-  getMany(ids: number[]): number[][];
+  getMany(ids: number[]): Float32Array;
+
+  indexCapacity(): number;
+
+  searchAsync(queryEmbedding: FloatVector, topK?: number): Promise<SearchHit[]>;
+  searchAsync(
+    queryEmbedding: FloatVector,
+    options: { topK?: number },
+  ): Promise<SearchHit[]>;
+  putBatchAsync(
+    embeddings: FloatVector,
+    n: number,
+    texts?: (string | null | undefined)[],
+    timestamps?: (string | null | undefined)[],
+  ): Promise<number[]>;
+  searchBatchAsync(
+    queries: FloatVector[],
+    k: number,
+    filter?: {
+      allow?: number[];
+      deny?: number[];
+      minScore?: number;
+      tsFrom?: string;
+      tsTo?: string;
+      skipEmptyTs?: boolean;
+    },
+  ): Promise<{ ids: (number | null)[][]; scores: number[][] }>;
 
   /**
    * Search with timestamp range filter
@@ -170,7 +201,7 @@ export class DB {
    * @param options - Search options
    * @returns Search results
    */
-  searchTsRange(queryEmbedding: number[], options?: TsRangeOptions): SearchHit[];
+  searchTsRange(queryEmbedding: FloatVector, options?: TsRangeOptions): SearchHit[];
 
   /**
    * Update an existing row (marks old as deleted, creates new)

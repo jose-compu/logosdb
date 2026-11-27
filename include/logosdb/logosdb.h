@@ -5,9 +5,9 @@
 #include <stdint.h>
 
 #define LOGOSDB_VERSION_MAJOR 1
-#define LOGOSDB_VERSION_MINOR 7
+#define LOGOSDB_VERSION_MINOR 8
 #define LOGOSDB_VERSION_PATCH 0
-#define LOGOSDB_VERSION_STRING "1.7.0"
+#define LOGOSDB_VERSION_STRING "1.8.0"
 
 /* Distance metrics for vector similarity search */
 #define LOGOSDB_DIST_IP 0     /* Inner product (default, requires L2-normalized vectors) */
@@ -38,6 +38,12 @@ extern "C"
 
     void logosdb_options_set_dim(logosdb_options_t* opts, int dim);
     void logosdb_options_set_max_elements(logosdb_options_t* opts, size_t n);
+
+    /* 0 = no hard cap (default). A positive value is the maximum HNSW slot count.
+     * On a new database, max_elements must be <= max_capacity when max_capacity > 0.
+     * Not stored. Pass it again on every open. */
+    void logosdb_options_set_max_capacity(logosdb_options_t* opts, size_t n);
+
     void logosdb_options_set_ef_construction(logosdb_options_t* opts, int ef);
     void logosdb_options_set_M(logosdb_options_t* opts, int M);
     void logosdb_options_set_ef_search(logosdb_options_t* opts, int ef);
@@ -204,6 +210,19 @@ extern "C"
                                                      int candidate_k,
                                                      char** errptr);
 
+    logosdb_search_result_t* logosdb_search_ts_range_ex(logosdb_t* db,
+                                                        const float* query,
+                                                        int dim,
+                                                        int top_k,
+                                                        const char* ts_from_iso8601,
+                                                        const char* ts_to_iso8601,
+                                                        int candidate_k,
+                                                        int skip_empty_ts,
+                                                        char** errptr);
+
+    /* Current HNSW slot capacity (after any growth). 0 if db is NULL. */
+    size_t logosdb_index_capacity(const logosdb_t* db);
+
 #define LOGOSDB_FILTER_MAX_K 4096
 #define LOGOSDB_SEARCH_BATCH_MAX_N 65536
 #define LOGOSDB_EXACT_SCAN_MAX_IDS 4096
@@ -347,6 +366,7 @@ struct Options
 {
     int dim = 0;
     size_t max_elements = 1000000;
+    size_t max_capacity = 0;
     int ef_construction = 200;
     int M = 16;
     int ef_search = 50;
@@ -381,6 +401,8 @@ class DB
             logosdb_options_set_dim(o, opts.dim);
         if (opts.max_elements > 0)
             logosdb_options_set_max_elements(o, opts.max_elements);
+        if (opts.max_capacity > 0)
+            logosdb_options_set_max_capacity(o, opts.max_capacity);
         if (opts.ef_construction > 0)
             logosdb_options_set_ef_construction(o, opts.ef_construction);
         if (opts.M > 0)
@@ -616,23 +638,27 @@ class DB
      *
      * Timestamp format: ISO 8601 strings (e.g., "2025-01-01T00:00:00Z").
      */
+    size_t index_capacity() const { return logosdb_index_capacity(db_); }
+
     std::vector<SearchHit> search_ts_range(const std::vector<float>& query,
                                            int top_k,
                                            const std::string& ts_from,
                                            const std::string& ts_to,
-                                           int candidate_k = 0)
+                                           int candidate_k = 0,
+                                           bool skip_empty_ts = false)
     {
         char* err = nullptr;
         int ck = candidate_k > 0 ? candidate_k : top_k * 10;
         logosdb_search_result_t* r =
-            logosdb_search_ts_range(db_,
-                                    query.data(),
-                                    (int)query.size(),
-                                    top_k,
-                                    ts_from.empty() ? nullptr : ts_from.c_str(),
-                                    ts_to.empty() ? nullptr : ts_to.c_str(),
-                                    ck,
-                                    &err);
+            logosdb_search_ts_range_ex(db_,
+                                       query.data(),
+                                       (int)query.size(),
+                                       top_k,
+                                       ts_from.empty() ? nullptr : ts_from.c_str(),
+                                       ts_to.empty() ? nullptr : ts_to.c_str(),
+                                       ck,
+                                       skip_empty_ts ? 1 : 0,
+                                       &err);
         if (err)
         {
             std::string msg(err);

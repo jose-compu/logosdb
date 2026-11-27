@@ -104,6 +104,7 @@ PYBIND11_MODULE(_core, m)
                  [](const std::string& path,
                     int dim,
                     size_t max_elements,
+                    size_t max_capacity,
                     int ef_construction,
                     int M,
                     int ef_search,
@@ -113,6 +114,7 @@ PYBIND11_MODULE(_core, m)
                      logosdb::Options o;
                      o.dim = dim;
                      o.max_elements = max_elements;
+                     o.max_capacity = max_capacity;
                      o.ef_construction = ef_construction;
                      o.M = M;
                      o.ef_search = ef_search;
@@ -123,6 +125,7 @@ PYBIND11_MODULE(_core, m)
              py::arg("path"),
              py::arg("dim"),
              py::arg("max_elements") = 1000000,
+             py::arg("max_capacity") = 0,
              py::arg("ef_construction") = 200,
              py::arg("M") = 16,
              py::arg("ef_search") = 50,
@@ -133,7 +136,8 @@ PYBIND11_MODULE(_core, m)
 Args:
     path: directory to store vectors/metadata/index files.
     dim: vector dimensionality. Fixed at creation; enforced on reopen.
-    max_elements: HNSW capacity (default 1,000,000).
+    max_elements: initial HNSW capacity (default 1,000,000); doubles when full.
+    max_capacity: optional hard slot cap (0 = unlimited; not persisted on disk).
     ef_construction: HNSW build-time search width (default 200).
     M: HNSW graph out-degree (default 16).
     ef_search: HNSW query-time search width (default 50).
@@ -291,22 +295,31 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
                     !(allow.is_none() && deny.is_none() && min_score.is_none() && ts_from.empty() &&
                       ts_to.empty() && !skip_empty_ts);
                 if (!use_filter)
+                {
+                    py::gil_scoped_release release;
                     return self.search(qv, top_k);
+                }
                 logosdb_id_filter_t f;
                 logosdb_id_filter_init(&f);
+                std::vector<uint64_t> allow_copy;
+                std::vector<uint64_t> deny_copy;
                 if (!allow.is_none())
                 {
                     auto arr = allow.cast<py::array_t<uint64_t, py::array::c_style>>();
                     auto r = arr.request();
-                    f.allow = static_cast<const uint64_t*>(r.ptr);
-                    f.n_allow = static_cast<size_t>(r.size);
+                    allow_copy.assign(static_cast<const uint64_t*>(r.ptr),
+                                      static_cast<const uint64_t*>(r.ptr) + r.size);
+                    f.allow = allow_copy.data();
+                    f.n_allow = allow_copy.size();
                 }
                 if (!deny.is_none())
                 {
                     auto arr = deny.cast<py::array_t<uint64_t, py::array::c_style>>();
                     auto r = arr.request();
-                    f.deny = static_cast<const uint64_t*>(r.ptr);
-                    f.n_deny = static_cast<size_t>(r.size);
+                    deny_copy.assign(static_cast<const uint64_t*>(r.ptr),
+                                     static_cast<const uint64_t*>(r.ptr) + r.size);
+                    f.deny = deny_copy.data();
+                    f.n_deny = deny_copy.size();
                 }
                 if (!min_score.is_none())
                     f.min_score = min_score.cast<float>();
@@ -315,6 +328,7 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
                 if (!ts_to.empty())
                     f.ts_to = ts_to.c_str();
                 f.skip_empty_ts = skip_empty_ts ? 1 : 0;
+                py::gil_scoped_release release;
                 return self.search_filtered(qv, top_k, f);
             },
             py::arg("query"),
@@ -351,19 +365,25 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
                 std::memcpy(flat.data(), buf.ptr, flat.size() * sizeof(float));
                 logosdb_id_filter_t f;
                 logosdb_id_filter_init(&f);
+                std::vector<uint64_t> allow_copy;
+                std::vector<uint64_t> deny_copy;
                 if (!allow.is_none())
                 {
                     auto arr = allow.cast<py::array_t<uint64_t, py::array::c_style>>();
                     auto r = arr.request();
-                    f.allow = static_cast<const uint64_t*>(r.ptr);
-                    f.n_allow = static_cast<size_t>(r.size);
+                    allow_copy.assign(static_cast<const uint64_t*>(r.ptr),
+                                      static_cast<const uint64_t*>(r.ptr) + r.size);
+                    f.allow = allow_copy.data();
+                    f.n_allow = allow_copy.size();
                 }
                 if (!deny.is_none())
                 {
                     auto arr = deny.cast<py::array_t<uint64_t, py::array::c_style>>();
                     auto r = arr.request();
-                    f.deny = static_cast<const uint64_t*>(r.ptr);
-                    f.n_deny = static_cast<size_t>(r.size);
+                    deny_copy.assign(static_cast<const uint64_t*>(r.ptr),
+                                     static_cast<const uint64_t*>(r.ptr) + r.size);
+                    f.deny = deny_copy.data();
+                    f.n_deny = deny_copy.size();
                 }
                 if (!min_score.is_none())
                     f.min_score = min_score.cast<float>();
@@ -372,7 +392,11 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
                 if (!ts_to.empty())
                     f.ts_to = ts_to.c_str();
                 f.skip_empty_ts = skip_empty_ts ? 1 : 0;
-                auto batch = self.search_batch(flat, n, k, f);
+                logosdb::DB::SearchBatchResult batch;
+                {
+                    py::gil_scoped_release release;
+                    batch = self.search_batch(flat, n, k, f);
+                }
                 std::vector<py::ssize_t> shape{n, k};
                 py::array_t<uint64_t> ids(shape);
                 py::array_t<float> scores(shape);
@@ -401,7 +425,11 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
                 auto r = ids.request();
                 std::vector<uint64_t> idv(r.size);
                 std::memcpy(idv.data(), r.ptr, idv.size() * sizeof(uint64_t));
-                auto flat = self.get_many(idv);
+                std::vector<float> flat;
+                {
+                    py::gil_scoped_release release;
+                    flat = self.get_many(idv);
+                }
                 const int dim = self.dim();
                 std::vector<py::ssize_t> out_shape{static_cast<py::ssize_t>(idv.size()), dim};
                 py::array_t<float> out(out_shape);
@@ -418,15 +446,21 @@ written to the vector/metadata stores; the WAL is fsynced once per chunk
                int top_k,
                const std::string& ts_from,
                const std::string& ts_to,
-               int candidate_k) {
-                return self.search_ts_range(
-                    to_vector(query, "query"), top_k, ts_from, ts_to, candidate_k);
+               int candidate_k,
+               bool skip_empty_ts) {
+                return self.search_ts_range(to_vector(query, "query"),
+                                            top_k,
+                                            ts_from,
+                                            ts_to,
+                                            candidate_k,
+                                            skip_empty_ts);
             },
             py::arg("query"),
             py::arg("top_k") = 5,
             py::arg("ts_from") = "",
             py::arg("ts_to") = "",
             py::arg("candidate_k") = 0,
+            py::arg("skip_empty_ts") = false,
             R"doc(Search with timestamp range filter.
 
 Args:
@@ -439,6 +473,8 @@ Args:
 Returns:
     list[SearchHit]: filtered results sorted by score.
 )doc")
+
+        .def("index_capacity", &logosdb::DB::index_capacity, "Current HNSW slot capacity.")
 
         .def("count", &logosdb::DB::count, "Total row count including tombstoned rows.")
 

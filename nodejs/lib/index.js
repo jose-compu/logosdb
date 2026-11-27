@@ -106,7 +106,40 @@ class DB {
 
   getMany(ids) {
     this._checkClosed();
-    return this._db.getMany(ids);
+    const flat = this._db.getMany(ids);
+    const dim = this.dim();
+    const rows = [];
+    for (let i = 0; i < ids.length; i++) {
+      const start = i * dim;
+      rows.push(Array.from(flat.subarray(start, start + dim)));
+    }
+    return rows;
+  }
+
+  putBatch(embeddings, n, texts, timestamps) {
+    this._checkClosed();
+    return this._db.putBatch(embeddings, n, texts, timestamps);
+  }
+
+  putBatchAsync(embeddings, n, texts, timestamps) {
+    this._checkClosed();
+    return this._db.putBatchAsync(embeddings, n, texts, timestamps);
+  }
+
+  searchAsync(queryEmbedding, topKOrOptions = 10) {
+    this._checkClosed();
+    assertDim(queryEmbedding, this.dim(), 'searchAsync');
+    return this._db.searchAsync(queryEmbedding, topKOrOptions);
+  }
+
+  searchBatchAsync(queries, k, filter) {
+    this._checkClosed();
+    return this._db.searchBatchAsync(queries, k, filter);
+  }
+
+  indexCapacity() {
+    this._checkClosed();
+    return this._db.indexCapacity();
   }
 
   /**
@@ -305,8 +338,13 @@ function compact(src, dst) {
 }
 
 function assertDim(embedding, dim, op) {
-  if (!Array.isArray(embedding)) {
-    throw new Error(`${op}: embedding must be a number array`);
+  const isArray = Array.isArray(embedding);
+  const isF32 =
+    ArrayBuffer.isView(embedding) &&
+    embedding.constructor &&
+    embedding.constructor.name === 'Float32Array';
+  if (!isArray && !isF32) {
+    throw new Error(`${op}: embedding must be a number array or Float32Array`);
   }
   if (embedding.length !== dim) {
     throw new Error(

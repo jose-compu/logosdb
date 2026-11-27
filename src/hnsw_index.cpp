@@ -2,6 +2,7 @@
 
 #include <hnswlib/hnswlib/hnswlib.h>
 
+#include <cstddef>
 #include <cstring>
 #include <fstream>
 
@@ -118,6 +119,21 @@ bool HnswIndex::open(const std::string& path, const HnswParams& params, std::str
             impl_->alg = new hnswlib::HierarchicalNSW<float>(
                 impl_->space, path, false, params.max_elements, true);
             impl_->alg->setEf(params.ef_search);
+            const size_t cur = impl_->alg->cur_element_count;
+            const size_t cap = impl_->alg->max_elements_;
+            if (params.max_capacity > 0)
+            {
+                if (cur > params.max_capacity)
+                {
+                    err = "hnsw capacity cap exceeded";
+                    close();
+                    return false;
+                }
+                if (cap > params.max_capacity && params.max_capacity >= cur)
+                {
+                    impl_->alg->resizeIndex(params.max_capacity);
+                }
+            }
             return true;
         }
         catch (const std::exception& e)
@@ -128,6 +144,13 @@ bool HnswIndex::open(const std::string& path, const HnswParams& params, std::str
         }
     }
     in.close();
+
+    if (params.max_capacity > 0 && params.max_elements > params.max_capacity)
+    {
+        err = "max_elements exceeds max_capacity";
+        close();
+        return false;
+    }
 
     // Create new index
     try
@@ -171,6 +194,52 @@ static void l2_normalize(float* vec, int dim)
     }
 }
 
+bool HnswIndex::reserve(size_t additional, std::string& err)
+{
+    if (!impl_ || !impl_->alg)
+    {
+        err = "index not open";
+        return false;
+    }
+    if (additional == 0)
+        return true;
+    const size_t need = count() + additional;
+    const size_t max_cap = impl_->params.max_capacity;
+    if (max_cap > 0 && need > max_cap)
+    {
+        err = "hnsw capacity cap exceeded";
+        return false;
+    }
+    size_t cap = max_elements();
+    while (need > cap)
+    {
+        if (cap > SIZE_MAX / 2)
+        {
+            err = "hnsw capacity overflow";
+            return false;
+        }
+        size_t next = cap * 2;
+        if (max_cap > 0 && next > max_cap)
+            next = max_cap;
+        if (max_cap > 0 && next < need)
+        {
+            err = "hnsw capacity cap exceeded";
+            return false;
+        }
+        try
+        {
+            impl_->alg->resizeIndex(next);
+        }
+        catch (const std::exception& e)
+        {
+            err = std::string("hnsw resize: ") + e.what();
+            return false;
+        }
+        cap = next;
+    }
+    return true;
+}
+
 bool HnswIndex::add(uint64_t label, const float* vec, std::string& err)
 {
     if (!impl_ || !impl_->alg)
@@ -178,6 +247,8 @@ bool HnswIndex::add(uint64_t label, const float* vec, std::string& err)
         err = "index not open";
         return false;
     }
+    if (!reserve(1, err))
+        return false;
     try
     {
         if (impl_->distance_metric == DIST_COSINE)

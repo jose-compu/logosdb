@@ -26,6 +26,27 @@ static std::vector<float> JsArrayToFloatVector(const Napi::Array& arr)
     return vec;
 }
 
+static std::vector<float> JsValueToFloatVector(Napi::Env env, const Napi::Value& val)
+{
+    if (val.IsArray())
+        return JsArrayToFloatVector(val.As<Napi::Array>());
+    if (val.IsTypedArray() && val.As<Napi::TypedArray>().TypedArrayType() == napi_float32_array)
+    {
+        Napi::Float32Array fa = val.As<Napi::Float32Array>();
+        const size_t len = fa.ElementLength();
+        std::vector<float> vec(len);
+        std::memcpy(vec.data(), fa.Data(), len * sizeof(float));
+        return vec;
+    }
+    throw Napi::TypeError::New(env, "Expected Float32Array or number[]");
+}
+
+static bool EmbeddingValueIsValid(const Napi::Value& val)
+{
+    return val.IsArray() ||
+           (val.IsTypedArray() && val.As<Napi::TypedArray>().TypedArrayType() == napi_float32_array);
+}
+
 // Helper to convert SearchHit to JS object
 static Napi::Object
 SearchHitToJsObject(Napi::Env env, const logosdb_search_result_t* result, int index)
@@ -58,6 +79,283 @@ SearchHitToJsObject(Napi::Env env, const logosdb_search_result_t* result, int in
 
     return obj;
 }
+
+static Napi::Array SearchResultToJsArray(Napi::Env env, logosdb_search_result_t* result)
+{
+    const int count = logosdb_result_count(result);
+    Napi::Array results = Napi::Array::New(env, count);
+    for (int i = 0; i < count; i++)
+        results.Set(i, SearchHitToJsObject(env, result, i));
+    return results;
+}
+
+class SearchAsyncWorker : public Napi::AsyncWorker
+{
+  public:
+    SearchAsyncWorker(Napi::Function& callback,
+                      Napi::Promise::Deferred deferred,
+                      logosdb_t* db,
+                      std::vector<float> query,
+                      int dim,
+                      int top_k)
+        : Napi::AsyncWorker(callback),
+          deferred_(deferred),
+          db_(db),
+          query_(std::move(query)),
+          dim_(dim),
+          top_k_(top_k)
+    {
+    }
+
+    void Execute() override
+    {
+        char* err = nullptr;
+        result_ = logosdb_search(db_, query_.data(), dim_, top_k_, &err);
+        if (!result_)
+        {
+            error_msg_ = err ? err : "Search failed";
+            if (err)
+                free(err);
+        }
+        else if (err)
+        {
+            free(err);
+        }
+    }
+
+    void OnOK() override
+    {
+        Napi::HandleScope scope(Env());
+        if (!result_)
+        {
+            deferred_.Reject(Napi::Error::New(Env(), error_msg_).Value());
+            return;
+        }
+        Napi::Array hits = SearchResultToJsArray(Env(), result_);
+        logosdb_result_free(result_);
+        result_ = nullptr;
+        deferred_.Resolve(hits);
+    }
+
+    void OnError(const Napi::Error& e) override { deferred_.Reject(e.Value()); }
+
+  private:
+    Napi::Promise::Deferred deferred_;
+    logosdb_t* db_;
+    std::vector<float> query_;
+    int dim_;
+    int top_k_;
+    logosdb_search_result_t* result_ = nullptr;
+    std::string error_msg_;
+};
+
+class PutBatchAsyncWorker : public Napi::AsyncWorker
+{
+  public:
+    PutBatchAsyncWorker(Napi::Function& callback,
+                        Napi::Promise::Deferred deferred,
+                        logosdb_t* db,
+                        int dim,
+                        std::vector<float> embeddings,
+                        int n,
+                        std::vector<const char*> text_ptrs,
+                        std::vector<const char*> ts_ptrs,
+                        bool has_texts,
+                        bool has_timestamps,
+                        std::vector<std::string> text_storage,
+                        std::vector<std::string> ts_storage)
+        : Napi::AsyncWorker(callback),
+          deferred_(deferred),
+          db_(db),
+          dim_(dim),
+          embeddings_(std::move(embeddings)),
+          n_(n),
+          text_ptrs_(std::move(text_ptrs)),
+          ts_ptrs_(std::move(ts_ptrs)),
+          has_texts_(has_texts),
+          has_timestamps_(has_timestamps),
+          text_storage_(std::move(text_storage)),
+          ts_storage_(std::move(ts_storage))
+    {
+    }
+
+    void Execute() override
+    {
+        out_ids_.resize(static_cast<size_t>(n_));
+        char* err = nullptr;
+        const int rc = logosdb_put_batch(db_,
+                                         embeddings_.data(),
+                                         n_,
+                                         dim_,
+                                         has_texts_ ? text_ptrs_.data() : nullptr,
+                                         has_timestamps_ ? ts_ptrs_.data() : nullptr,
+                                         out_ids_.data(),
+                                         &err);
+        if (rc != 0)
+        {
+            error_msg_ = err ? err : "put_batch failed";
+            if (err)
+                free(err);
+        }
+        else if (err)
+        {
+            free(err);
+        }
+    }
+
+    void OnOK() override
+    {
+        Napi::HandleScope scope(Env());
+        if (!error_msg_.empty())
+        {
+            deferred_.Reject(Napi::Error::New(Env(), error_msg_).Value());
+            return;
+        }
+        Napi::Array result = Napi::Array::New(Env(), static_cast<uint32_t>(n_));
+        for (int i = 0; i < n_; ++i)
+            result.Set(static_cast<uint32_t>(i),
+                       Napi::Number::New(Env(), static_cast<double>(out_ids_[static_cast<size_t>(i)])));
+        deferred_.Resolve(result);
+    }
+
+    void OnError(const Napi::Error& e) override { deferred_.Reject(e.Value()); }
+
+  private:
+    Napi::Promise::Deferred deferred_;
+    logosdb_t* db_;
+    int dim_;
+    int n_;
+    std::vector<float> embeddings_;
+    std::vector<const char*> text_ptrs_;
+    std::vector<const char*> ts_ptrs_;
+    bool has_texts_;
+    bool has_timestamps_;
+    std::vector<std::string> text_storage_;
+    std::vector<std::string> ts_storage_;
+    std::vector<uint64_t> out_ids_;
+    std::string error_msg_;
+};
+
+class SearchBatchAsyncWorker : public Napi::AsyncWorker
+{
+  public:
+    SearchBatchAsyncWorker(Napi::Function& callback,
+                           Napi::Promise::Deferred deferred,
+                           logosdb_t* db,
+                           int dim,
+                           int n,
+                           int k,
+                           std::vector<float> flat,
+                           logosdb_id_filter_t filter,
+                           std::vector<uint64_t> allow_store,
+                           std::vector<uint64_t> deny_store,
+                           std::string ts_from,
+                           std::string ts_to)
+        : Napi::AsyncWorker(callback),
+          deferred_(deferred),
+          db_(db),
+          dim_(dim),
+          n_(n),
+          k_(k),
+          flat_(std::move(flat)),
+          filter_(filter),
+          allow_store_(std::move(allow_store)),
+          deny_store_(std::move(deny_store)),
+          ts_from_(std::move(ts_from)),
+          ts_to_(std::move(ts_to))
+    {
+        if (!allow_store_.empty())
+        {
+            filter_.allow = allow_store_.data();
+            filter_.n_allow = allow_store_.size();
+        }
+        if (!deny_store_.empty())
+        {
+            filter_.deny = deny_store_.data();
+            filter_.n_deny = deny_store_.size();
+        }
+        filter_.ts_from = ts_from_.empty() ? nullptr : ts_from_.c_str();
+        filter_.ts_to = ts_to_.empty() ? nullptr : ts_to_.c_str();
+    }
+
+    void Execute() override
+    {
+        out_ids_.resize(static_cast<size_t>(n_) * static_cast<size_t>(k_));
+        out_scores_.resize(static_cast<size_t>(n_) * static_cast<size_t>(k_));
+        char* err = nullptr;
+        if (logosdb_search_batch(db_,
+                                 flat_.data(),
+                                 n_,
+                                 dim_,
+                                 k_,
+                                 &filter_,
+                                 out_ids_.data(),
+                                 out_scores_.data(),
+                                 &err) != 0)
+        {
+            error_msg_ = err ? err : "search_batch failed";
+            if (err)
+                free(err);
+        }
+        else if (err)
+        {
+            free(err);
+        }
+    }
+
+    void OnOK() override
+    {
+        Napi::HandleScope scope(Env());
+        if (!error_msg_.empty())
+        {
+            deferred_.Reject(Napi::Error::New(Env(), error_msg_).Value());
+            return;
+        }
+        Napi::Array idRows = Napi::Array::New(Env(), n_);
+        Napi::Array scoreRows = Napi::Array::New(Env(), n_);
+        for (int qi = 0; qi < n_; ++qi)
+        {
+            Napi::Array idRow = Napi::Array::New(Env(), k_);
+            Napi::Array scoreRow = Napi::Array::New(Env(), k_);
+            for (int kj = 0; kj < k_; ++kj)
+            {
+                const size_t idx =
+                    static_cast<size_t>(qi) * static_cast<size_t>(k_) + static_cast<size_t>(kj);
+                const uint64_t id = out_ids_[idx];
+                const float sc = out_scores_[idx];
+                if (id == UINT64_MAX)
+                    idRow.Set(kj, Env().Null());
+                else
+                    idRow.Set(kj, Napi::Number::New(Env(), static_cast<double>(id)));
+                scoreRow.Set(kj, Napi::Number::New(Env(), sc));
+            }
+            idRows.Set(qi, idRow);
+            scoreRows.Set(qi, scoreRow);
+        }
+        Napi::Object out = Napi::Object::New(Env());
+        out.Set("ids", idRows);
+        out.Set("scores", scoreRows);
+        deferred_.Resolve(out);
+    }
+
+    void OnError(const Napi::Error& e) override { deferred_.Reject(e.Value()); }
+
+  private:
+    Napi::Promise::Deferred deferred_;
+    logosdb_t* db_;
+    int dim_;
+    int n_;
+    int k_;
+    std::vector<float> flat_;
+    logosdb_id_filter_t filter_;
+    std::vector<uint64_t> allow_store_;
+    std::vector<uint64_t> deny_store_;
+    std::string ts_from_;
+    std::string ts_to_;
+    std::vector<uint64_t> out_ids_;
+    std::vector<float> out_scores_;
+    std::string error_msg_;
+};
 
 static void FillIdFilterFromJs(Napi::Object opts,
                                logosdb_id_filter_t* f,
@@ -126,6 +424,10 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
                             InstanceMethod("searchBatch", &DBWrapper::SearchBatch),
                             InstanceMethod("getMany", &DBWrapper::GetMany),
                             InstanceMethod("searchTsRange", &DBWrapper::SearchTsRange),
+                            InstanceMethod("searchAsync", &DBWrapper::SearchAsync),
+                            InstanceMethod("putBatchAsync", &DBWrapper::PutBatchAsync),
+                            InstanceMethod("searchBatchAsync", &DBWrapper::SearchBatchAsync),
+                            InstanceMethod("indexCapacity", &DBWrapper::IndexCapacity),
                             InstanceMethod("update", &DBWrapper::Update),
                             InstanceMethod("delete", &DBWrapper::Delete),
                             InstanceMethod("count", &DBWrapper::Count),
@@ -156,6 +458,7 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
         std::string path = info[0].As<Napi::String>().Utf8Value();
         int dim = 128;  // default
         size_t max_elements = 1000000;
+        size_t max_capacity = 0;
         int ef_construction = 200;
         int M = 16;
         int ef_search = 50;
@@ -175,6 +478,11 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
             {
                 max_elements =
                     static_cast<size_t>(options.Get("maxElements").As<Napi::Number>().Int64Value());
+            }
+            if (options.Has("maxCapacity"))
+            {
+                max_capacity =
+                    static_cast<size_t>(options.Get("maxCapacity").As<Napi::Number>().Int64Value());
             }
             if (options.Has("efConstruction"))
             {
@@ -202,6 +510,7 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
         logosdb_options_t* opts = logosdb_options_create();
         logosdb_options_set_dim(opts, dim);
         logosdb_options_set_max_elements(opts, max_elements);
+        logosdb_options_set_max_capacity(opts, max_capacity);
         logosdb_options_set_ef_construction(opts, ef_construction);
         logosdb_options_set_M(opts, M);
         logosdb_options_set_ef_search(opts, ef_search);
@@ -245,13 +554,12 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
     {
         Napi::Env env = info.Env();
 
-        if (info.Length() < 1 || !info[0].IsArray())
+        if (info.Length() < 1 || !EmbeddingValueIsValid(info[0]))
         {
-            throw Napi::TypeError::New(env, "Embedding (array) expected as first argument");
+            throw Napi::TypeError::New(env, "Embedding (Float32Array or number[]) expected");
         }
 
-        Napi::Array embeddingArr = info[0].As<Napi::Array>();
-        std::vector<float> embedding = JsArrayToFloatVector(embeddingArr);
+        std::vector<float> embedding = JsValueToFloatVector(env, info[0]);
 
         if ((int)embedding.size() != dim_)
         {
@@ -302,11 +610,10 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
     {
         Napi::Env env = info.Env();
 
-        if (info.Length() < 2 || !info[0].IsArray() || !info[1].IsNumber())
+        if (info.Length() < 2 || !EmbeddingValueIsValid(info[0]) || !info[1].IsNumber())
         {
             throw Napi::TypeError::New(env,
-                                       "putBatch(embeddings: number[], n: number, texts?: "
-                                       "(string|null)[], timestamps?: (string|null)[])");
+                                       "putBatch(embeddings: Float32Array|number[], n: number, ...)");
         }
 
         int n = info[1].As<Napi::Number>().Int32Value();
@@ -315,17 +622,12 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
             return Napi::Array::New(env, 0);
         }
 
-        Napi::Array embArr = info[0].As<Napi::Array>();
-        if (static_cast<int>(embArr.Length()) < n * dim_)
+        std::vector<float> all = JsValueToFloatVector(env, info[0]);
+        if (static_cast<int>(all.size()) < n * dim_)
         {
-            throw Napi::RangeError::New(env, "embeddings array length must be >= n * dim");
+            throw Napi::RangeError::New(env, "embeddings length must be >= n * dim");
         }
-
-        std::vector<float> embeddings(n * dim_);
-        for (int i = 0; i < n * dim_; i++)
-        {
-            embeddings[i] = embArr.Get(i).As<Napi::Number>().FloatValue();
-        }
+        std::vector<float> embeddings(all.begin(), all.begin() + static_cast<size_t>(n) * dim_);
 
         std::vector<std::string> text_storage;
         std::vector<const char*> text_ptrs;
@@ -422,11 +724,9 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
         obj.Set("id", Napi::Number::New(env, static_cast<double>(logosdb_row_id(row))));
         int d = logosdb_row_dim(row);
         const float* emb = logosdb_row_embedding(row);
-        Napi::Array embArr = Napi::Array::New(env, static_cast<size_t>(d));
-        for (int i = 0; i < d; ++i)
-        {
-            embArr.Set(static_cast<uint32_t>(i), Napi::Number::New(env, emb ? emb[i] : 0.0f));
-        }
+        Napi::Float32Array embArr = Napi::Float32Array::New(env, static_cast<size_t>(d));
+        if (emb && d > 0)
+            std::memcpy(embArr.Data(), emb, static_cast<size_t>(d) * sizeof(float));
         obj.Set("embedding", embArr);
         const char* text = logosdb_row_text(row);
         if (text)
@@ -454,13 +754,12 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
     {
         Napi::Env env = info.Env();
 
-        if (info.Length() < 1 || !info[0].IsArray())
+        if (info.Length() < 1 || !EmbeddingValueIsValid(info[0]))
         {
-            throw Napi::TypeError::New(env, "Query embedding (array) expected as first argument");
+            throw Napi::TypeError::New(env, "Query (Float32Array or number[]) expected");
         }
 
-        Napi::Array queryArr = info[0].As<Napi::Array>();
-        std::vector<float> query = JsArrayToFloatVector(queryArr);
+        std::vector<float> query = JsValueToFloatVector(env, info[0]);
 
         if ((int)query.size() != dim_)
         {
@@ -503,9 +802,9 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
     Napi::Value SearchFiltered(const Napi::CallbackInfo& info)
     {
         Napi::Env env = info.Env();
-        if (info.Length() < 2 || !info[0].IsArray() || !info[1].IsObject())
+        if (info.Length() < 2 || !EmbeddingValueIsValid(info[0]) || !info[1].IsObject())
             throw Napi::TypeError::New(env, "Expected (query, options)");
-        std::vector<float> query = JsArrayToFloatVector(info[0].As<Napi::Array>());
+        std::vector<float> query = JsValueToFloatVector(env, info[0]);
         if ((int)query.size() != dim_)
             throw Napi::Error::New(env, "Query dimension mismatch");
         Napi::Object opts = info[1].As<Napi::Object>();
@@ -616,30 +915,22 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
                 free(err);
             throw Napi::Error::New(env, msg);
         }
-        Napi::Array rows = Napi::Array::New(env, static_cast<uint32_t>(ids.size()));
-        for (size_t i = 0; i < ids.size(); ++i)
-        {
-            Napi::Array row = Napi::Array::New(env, dim_);
-            for (int d = 0; d < dim_; ++d)
-                row.Set(d,
-                        Napi::Number::New(
-                            env, out[i * static_cast<size_t>(dim_) + static_cast<size_t>(d)]));
-            rows.Set(static_cast<uint32_t>(i), row);
-        }
-        return rows;
+        Napi::Float32Array flat =
+            Napi::Float32Array::New(env, ids.size() * static_cast<size_t>(dim_));
+        std::memcpy(flat.Data(), out.data(), out.size() * sizeof(float));
+        return flat;
     }
 
     Napi::Value SearchTsRange(const Napi::CallbackInfo& info)
     {
         Napi::Env env = info.Env();
 
-        if (info.Length() < 1 || !info[0].IsArray())
+        if (info.Length() < 1 || !EmbeddingValueIsValid(info[0]))
         {
-            throw Napi::TypeError::New(env, "Query embedding (array) expected");
+            throw Napi::TypeError::New(env, "Query (Float32Array or number[]) expected");
         }
 
-        Napi::Array queryArr = info[0].As<Napi::Array>();
-        std::vector<float> query = JsArrayToFloatVector(queryArr);
+        std::vector<float> query = JsValueToFloatVector(env, info[0]);
 
         if ((int)query.size() != dim_)
         {
@@ -650,6 +941,7 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
         std::string ts_from;
         std::string ts_to;
         int candidate_k = 0;
+        int skip_empty_ts = 0;
 
         if (info.Length() > 1 && info[1].IsObject())
         {
@@ -671,6 +963,10 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
             {
                 candidate_k = options.Get("candidateK").As<Napi::Number>().Int32Value();
             }
+            if (options.Has("skipEmptyTs"))
+            {
+                skip_empty_ts = options.Get("skipEmptyTs").As<Napi::Boolean>().Value() ? 1 : 0;
+            }
         }
 
         if (candidate_k < top_k)
@@ -680,13 +976,14 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
 
         char* err = nullptr;
         logosdb_search_result_t* result =
-            logosdb_search_ts_range(db_,
+            logosdb_search_ts_range_ex(db_,
                                     query.data(),
                                     dim_,
                                     top_k,
                                     ts_from.empty() ? nullptr : ts_from.c_str(),
                                     ts_to.empty() ? nullptr : ts_to.c_str(),
                                     candidate_k,
+                                    skip_empty_ts,
                                     &err);
 
         if (!result)
@@ -717,15 +1014,14 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
     {
         Napi::Env env = info.Env();
 
-        if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsArray())
+        if (info.Length() < 2 || !info[0].IsNumber() || !EmbeddingValueIsValid(info[1]))
         {
             throw Napi::TypeError::New(env, "Expected (id, embedding, [text], [timestamp])");
         }
 
         uint64_t id = static_cast<uint64_t>(info[0].As<Napi::Number>().Int64Value());
 
-        Napi::Array embeddingArr = info[1].As<Napi::Array>();
-        std::vector<float> embedding = JsArrayToFloatVector(embeddingArr);
+        std::vector<float> embedding = JsValueToFloatVector(env, info[1]);
 
         if ((int)embedding.size() != dim_)
         {
@@ -789,6 +1085,159 @@ class DBWrapper : public Napi::ObjectWrap<DBWrapper>
         if (err)
             free(err);
         return env.Undefined();
+    }
+
+    Napi::Value IndexCapacity(const Napi::CallbackInfo& info)
+    {
+        Napi::Env env = info.Env();
+        return Napi::Number::New(env, static_cast<double>(logosdb_index_capacity(db_)));
+    }
+
+    Napi::Value SearchAsync(const Napi::CallbackInfo& info)
+    {
+        Napi::Env env = info.Env();
+        if (!db_)
+            throw Napi::Error::New(env, "Database is closed");
+        if (info.Length() < 1 || !EmbeddingValueIsValid(info[0]))
+            throw Napi::TypeError::New(env, "searchAsync(query, topK | options)");
+        std::vector<float> query = JsValueToFloatVector(env, info[0]);
+        if ((int)query.size() != dim_)
+            throw Napi::Error::New(env, "Query dimension mismatch");
+        int top_k = 10;
+        if (info.Length() > 1)
+        {
+            if (info[1].IsNumber())
+                top_k = info[1].As<Napi::Number>().Int32Value();
+            else if (info[1].IsObject() && info[1].As<Napi::Object>().Has("topK"))
+                top_k = info[1].As<Napi::Object>().Get("topK").As<Napi::Number>().Int32Value();
+        }
+        Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
+        Napi::Function cb = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
+        auto* worker =
+            new SearchAsyncWorker(cb, deferred, db_, std::move(query), dim_, top_k);
+        worker->Queue();
+        return deferred.Promise();
+    }
+
+    Napi::Value PutBatchAsync(const Napi::CallbackInfo& info)
+    {
+        Napi::Env env = info.Env();
+        if (!db_)
+            throw Napi::Error::New(env, "Database is closed");
+        if (info.Length() < 2 || !EmbeddingValueIsValid(info[0]) || !info[1].IsNumber())
+            throw Napi::TypeError::New(env, "putBatchAsync(embeddings, n, texts?, timestamps?)");
+        const int n = info[1].As<Napi::Number>().Int32Value();
+        if (n <= 0)
+        {
+            Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
+            deferred.Resolve(Napi::Array::New(env, 0));
+            return deferred.Promise();
+        }
+        std::vector<float> all = JsValueToFloatVector(env, info[0]);
+        if ((int)all.size() < n * dim_)
+            throw Napi::RangeError::New(env, "embeddings length must be >= n * dim");
+        std::vector<float> embeddings(all.begin(), all.begin() + static_cast<size_t>(n) * dim_);
+
+        std::vector<std::string> text_storage;
+        std::vector<const char*> text_ptrs;
+        bool has_texts = info.Length() > 2 && info[2].IsArray();
+        if (has_texts)
+        {
+            Napi::Array textsArr = info[2].As<Napi::Array>();
+            text_storage.resize(n);
+            text_ptrs.resize(n, nullptr);
+            for (int i = 0; i < n; i++)
+            {
+                Napi::Value v = textsArr.Get(static_cast<uint32_t>(i));
+                if (v.IsString())
+                {
+                    text_storage[i] = v.As<Napi::String>().Utf8Value();
+                    text_ptrs[i] = text_storage[i].c_str();
+                }
+            }
+        }
+
+        std::vector<std::string> ts_storage;
+        std::vector<const char*> ts_ptrs;
+        bool has_timestamps = info.Length() > 3 && info[3].IsArray();
+        if (has_timestamps)
+        {
+            Napi::Array tsArr = info[3].As<Napi::Array>();
+            ts_storage.resize(n);
+            ts_ptrs.resize(n, nullptr);
+            for (int i = 0; i < n; i++)
+            {
+                Napi::Value v = tsArr.Get(static_cast<uint32_t>(i));
+                if (v.IsString())
+                {
+                    ts_storage[i] = v.As<Napi::String>().Utf8Value();
+                    ts_ptrs[i] = ts_storage[i].c_str();
+                }
+            }
+        }
+
+        Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
+        Napi::Function cb = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
+        auto* worker = new PutBatchAsyncWorker(cb,
+                                               deferred,
+                                               db_,
+                                               dim_,
+                                               std::move(embeddings),
+                                               n,
+                                               std::move(text_ptrs),
+                                               std::move(ts_ptrs),
+                                               has_texts,
+                                               has_timestamps,
+                                               std::move(text_storage),
+                                               std::move(ts_storage));
+        worker->Queue();
+        return deferred.Promise();
+    }
+
+    Napi::Value SearchBatchAsync(const Napi::CallbackInfo& info)
+    {
+        Napi::Env env = info.Env();
+        if (!db_)
+            throw Napi::Error::New(env, "Database is closed");
+        if (info.Length() < 2 || !info[0].IsArray())
+            throw Napi::TypeError::New(env, "searchBatchAsync(queries, k, filter?)");
+        Napi::Array queriesArr = info[0].As<Napi::Array>();
+        const int n = static_cast<int>(queriesArr.Length());
+        const int k = info[1].As<Napi::Number>().Int32Value();
+        std::vector<float> flat(static_cast<size_t>(n) * static_cast<size_t>(dim_));
+        for (int i = 0; i < n; ++i)
+        {
+            Napi::Value qv = queriesArr.Get(static_cast<uint32_t>(i));
+            std::vector<float> row = JsValueToFloatVector(env, qv);
+            if ((int)row.size() != dim_)
+                throw Napi::Error::New(env, "Query dimension mismatch");
+            std::memcpy(flat.data() + static_cast<size_t>(i) * static_cast<size_t>(dim_),
+                        row.data(),
+                        static_cast<size_t>(dim_) * sizeof(float));
+        }
+        logosdb_id_filter_t f;
+        std::vector<uint64_t> allow_store, deny_store;
+        std::string ts_from, ts_to;
+        if (info.Length() > 2 && info[2].IsObject())
+            FillIdFilterFromJs(info[2].As<Napi::Object>(), &f, allow_store, deny_store, ts_from, ts_to);
+        else
+            logosdb_id_filter_init(&f);
+        Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
+        Napi::Function cb = Napi::Function::New(env, [](const Napi::CallbackInfo&) {});
+        auto* worker = new SearchBatchAsyncWorker(cb,
+                                                  deferred,
+                                                  db_,
+                                                  dim_,
+                                                  n,
+                                                  k,
+                                                  std::move(flat),
+                                                  f,
+                                                  std::move(allow_store),
+                                                  std::move(deny_store),
+                                                  std::move(ts_from),
+                                                  std::move(ts_to));
+        worker->Queue();
+        return deferred.Promise();
     }
 
     Napi::Value Count(const Napi::CallbackInfo& info)
