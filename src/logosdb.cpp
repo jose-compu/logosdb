@@ -33,6 +33,7 @@ struct logosdb_t
     WriteAheadLog wal;
     std::mutex mu;
     int dim = 0;
+    size_t max_capacity = 0;
     int distance = LOGOSDB_DIST_IP;
     int dtype = LOGOSDB_DTYPE_FLOAT32;
     std::atomic<uint64_t> st_put_ok{0};
@@ -54,6 +55,7 @@ struct logosdb_options_t
 {
     int dim = 0;
     size_t max_elements = 1000000;
+    size_t max_capacity = 0;
     int ef_construction = 200;
     int M = 16;
     int ef_search = 50;
@@ -115,6 +117,12 @@ void logosdb_options_set_max_elements(logosdb_options_t* o, size_t n)
 {
     if (o && n > 0)
         o->max_elements = n;
+}
+
+void logosdb_options_set_max_capacity(logosdb_options_t* o, size_t n)
+{
+    if (o)
+        o->max_capacity = n;
 }
 void logosdb_options_set_ef_construction(logosdb_options_t* o, int e)
 {
@@ -187,9 +195,12 @@ logosdb_t* logosdb_open(const char* path, const logosdb_options_t* opts, char** 
         return nullptr;
     }
 
+    db->max_capacity = opts->max_capacity;
+
     HnswParams hp;
     hp.dim = opts->dim;
     hp.max_elements = opts->max_elements;
+    hp.max_capacity = opts->max_capacity;
     hp.ef_construction = opts->ef_construction;
     hp.M = opts->M;
     hp.ef_search = opts->ef_search;
@@ -370,6 +381,13 @@ uint64_t logosdb_put(logosdb_t* db,
     std::lock_guard<std::mutex> lock(db->mu);
     std::string err;
 
+    if (!db->index.reserve(1, err))
+    {
+        set_err(errptr, err);
+        db->st_put_fail.fetch_add(1, std::memory_order_relaxed);
+        return UINT64_MAX;
+    }
+
     // Compute expected row id before writing
     uint64_t expected_id = db->vectors.n_rows();
 
@@ -472,6 +490,13 @@ int logosdb_put_batch(logosdb_t* db,
     {
         int this_chunk = std::min(chunk, n - processed);
         uint64_t start_expected_id = db->vectors.n_rows();
+
+        if (!db->index.reserve(static_cast<size_t>(this_chunk), err))
+        {
+            set_err(errptr, err);
+            db->st_put_batch_fail.fetch_add(1, std::memory_order_relaxed);
+            return -1;
+        }
 
         // 1. WAL: append `this_chunk` pending entries (single fsync).
         const float* chunk_vecs =
@@ -637,6 +662,13 @@ uint64_t logosdb_update(logosdb_t* db,
     if (db->meta.is_deleted(id))
     {
         set_err(errptr, "update: id already deleted");
+        db->st_update_fail.fetch_add(1, std::memory_order_relaxed);
+        return UINT64_MAX;
+    }
+
+    if (!db->index.reserve(1, err))
+    {
+        set_err(errptr, err);
         db->st_update_fail.fetch_add(1, std::memory_order_relaxed);
         return UINT64_MAX;
     }
@@ -808,14 +840,15 @@ logosdb_search(logosdb_t* db, const float* query, int dim, int top_k, char** err
     return r;
 }
 
-logosdb_search_result_t* logosdb_search_ts_range(logosdb_t* db,
-                                                 const float* query,
-                                                 int dim,
-                                                 int top_k,
-                                                 const char* ts_from_iso8601,
-                                                 const char* ts_to_iso8601,
-                                                 int candidate_k,
-                                                 char** errptr)
+logosdb_search_result_t* logosdb_search_ts_range_ex(logosdb_t* db,
+                                                    const float* query,
+                                                    int dim,
+                                                    int top_k,
+                                                    const char* ts_from_iso8601,
+                                                    const char* ts_to_iso8601,
+                                                    int candidate_k,
+                                                    int skip_empty_ts,
+                                                    char** errptr)
 {
     if (!db || !query)
     {
@@ -866,6 +899,9 @@ logosdb_search_result_t* logosdb_search_ts_range(logosdb_t* db,
         if (!m)
             continue;
 
+        if (skip_empty_ts && m->timestamp.empty())
+            continue;
+
         // Apply timestamp filter
         if (ts_from_iso8601 && !m->timestamp.empty())
         {
@@ -889,6 +925,33 @@ logosdb_search_result_t* logosdb_search_ts_range(logosdb_t* db,
 
     db->st_search_ts_ok.fetch_add(1, std::memory_order_relaxed);
     return r;
+}
+
+logosdb_search_result_t* logosdb_search_ts_range(logosdb_t* db,
+                                                 const float* query,
+                                                 int dim,
+                                                 int top_k,
+                                                 const char* ts_from_iso8601,
+                                                 const char* ts_to_iso8601,
+                                                 int candidate_k,
+                                                 char** errptr)
+{
+    return logosdb_search_ts_range_ex(db,
+                                      query,
+                                      dim,
+                                      top_k,
+                                      ts_from_iso8601,
+                                      ts_to_iso8601,
+                                      candidate_k,
+                                      0,
+                                      errptr);
+}
+
+size_t logosdb_index_capacity(const logosdb_t* db)
+{
+    if (!db)
+        return 0;
+    return db->index.max_elements();
 }
 
 void logosdb_id_filter_init(logosdb_id_filter_t* f)

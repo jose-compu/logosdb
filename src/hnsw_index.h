@@ -23,6 +23,7 @@ struct HnswParams
 {
     int dim = 0;
     size_t max_elements = 1000000;
+    size_t max_capacity = 0;
     int ef_construction = 200;
     int M = 16;
     int ef_search = 50;
@@ -42,6 +43,9 @@ class HnswIndex
     // Create a new index or load an existing one from disk.
     bool open(const std::string& path, const HnswParams& params, std::string& err);
     void close();
+
+    // Grow HNSW slot capacity if count() + additional would exceed max_elements().
+    bool reserve(size_t additional, std::string& err);
 
     // Add a vector with the given internal label (row index).
     bool add(uint64_t label, const float* vec, std::string& err);

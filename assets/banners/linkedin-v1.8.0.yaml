@@ -1,0 +1,18 @@
+version: "1.8.0"
+title: "Auto-growing HNSW capacity"
+date: "2026-11-27"
+tagline: "Embedded vector DB for AI agents and RAG"
+release_tagline: "The index doubles when it fills. Search can leave the caller thread."
+highlights:
+  - name: "auto-grow"
+    desc: "This vector DB doubles HNSW capacity when an insert would pass the starting size."
+  - name: "hard cap"
+    desc: "Set max_capacity when this vector DB should stop at a fixed number of slots."
+  - name: "async search"
+    desc: "Node can search this vector DB with a Promise. Python search releases the GIL."
+packages:
+  - { label: "PyPI logosdb",           version: "1.8.0" }
+  - { label: "npm logosdb",            version: "1.8.0" }
+  - { label: "npm logosdb-mcp-server", version: "1.4.6" }
+install: "pip install logosdb   ·   npm i logosdb"
+github: "github.com/jose-compu/logosdb"

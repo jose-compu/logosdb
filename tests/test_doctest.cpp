@@ -13,7 +13,9 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <atomic>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace std::string_literals;
@@ -2390,6 +2392,177 @@ TEST_SUITE("search_primitives")
             CHECK(plain[i].id == filt[i].id);
             CHECK(plain[i].score == doctest::Approx(filt[i].score));
         }
+        std::filesystem::remove_all(path);
+    }
+}
+
+TEST_SUITE("capacity")
+{
+    TEST_CASE("capacity: auto-grow, persist, cap, batch, update, open rules, ts_range")
+    {
+        const int dim = 8;
+
+        std::string path = tmp_path("logosdb_capacity_grow");
+        std::filesystem::remove_all(path);
+        logosdb::Options o{};
+        o.dim = dim;
+        o.max_elements = 16;
+        logosdb::DB db(path, o);
+        for (int i = 0; i < 20; ++i)
+            db.put(unit_vec(dim, 9100 + i), "r" + std::to_string(i));
+        CHECK(logosdb_index_capacity(db.handle()) == 32);
+        for (int i = 0; i < 20; ++i)
+        {
+            auto hits = db.search(unit_vec(dim, 9100 + i), 1);
+            REQUIRE(hits.size() == 1);
+            CHECK(hits[0].id == static_cast<uint64_t>(i));
+        }
+        db.sync();
+        logosdb::DB db2(path, o);
+        for (int i = 0; i < 13; ++i)
+            db2.put(unit_vec(dim, 9200 + i));
+        CHECK(logosdb_index_capacity(db2.handle()) == 64);
+        std::filesystem::remove_all(path);
+
+        path = tmp_path("logosdb_capacity_cap");
+        std::filesystem::remove_all(path);
+        o = logosdb::Options{};
+        o.dim = dim;
+        o.max_elements = 16;
+        o.max_capacity = 20;
+        logosdb::DB dbc(path, o);
+        for (int i = 0; i < 20; ++i)
+            dbc.put(unit_vec(dim, 9300 + i));
+        char* err = nullptr;
+        uint64_t bad = logosdb_put(
+            dbc.handle(), unit_vec(dim, 9399).data(), dim, nullptr, nullptr, &err);
+        CHECK(bad == UINT64_MAX);
+        CHECK(err != nullptr);
+        std::string emsg = err;
+        free(err);
+        CHECK(emsg.find("hnsw capacity cap exceeded") != std::string::npos);
+        CHECK(dbc.count() == 20);
+        std::filesystem::remove_all(path);
+
+        path = tmp_path("logosdb_capacity_batch");
+        std::filesystem::remove_all(path);
+        o = logosdb::Options{};
+        o.dim = dim;
+        o.max_elements = 16;
+        o.max_capacity = 0;
+        logosdb::DB dbb(path, o);
+        std::vector<float> flat;
+        for (int i = 0; i < 40; ++i)
+        {
+            auto v = unit_vec(dim, 9400 + i);
+            flat.insert(flat.end(), v.begin(), v.end());
+        }
+        auto ids = dbb.put_batch(flat, 40);
+        CHECK(ids.size() == 40);
+        CHECK(logosdb_index_capacity(dbb.handle()) == 64);
+        for (int i = 0; i < 40; ++i)
+        {
+            auto hits = dbb.search(unit_vec(dim, 9400 + i), 1);
+            REQUIRE(!hits.empty());
+        }
+        std::filesystem::remove_all(path);
+
+        path = tmp_path("logosdb_capacity_update");
+        std::filesystem::remove_all(path);
+        o.max_elements = 16;
+        o.max_capacity = 16;
+        logosdb::DB dbu(path, o);
+        for (int i = 0; i < 16; ++i)
+            dbu.put(unit_vec(dim, 9500 + i));
+        CHECK_THROWS_AS(
+            dbu.update(0, unit_vec(dim, 9599), "new"),
+            std::runtime_error);
+        auto row = dbu.get(0);
+        CHECK(row.text == "");
+        std::filesystem::remove_all(path);
+
+        path = tmp_path("logosdb_capacity_open_bad");
+        std::filesystem::remove_all(path);
+        o.max_elements = 32;
+        o.max_capacity = 16;
+        CHECK_THROWS_AS(logosdb::DB(path, o), std::runtime_error);
+
+        path = tmp_path("logosdb_capacity_reopen_cap");
+        std::filesystem::remove_all(path);
+        o.max_elements = 16;
+        o.max_capacity = 0;
+        {
+            logosdb::DB dbf(path, o);
+            for (int i = 0; i < 20; ++i)
+                dbf.put(unit_vec(dim, 9600 + i));
+        }
+        o.max_capacity = 8;
+        CHECK_THROWS_AS(logosdb::DB(path, o), std::runtime_error);
+        std::filesystem::remove_all(path);
+
+        path = tmp_path("logosdb_capacity_ts");
+        std::filesystem::remove_all(path);
+        o.max_capacity = 0;
+        logosdb::DB dbt(path, o);
+        auto q = unit_vec(dim, 9700);
+        auto a = unit_vec(dim, 9701);
+        dbt.put(a, "empty-ts", "");
+        char* err2 = nullptr;
+        logosdb_search_result_t* plain =
+            logosdb_search_ts_range(dbt.handle(), q.data(), dim, 5, nullptr, nullptr, 50, &err2);
+        REQUIRE(plain != nullptr);
+        bool saw_empty = false;
+        for (int i = 0; i < logosdb_result_count(plain); ++i)
+        {
+            const char* ts = logosdb_result_timestamp(plain, i);
+            if (!ts || ts[0] == '\0')
+                saw_empty = true;
+        }
+        logosdb_result_free(plain);
+        CHECK(saw_empty);
+        err2 = nullptr;
+        logosdb_search_result_t* skipped = logosdb_search_ts_range_ex(
+            dbt.handle(), q.data(), dim, 5, nullptr, nullptr, 50, 1, &err2);
+        REQUIRE(skipped != nullptr);
+        for (int i = 0; i < logosdb_result_count(skipped); ++i)
+        {
+            const char* ts = logosdb_result_timestamp(skipped, i);
+            CHECK(ts != nullptr);
+            CHECK(ts[0] != '\0');
+        }
+        logosdb_result_free(skipped);
+        std::filesystem::remove_all(path);
+    }
+
+    TEST_CASE("capacity: concurrent insert and search")
+    {
+        std::string path = tmp_path("logosdb_capacity_threads");
+        std::filesystem::remove_all(path);
+        const int dim = 8;
+        logosdb::DB db(path, {.dim = dim, .max_elements = 16});
+        std::atomic<bool> stop{false};
+        std::atomic<int> nsearch{0};
+        std::thread writer(
+            [&]()
+            {
+                for (int i = 0; i < 48; ++i)
+                    db.put(unit_vec(dim, 9800 + i));
+            });
+        std::thread reader(
+            [&]()
+            {
+                auto q = unit_vec(dim, 9800);
+                while (!stop.load(std::memory_order_relaxed))
+                {
+                    (void)db.search(q, 3);
+                    nsearch.fetch_add(1, std::memory_order_relaxed);
+                }
+            });
+        writer.join();
+        stop.store(true, std::memory_order_relaxed);
+        reader.join();
+        CHECK(nsearch.load() > 0);
+        CHECK(db.count() == 48);
         std::filesystem::remove_all(path);
     }
 }
