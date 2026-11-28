@@ -171,6 +171,21 @@ Episodic memory pattern ([#136](https://github.com/jose-compu/logosdb/issues/136
   * [#10](https://github.com/jose-compu/logosdb/issues/10) — Windows support: abstract POSIX file I/O behind a portable layer
   * [#111](https://github.com/jose-compu/logosdb/issues/111) — Finish Python integration-adapter security audit (partially addressed in 1.0.0 for `vibe.py`)
 
+### Roadmap to 2.0.0 — classical ML (`logos-ml`)
+
+Design, benchmarks, and the model gate: [docs/roadmap-2.0.md](docs/roadmap-2.0.md). **1.6.0** is the in-progress BreadBowl-Embed release and is not this plan. Core work starts at **1.7.0**. `logos-ml` stays in this repo. Node `logos-ml` uses an ONNX embedder. BreadBowl is a Python default only if it passes the gate, and it is not a Node backend.
+
+| Milestone | Work | Issues |
+|-----------|------|--------|
+| **1.7.0** | Id filter, `search_batch`, `min_score`, `get_many` | [#134](https://github.com/jose-compu/logosdb/issues/134), [#136](https://github.com/jose-compu/logosdb/issues/136), [#144](https://github.com/jose-compu/logosdb/issues/144) |
+| **1.8.0** | Node async and `Float32Array`, Python GIL release, `skip_empty_ts` | [#137](https://github.com/jose-compu/logosdb/issues/137), [#140](https://github.com/jose-compu/logosdb/issues/140), [#141](https://github.com/jose-compu/logosdb/issues/141) |
+| **1.9.0** | Caps, fuzz, optional `max_text` / `flock`, HNSW seed | [docs/roadmap-2.0.md](docs/roadmap-2.0.md) §6 |
+| **1.10.0** | Experimental keys, `replace`, `payload.bin` | [#143](https://github.com/jose-compu/logosdb/issues/143) |
+| **2.0.0** | Default flips: capped `k`, empty timestamps excluded, exclusive lock, `update` keeps the id | [docs/roadmap-2.0.md](docs/roadmap-2.0.md) §6 |
+| **logos-ml 0.1.0–0.9.0** | Library, lightweight CPU benches, Python BreadBowl gate | [docs/roadmap-2.0.md](docs/roadmap-2.0.md) §5–§6 |
+
+[#124](https://github.com/jose-compu/logosdb/issues/124) (HTTP) is out of scope for this roadmap.
+
 ## Stability (since 1.0.0)
 
 As of **1.0.0**, the project commits to stable semver for the public C API and supported language bindings:
